@@ -21,6 +21,10 @@ private slots:
 
     void on_btnStopRecording_clicked();
 
+    void on_btnPlusFrame_clicked();
+
+    void on_spinBox_valueChanged(int arg1);
+
 private:
     Ui::MainWindow *ui;
 };

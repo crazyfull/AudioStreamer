@@ -5,7 +5,7 @@
 #include <QByteArray>
 
 //#define FRAME_SIZE  640   //for 8000
-#define FRAME_SIZE  1280    // 1280 for 16000    //640 //320 //160   960     1280
+//#define FRAME_SIZE  176 //1280    // 1280 for 16000    //640 //320 //160   960     1280
 
 class opusCodec
 {
@@ -14,6 +14,7 @@ private:
     OpusDecoder *m_pDecryptor;
     int m_Rate;
     int Channel;
+    uint FRAME_SIZE = 16;
 
 
     void initEncoder();
@@ -30,6 +31,7 @@ public:
 
     QByteArray Encode(const char *PCMBuffer, int PCMBufferLength);
     QByteArray Decode(const char *Buffer, int BufferSize);
+    void setFRAME_SIZE(uint newFRAME_SIZE);
 };
 
 #endif // OPUSCODEC_H

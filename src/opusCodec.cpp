@@ -68,6 +68,11 @@ void opusCodec::setChannel(int newChannel)
     Channel = newChannel;
 }
 
+void opusCodec::setFRAME_SIZE(uint newFRAME_SIZE)
+{
+    FRAME_SIZE = newFRAME_SIZE;
+}
+
 void opusCodec::initEncoder()
 {
     //
