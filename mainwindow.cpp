@@ -18,7 +18,8 @@ MainWindow::~MainWindow()
 void MainWindow::on_btnStartRecording_clicked()
 {
     //m_pAudioRecorder->Start();
-    m_pAudioRecorder->PlusFrame(960);
+    //m_pAudioRecorder->PlusFrame(320*2);
+    m_pAudioRecorder->PlusFrame(320); //960/3
     m_pAudioRecorder->Stream();
 }
 
@@ -41,4 +42,3 @@ void MainWindow::on_spinBox_valueChanged(int arg1)
 {
     m_pAudioRecorder->PlusFrame(ui->spinBox->value() );
 }
-

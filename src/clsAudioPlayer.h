@@ -13,11 +13,12 @@ class clsAudioPlayer : public QObject
     QAudioOutput *m_pAudioPlayer;
     QIODevice *m_pbufferOutput;
     opusCodec m_Opus;
+    QByteArray m_Buffer;
 
 public:
     explicit clsAudioPlayer(QObject *parent = nullptr);
 
-    void init(const QAudioFormat &format1);
+    void init();
     void Play(const QByteArray &buffer);
     void PlusFrame(uint value);
 signals:

@@ -38,11 +38,12 @@ opusCodec::opusCodec()
 
     //set default
     setChannel(1); //stereo
-    setRate(8000);
+    setRate(16000);
 
     //
     initEncoder();
     initDecoder();
+    initResample();
 
 
 
@@ -339,4 +340,93 @@ QByteArray opusCodec::Decode(const char *Buffer, int BufferSize)
 
     return retFrame;
 
+}
+
+#define INPUT_RATE 48000
+#define OUTPUT_RATE 16000
+
+void opusCodec::initResample(){
+    reSampleState = new silk_resampler_state_struct;
+    int isErr = silk_resampler_init(reSampleState, INPUT_RATE, OUTPUT_RATE, 1);
+    qDebug() << "silk_resampler_init: " << isErr;
+}
+QByteArray opusCodec::ResampleAudio(const QByteArray &inPCM)
+{
+
+    QByteArray retBuff;
+    if(!reSampleState)
+    {
+        qDebug() << "error: reSampleState in null: ";
+        return retBuff;
+    }
+
+    opus_int16 OutPut[640] = {0};   //320
+   // opus_int16 Input[9600] = {0};
+
+    memset(OutPut, 0, sizeof(OutPut));
+    opus_int32 InputSize = inPCM.length();
+    const char *pcmBuffer = inPCM.data();
+
+    opus_int32 outPutLength = InputSize / (INPUT_RATE / OUTPUT_RATE);
+
+    /*
+    //copy to input
+    for (int i = 0; i < FRAME_SIZE; i++) {
+        Input[i] = retBuff.data()[i];
+    }
+*/
+
+    //Copy the 16 bits values to float so Speex can work on them
+    /*
+    int const OPUS_INT_SIZE = sizeof(opus_int16);
+    int const frameSize = InputSize / OPUS_INT_SIZE;
+
+    short *in = (short*)pcmBuffer;
+    for (int i = 0; i < frameSize; i++)
+    {
+        Input[i] = (opus_int16)*in;
+        in++;
+    }
+*/
+
+    /* Calculate number of samples to temporarily upsample */
+    // api_buf_samples = buf_length_ms * silk_DIV32_16( psEnc->sCmn.API_fs_Hz, 1000 );
+
+    /* Temporary resampling of x_buf data to API_fs_Hz */
+    //ALLOC( x_buf_API_fs_Hz, api_buf_samples, opus_int16 );
+    char OutPutPCM[9600] = {0};
+    int ret = silk_resampler(reSampleState, OutPut, (opus_int16*)pcmBuffer, InputSize/2);   //test
+
+
+    /*
+
+    int OutputLength = frameSize * OPUS_INT_SIZE;
+    opus_int16 *out = (opus_int16*)OutPutPCM;
+    for (int q = 0; q < OutputLength; q++)
+    {
+        *out = (opus_int16)OutPut[q];
+        out++;
+    }
+*/
+
+    retBuff.append((char*)OutPut, outPutLength);
+
+   // qDebug() << "silk_resampler: " << ret;
+
+
+    /* Initialize the resampler for enc_API.c preparing resampling from API_fs_Hz to fs_kHz */
+    //ret += silk_resampler_init( &psEnc->sCmn.resampler_state, psEnc->sCmn.API_fs_Hz, silk_SMULBB( fs_kHz, 1000 ), 1 );
+
+    /* Correct resampler state by resampling buffered data from API_fs_Hz to fs_kHz */
+    //ret += silk_resampler( &psEnc->sCmn.resampler_state, x_bufFIX, x_buf_API_fs_Hz, api_buf_samples );
+
+
+    //float out[9600];
+    // Resample(in.data(), in.length(), out, )
+
+    //save file
+    //fwrite(retBuff.data(), sizeof(char), retBuff.length(), Filefout);
+
+
+    return retBuff;
 }

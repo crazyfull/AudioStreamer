@@ -3,6 +3,7 @@
 
 #include "opus.h"
 #include <QByteArray>
+#include "SigProc_FIX.h"
 
 //#define FRAME_SIZE  640   //for 8000
 //#define FRAME_SIZE  176 //1280    // 1280 for 16000    //640 //320 //160   960     1280
@@ -16,9 +17,12 @@ private:
     int Channel;
     uint FRAME_SIZE = 16;
 
+    silk_resampler_state_struct *reSampleState = nullptr;
+
 
     void initEncoder();
     void initDecoder();
+    void initResample();
 public:
     opusCodec();
     opus_int32 encodeFrame(const char *pcmBuffer, char *OutPut, int OutputBufferSize);
@@ -32,6 +36,7 @@ public:
     QByteArray Encode(const char *PCMBuffer, int PCMBufferLength);
     QByteArray Decode(const char *Buffer, int BufferSize);
     void setFRAME_SIZE(uint newFRAME_SIZE);
+    QByteArray ResampleAudio(const QByteArray &inPCM);
 };
 
 #endif // OPUSCODEC_H

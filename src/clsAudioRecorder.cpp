@@ -55,12 +55,12 @@ void clsAudioRecorder::Stream(){
     /**/
     printAllCodecs();
 
-        //onAudioBufferProbed:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian, codec="audio/pcm")
+    //onAudioBufferProbed:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian, codec="audio/pcm")
 
     QAudioEncoderSettings audioSettings;
-    audioSettings.setQuality(QMultimedia::VeryLowQuality);
+    //audioSettings.setQuality(QMultimedia::VeryLowQuality);
     //audioSettings.setCodec("audio/pcm");
-    audioSettings.setBitRate(8);
+    audioSettings.setBitRate(16);
     audioSettings.setChannelCount(1);
     audioSettings.setSampleRate(48000);
     //audioSettings.setEncodingMode()
@@ -86,12 +86,12 @@ void clsAudioRecorder::Stream(){
 
 void clsAudioRecorder::onAudioBufferProbed(const QAudioBuffer &buffer){
 
-    //qDebug() << "onAudioBufferProbed: " << buffer.format(); //buffer.sampleCount();// buffer.byteCount();  // buffer.frameCount();// buffer.format();
-    m_player->init(buffer.format());
+    qDebug() << "onAudioBufferProbed, sampleCount: " << buffer.sampleCount() << " lenth: " << buffer.byteCount() << " frameCount: " <<  buffer.frameCount() << " format: " << buffer.format(); // buffer.format();
 
+    //m_player->init(buffer.format());
 
     m_player->Play( QByteArray((const char*)buffer.data(), buffer.byteCount()) );
-  // buffer.data()
+    // buffer.data()
 }
 
 clsAudioRecorder::clsAudioRecorder(QObject *parent) : QObject(parent)
@@ -102,7 +102,7 @@ clsAudioRecorder::clsAudioRecorder(QObject *parent) : QObject(parent)
     m_pPCMBufferInput = nullptr;
     m_player = new clsAudioPlayer;
 
-
+/*
     int BufferLength = 9600;    //4800 2400 24000 1920
     int SimpleRate = 44100;
     int SimpleSize = 16;
@@ -135,7 +135,6 @@ clsAudioRecorder::clsAudioRecorder(QObject *parent) : QObject(parent)
     if (!DeviveInfo.isFormatSupported(RecorderFormat)) {
         qWarning() << "Error RecorderFormat: Format not supported, trying to use the nearest.";
 
-
         // #Returns the closest QAudioFormat to the supplied settings that the system supports.
         RecorderFormat = DeviveInfo.nearestFormat(RecorderFormat);
     }
@@ -149,10 +148,9 @@ clsAudioRecorder::clsAudioRecorder(QObject *parent) : QObject(parent)
     connect(m_pAudioRecorder, SIGNAL(notify()), this, SLOT(onReadyForRead()));
 
     //set custom seeting
-    m_pAudioRecorder->setBufferSize(256);
-    //m_pAudioRecorder->setNotifyInterval(40);
-
-
+    //m_pAudioRecorder->setBufferSize(256);
+    m_pAudioRecorder->setNotifyInterval(40);
+*/
 }
 
 void clsAudioRecorder::Start()
@@ -184,4 +182,35 @@ void clsAudioRecorder::onReadyForRead(){
 
 void clsAudioRecorder::PlusFrame(uint value){
     m_player->PlusFrame(value);
+}
+
+
+void clsAudioRecorder::test(){
+    return;
+    QAudioFormat fmt;
+    fmt.setSampleRate(48000);
+    fmt.setSampleSize(16);
+    fmt.setChannelCount(1);
+    fmt.setCodec("audio/pcm");
+    fmt.setByteOrder(QAudioFormat::LittleEndian);
+    fmt.setSampleType(QAudioFormat::UnSignedInt);
+    //fmt.setSampleType(QAudioFormat::SignedInt);
+    QAudioDeviceInfo info = QAudioDeviceInfo::defaultOutputDevice();
+
+    qDebug() << "deviceName: " << info.deviceName();
+    if (!info.isFormatSupported(fmt)) {
+        //printf("default format not supported try to use nearest\n");
+
+        fmt = info.nearestFormat(fmt);
+        qDebug() << "-------------------------default format not supported: " << fmt;
+    }
+
+    QAudioOutput *output = new QAudioOutput(fmt);
+    connect(output, SIGNAL(stateChanged(QAudio::State)), this, SLOT(onRecorderStateChanged(QAudio::State)));
+    QIODevice* io = output->start();
+
+    qDebug() << "io: " << io;
+    //printf("state:%s",output->state());
+    QAudio::State stat = output->state();
+    qDebug() << "stat: " << stat;
 }

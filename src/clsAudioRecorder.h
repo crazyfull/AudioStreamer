@@ -21,6 +21,7 @@ public:
     void Stream();
 
     void PlusFrame(uint value);
+    void test();
 public slots:
 
 signals:
