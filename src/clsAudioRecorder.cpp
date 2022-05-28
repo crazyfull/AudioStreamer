@@ -58,12 +58,13 @@ void clsAudioRecorder::Stream(){
     //onAudioBufferProbed:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian, codec="audio/pcm")
 
     QAudioEncoderSettings audioSettings;
-    //audioSettings.setQuality(QMultimedia::VeryLowQuality);
-    //audioSettings.setCodec("audio/pcm");
+    //
+    audioSettings.setCodec("audio/pcm");
     audioSettings.setBitRate(16);
     audioSettings.setChannelCount(1);
     audioSettings.setSampleRate(48000);
     //audioSettings.setEncodingMode()
+audioSettings.setQuality(QMultimedia::HighQuality);
 
     QAudioRecorder *recorder = new QAudioRecorder();
 
@@ -74,6 +75,7 @@ void clsAudioRecorder::Stream(){
 
     recorder->setAudioInput("default");
     recorder->setAudioSettings(audioSettings);
+
     //recorder->setContainerFormat("mp3");
 
     //recorder->setEncodingSettings()

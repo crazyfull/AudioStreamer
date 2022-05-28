@@ -6,7 +6,7 @@
 #include "SigProc_FIX.h"
 
 //#define FRAME_SIZE  640   //for 8000
-//#define FRAME_SIZE  176 //1280    // 1280 for 16000    //640 //320 //160   960     1280
+#define FRAME_SIZE  1280*3 //1280    // 1280 for 16000    //640 //320 //160   960     1280
 
 class opusCodec
 {
@@ -15,7 +15,7 @@ private:
     OpusDecoder *m_pDecryptor;
     int m_Rate;
     int Channel;
-    uint FRAME_SIZE = 16;
+   // uint FRAME_SIZE = 16;
 
     silk_resampler_state_struct *reSampleState = nullptr;
 

@@ -61,30 +61,43 @@ void clsAudioPlayer::init(){
 }
 
 void clsAudioPlayer::Play(const QByteArray &buffer){
+    /**/
+    QByteArray playbuff;
+    m_Buffer += buffer;
 
-    QByteArray ResampleBuffer = m_Opus.ResampleAudio(buffer);
-    //qDebug() << "ResampleBuffer: " << ResampleBuffer.length();
+    if(m_Buffer.length() == 3840*3 ){ //960 1280*3
+        playbuff = m_Buffer;
+        //m_pbufferOutput->write(m_Buffer.data(), m_Buffer.length());
+
+        qDebug() << "playbuff: " << playbuff.length();
+
+        m_Buffer.clear();
+    }else{
+        return;
+    }
+
+
+    QByteArray ResampleBuffer = m_Opus.ResampleAudio(playbuff);
+    qDebug() << "ResampleBuffer: " << ResampleBuffer.length();
 
     //m_pbufferOutput->write(ResampleBuffer.data(), ResampleBuffer.length());
     //return;
     //
     QByteArray encodedBuffer = m_Opus.Encode(ResampleBuffer.data(), ResampleBuffer.length());
-    qDebug() << "encodedBuffer: " << encodedBuffer.length();
+   qDebug() << "encodedBuffer: " << encodedBuffer.length();
 
 
     //decode
     QByteArray PCMoutBuffer = m_Opus.Decode(encodedBuffer.constData(), encodedBuffer.length());
     qDebug() << "DecodedBuffer: " << PCMoutBuffer.length();
 
-    /*
-    m_Buffer += buffer;
-    if(m_Buffer.length() == 960 ){ //960
-        m_pbufferOutput->write(m_Buffer.data(), m_Buffer.length());
+    /* win32
+onAudioBufferProbed, sampleCount:  1920  lenth:  3840  frameCount:  1920  format:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian, codec="audio/pcm")
+encodedBuffer:  72
+DecodedBuffer:  1280
+    */
 
-        qDebug() << "play: " << m_Buffer.length();
 
-        m_Buffer.clear();
-    }*/
 
     m_pbufferOutput->write(PCMoutBuffer.data(), PCMoutBuffer.length());
 }

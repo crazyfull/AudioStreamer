@@ -71,7 +71,7 @@ void opusCodec::setChannel(int newChannel)
 
 void opusCodec::setFRAME_SIZE(uint newFRAME_SIZE)
 {
-    FRAME_SIZE = newFRAME_SIZE;
+    //FRAME_SIZE = newFRAME_SIZE;
 }
 
 void opusCodec::initEncoder()
@@ -101,7 +101,7 @@ void opusCodec::initEncoder()
 
 
     opus_encoder_ctl(m_pEncriptor, OPUS_SET_BANDWIDTH(bandwidth));
- /*
+    /*
     opus_encoder_ctl(m_pEncriptor, OPUS_SET_BITRATE(bitrate_bps));
     //opus_encoder_ctl(m_pEncriptor, OPUS_SET_COMPLEXITY(complexity));
 
@@ -294,6 +294,8 @@ QByteArray opusCodec::Encode(const char *PCMBuffer, int PCMBufferLength)
 
     int count = PCMBufferLength / (FRAME_SIZE); //??
 
+    qDebug() << "count: " << count;
+
     for(int i = 0; i < count; i++){
 
         //memcpy(copressedOutput, Buffer + (i * FRAME_SIZE1), FRAME_SIZE1);
@@ -301,9 +303,10 @@ QByteArray opusCodec::Encode(const char *PCMBuffer, int PCMBufferLength)
         //-------------------------------------------
         opus_int32 encodedOutSize = this->encodeFrame(pcmFrameInput, copressedOutput, sizeof(copressedOutput));
         //-----------------------------------------
-        retFrame.append(copressedOutput, encodedOutSize);
         if(encodedOutSize == -1)
             qWarning() << "Error, encodedOutSize " << encodedOutSize;
+
+        retFrame.append(copressedOutput, encodedOutSize);
     }
 
     //save file
@@ -360,14 +363,17 @@ QByteArray opusCodec::ResampleAudio(const QByteArray &inPCM)
         return retBuff;
     }
 
-    opus_int16 OutPut[640] = {0};   //320
-   // opus_int16 Input[9600] = {0};
+    // opus_int16 OutPut[640] = {0};   //320
+    opus_int16 OutPut[16000] = {0};
 
     memset(OutPut, 0, sizeof(OutPut));
     opus_int32 InputSize = inPCM.length();
     const char *pcmBuffer = inPCM.data();
 
     opus_int32 outPutLength = InputSize / (INPUT_RATE / OUTPUT_RATE);
+
+
+    qDebug() << "outPutLength: " << outPutLength << " InputSize: " << InputSize;
 
     /*
     //copy to input
@@ -411,7 +417,7 @@ QByteArray opusCodec::ResampleAudio(const QByteArray &inPCM)
 
     retBuff.append((char*)OutPut, outPutLength);
 
-   // qDebug() << "silk_resampler: " << ret;
+    // qDebug() << "silk_resampler: " << ret;
 
 
     /* Initialize the resampler for enc_API.c preparing resampling from API_fs_Hz to fs_kHz */
