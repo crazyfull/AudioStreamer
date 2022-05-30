@@ -185,11 +185,12 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
 
     packet.append(Buff);
 
-    uint sendSize = m_pUDPClient->writeDatagram(packet, QHostAddress("51.195.240.171"), 10001); //khodam
+    //52.20.16.20:40000
+    uint sendSize = m_pUDPClient->writeDatagram(packet, QHostAddress("52.43.121.77"), 10001); //khodam
+    //uint sendSize = m_pUDPClient->writeDatagram(packet, QHostAddress("51.195.240.171"), 10001); //khodam
     //if(Buff.length() < 39) return 0;
     // qDebug() <<  "SendUDP() " << Buff.length();
 
-    //return  m_UDPClient->writeDatagram(Buff, QHostAddress("52.43.121.77"), 10001);  //51.75.56.25 8877
 
      m_Rate += sendSize;       //for get transfer rate monitor
 
