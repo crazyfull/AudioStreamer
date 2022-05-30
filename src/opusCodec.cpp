@@ -199,7 +199,7 @@ QByteArray opusCodec::Encode(const char *PCMBuffer, int PCMBufferLength)
 
     int count = PCMBufferLength / (FRAME_SIZE); //??
 
-    qDebug() << "count: " << count;
+    //qDebug() << "count: " << count;
 
     for(int i = 0; i < count; i++){
 

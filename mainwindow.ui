@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>513</width>
-    <height>441</height>
+    <width>379</width>
+    <height>197</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,8 +17,8 @@
    <widget class="QPushButton" name="btnStartRecording">
     <property name="geometry">
      <rect>
-      <x>110</x>
-      <y>230</y>
+      <x>20</x>
+      <y>110</y>
       <width>75</width>
       <height>23</height>
      </rect>
@@ -30,49 +30,14 @@
    <widget class="QPushButton" name="btnStopRecording">
     <property name="geometry">
      <rect>
-      <x>220</x>
-      <y>230</y>
+      <x>100</x>
+      <y>110</y>
       <width>75</width>
       <height>23</height>
      </rect>
     </property>
     <property name="text">
      <string>Stop</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="btnPlusFrame">
-    <property name="geometry">
-     <rect>
-      <x>110</x>
-      <y>160</y>
-      <width>81</width>
-      <height>25</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>+ Frame</string>
-    </property>
-   </widget>
-   <widget class="QSpinBox" name="spinBox">
-    <property name="geometry">
-     <rect>
-      <x>210</x>
-      <y>160</y>
-      <width>81</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="autoFillBackground">
-     <bool>false</bool>
-    </property>
-    <property name="maximum">
-     <number>8000</number>
-    </property>
-    <property name="singleStep">
-     <number>16</number>
-    </property>
-    <property name="value">
-     <number>960</number>
     </property>
    </widget>
   </widget>

@@ -212,15 +212,15 @@ void clsAudioRecorder::onAudioBufferProbed(const QAudioBuffer &PCMBuffer){
 void clsAudioRecorder::onReadBuffer(const QByteArray &PCMBuffer){
 
 
-    qDebug() << "onReadBuffer: " << PCMBuffer.length();
+    //qDebug() << "onReadBuffer: " << PCMBuffer.length();
     //Resample audio 48K to 16K
     QByteArray ResampleBuffer = m_pResampler->ResampleAudio(PCMBuffer);
-    qDebug() << "ResampleBuffer: " << ResampleBuffer.length();
+    //qDebug() << "ResampleBuffer: " << ResampleBuffer.length();
 
 
     //compress audio
     QByteArray encodedBuffer = m_pOpus->Encode(ResampleBuffer.data(), ResampleBuffer.length());
-    qDebug() << "encodedBuffer: " << encodedBuffer.length();
+    //qDebug() << "encodedBuffer: " << encodedBuffer.length();
 
     emit onReadEncodedBuffer(encodedBuffer);
 

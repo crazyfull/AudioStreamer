@@ -57,7 +57,7 @@ QByteArray Resampler::ResampleAudio(const QByteArray &inPCM)
 
     //char OutPutPCM[9600] = {0};
     int ret = silk_resampler(m_pResamplerState, OutPut, (opus_int16*)pcmBuffer, InputSize/2);   //test
-    qDebug() << "silk_resampler, outPutLength: " << outPutLength << " InputSize: " << InputSize << " ret: " << ret;
+    //qDebug() << "silk_resampler, outPutLength: " << outPutLength << " InputSize: " << InputSize << " ret: " << ret;
 
     retBuff.append((char*)OutPut, outPutLength);
 
