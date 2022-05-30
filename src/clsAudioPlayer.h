@@ -5,22 +5,23 @@
 #include <QAudioFormat>
 #include <QAudioDeviceInfo>
 #include <QAudioOutput>
-#include "opusCodec.h"
+#include "AudioConfig.h"
 
 class clsAudioPlayer : public QObject
 {
     Q_OBJECT
     QAudioOutput *m_pAudioPlayer;
     QIODevice *m_pbufferOutput;
-    opusCodec m_Opus;
-    QByteArray m_Buffer;
+    class opusCodec *m_pOpus;
+    AudioConfig *m_pConfig;
 
 public:
     explicit clsAudioPlayer(QObject *parent = nullptr);
+    ~clsAudioPlayer();
+    void SetConfig(AudioConfig *pConfig);
 
     void init();
-    void Play(const QByteArray &buffer);
-    void PlusFrame(uint value);
+    void Play(const QByteArray &encodedBuffer);
 signals:
 
 };

@@ -1,5 +1,6 @@
 QT += core gui
-QT += network multimedia
+QT += network
+QT += multimedia
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -38,12 +39,16 @@ linux {
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
+    src/AudioConfig.cpp \
+    src/Resampler.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
     src/opusCodec.cpp
 
 HEADERS += \
     mainwindow.h \
+    src/AudioConfig.h \
+    src/Resampler.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
     src/opusCodec.h
