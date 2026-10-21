@@ -2,7 +2,7 @@
 #include "VoicePacket.h"
 #include <QDebug>
 
-JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs)
+JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_pCodec(codec), m_channels(channels), m_frameSamples(decoderRate * frameMs / 1000),
       m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
@@ -11,7 +11,7 @@ JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int 
     auto frames = [frameMs](int ms){ return qMax(1, (ms + frameMs - 1) / frameMs); };   // ceil(ms / frameMs)
 
     m_minTarget    = frames(40);                    // 20ms:2  40ms:1  60ms:1
-    m_target       = qMax(m_minTarget, frames(60)); // 20ms:3  40ms:2  60ms:1
+    m_target       = qMax(m_minTarget, frames(startMs));
     m_maxTarget    = qMax(m_target + 1, frames(200));
     m_maxPlcRun    = frames(80);                    // conceal at most ~80ms, then re-buffer
     m_catchUpSlack = qMax(1, 120 / frameMs);
