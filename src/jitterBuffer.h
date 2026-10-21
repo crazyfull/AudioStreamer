@@ -15,7 +15,7 @@ public:
         quint32 received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
     };
 
-    JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs);
+    JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
 
     void Push(const QByteArray &datagram);
     // Returns exactly one frame of PCM, or an empty array when there is nothing to
