@@ -87,8 +87,10 @@ void clsAudioPlayer::init(){
 
     m_pAudioPlayer = new QAudioSink(infoPlayer, PlayerFormat, this);
 
-    // 4 frames (80ms) of sink buffer: small hidden latency, enough to survive timer jitter
-    m_pAudioPlayer->setBufferSize(m_pJitter->frameBytes() * 4); //old 6 bood
+    // Sink buffer = 2 frames + 40ms. It is time based on purpose: with 60ms frames "4 frames"
+    // would be 240ms of hidden latency. Note that Pulse/PipeWire round the requested size to
+    // something that is NOT a multiple of the frame, so pump() must handle partial writes.
+    m_pAudioPlayer->setBufferSize(m_pJitter->frameBytes() * 2 + m_rate * m_channels * 2 * 40 / 1000);
 
     m_pbufferOutput = m_pAudioPlayer->start();
     qDebug() << "Player device:" << infoPlayer.description() << PlayerFormat << "ok:" << (m_pbufferOutput != nullptr);
@@ -97,32 +99,42 @@ void clsAudioPlayer::init(){
 }
 
 // Keeps the sound card topped up. Two levels:
-//  - below 1 frame (about to run dry): we MUST give it something, so take the next frame
+//  - about to run dry (< ~30ms queued): we MUST give it something, so take the next frame
 //    even if that means FEC / concealment.
 //  - otherwise: top up only with real, on-time audio, so we never conceal earlier than needed.
-// The sink has to be filled (nearly) completely: PulseAudio / PipeWire won't start playing
-// before its buffer reaches the prebuffer level, so "keep only 2 frames queued" = silence on Linux.
+//
+// IMPORTANT (Linux): PulseAudio / PipeWire don't start playing until the sink buffer reaches its
+// prebuffer level, and the buffer size they give us is NOT a multiple of our frame size
+// (frameMs 40/60 -> e.g. 9600 or 13440 bytes). If we only wrote whole frames, the last
+// "free" bytes would never be filled, the prebuffer level never reached = permanent silence.
+// So decoded frames go through m_pending and are written in whatever pieces fit.
 void clsAudioPlayer::pump()
 {
     if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter)
         return;
 
-    const int fb = m_pJitter->frameBytes();
+    const qint64 urgent = qMin<qint64>(m_rate * m_channels * 2 * 30 / 1000, m_pAudioPlayer->bufferSize() / 2);
 
     for(;;){
         qint64 free = m_pAudioPlayer->bytesFree();
-        if(free < fb)
+        if(free <= 0)
             break;
 
-        qint64 buffered = m_pAudioPlayer->bufferSize() - free;
-        if(buffered >= fb && !m_pJitter->HasFrameReady())
-            break;
+        if(m_pending.isEmpty()){
+            qint64 buffered = m_pAudioPlayer->bufferSize() - free;
+            if(buffered >= urgent && !m_pJitter->HasFrameReady())
+                break;
 
-        QByteArray pcm = m_pJitter->PopFrame();
-        if(pcm.isEmpty())
-            break;
+            m_pending = m_pJitter->PopFrame();
+            if(m_pending.isEmpty())
+                break;
+        }
 
-        m_pbufferOutput->write(pcm.constData(), pcm.size());
+        qint64 n = qMin<qint64>(free, m_pending.size());
+        qint64 w = m_pbufferOutput->write(m_pending.constData(), n);
+        if(w <= 0)
+            break;
+        m_pending.remove(0, int(w));
     }
 }
 

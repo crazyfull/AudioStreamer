@@ -18,6 +18,7 @@ class clsAudioPlayer : public QObject
     AudioConfig *m_pConfig;
 
     JitterBuffer *m_pJitter;   // reorder + loss concealment
+    QByteArray m_pending;      // decoded PCM not yet accepted by the sink (partial writes)
     QTimer m_pumpTimer;        // feeds the sink with an even stream of frames
     int m_rate;
     int m_channels;

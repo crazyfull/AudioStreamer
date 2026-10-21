@@ -70,8 +70,8 @@ void clsAudioRecorder::init()
 
     m_pRecorder = new QAudioSource(DeviceInfo, RecorderFormat, this);
 
-    // ~4 frames of buffer: low latency but safe against small stalls
-    m_pRecorder->setBufferSize(m_pConfig->frameBytes() * 4);
+    // 80ms of mic buffer regardless of frameMs (a 60ms frame x4 would add a lot of capture latency)
+    m_pRecorder->setBufferSize(m_pConfig->inputRate * m_pConfig->channels * 2 * 80 / 1000);
 
     if(m_pConfig->playMusic){
         LoadMusic();
