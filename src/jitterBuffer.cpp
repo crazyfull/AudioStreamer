@@ -82,6 +82,13 @@ QByteArray JitterBuffer::takeNext()
     return pcm;
 }
 
+bool JitterBuffer::HasFrameReady() const
+{
+    if(!m_playing)
+        return m_buf.size() >= m_target;
+    return m_buf.contains(m_next);
+}
+
 QByteArray JitterBuffer::PopFrame()
 {
     if(!m_playing){

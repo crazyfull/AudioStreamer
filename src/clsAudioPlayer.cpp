@@ -87,8 +87,8 @@ void clsAudioPlayer::init(){
 
     m_pAudioPlayer = new QAudioSink(infoPlayer, PlayerFormat, this);
 
-    // ~6 frames (120ms) of sink buffer: no big hidden latency, enough to survive timer jitter
-    m_pAudioPlayer->setBufferSize(m_pJitter->frameBytes() * 6);
+    // 4 frames (80ms) of sink buffer: small hidden latency, enough to survive timer jitter
+    m_pAudioPlayer->setBufferSize(m_pJitter->frameBytes() * 4); //old 6 bood
 
     m_pbufferOutput = m_pAudioPlayer->start();
     qDebug() << "Player device:" << infoPlayer.description() << PlayerFormat << "ok:" << (m_pbufferOutput != nullptr);
@@ -96,29 +96,32 @@ void clsAudioPlayer::init(){
         m_pumpTimer.start();
 }
 
-// The sound card is the clock: whenever it has less than 2 frames queued we pull the
-// next frame from the jitter buffer (real audio, FEC-recovered or concealed).
+// Keeps the sound card topped up. Two levels:
+//  - below 1 frame (about to run dry): we MUST give it something, so take the next frame
+//    even if that means FEC / concealment.
+//  - otherwise: top up only with real, on-time audio, so we never conceal earlier than needed.
+// The sink has to be filled (nearly) completely: PulseAudio / PipeWire won't start playing
+// before its buffer reaches the prebuffer level, so "keep only 2 frames queued" = silence on Linux.
 void clsAudioPlayer::pump()
 {
-    if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter){
-        qDebug() << "pump() error";
+    if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter)
         return;
-    }
 
     const int fb = m_pJitter->frameBytes();
-    const qint64 lowWater = fb * 2;
 
     for(;;){
         qint64 free = m_pAudioPlayer->bytesFree();
+        if(free < fb)
+            break;
+
         qint64 buffered = m_pAudioPlayer->bufferSize() - free;
-        if(free < fb || buffered >= lowWater)
+        if(buffered >= fb && !m_pJitter->HasFrameReady())
             break;
 
         QByteArray pcm = m_pJitter->PopFrame();
         if(pcm.isEmpty())
             break;
 
-        qDebug() << "pcm play buffer: " << pcm.size();
         m_pbufferOutput->write(pcm.constData(), pcm.size());
     }
 }

@@ -21,6 +21,8 @@ public:
     // Returns exactly one frame of PCM, or an empty array when there is nothing to
     // play (prefilling after start / after a long gap or DTX silence).
     QByteArray PopFrame();
+    // true if PopFrame() would return real, on-time audio (no concealment needed).
+    bool HasFrameReady() const;
 
     int frameBytes() const { return m_frameSamples * m_channels * 2; }
     const Stats &stats() const { return m_stats; }
