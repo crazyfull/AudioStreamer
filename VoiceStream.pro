@@ -1,10 +1,9 @@
 QT += core gui
 QT += network
 QT += multimedia
-
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-CONFIG += c++11
+CONFIG += c++17
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
@@ -16,8 +15,18 @@ QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 win32 {
     #vc2019
     message("win32 x86 build")
-    LIBS += $$PWD/libs/opus/win32/libopus_x86_vc2019.lib
+    LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
     TARGET = ../../AudioStreamer_x86
+
+    #QMAKE_CXXFLAGS_DEBUG += /MTd
+    #QMAKE_CXXFLAGS_RELEASE += /MT
+
+
+    #CONFIG += -static-runtime
+    ##win32: LIBS += MSVCRT.lib
+    #LIBS += libucrt.lib libucrtd.lib libvcruntime.lib
+    #win32:QMAKE_CXXFLAGS_DEBUG += /MTd
+    #win32:QMAKE_CXXFLAGS_RELEASE += /MT
 
     #include
     INCLUDEPATH += $$PWD/libs/opus/win32/include
@@ -43,6 +52,7 @@ SOURCES += \
     src/Resampler.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
+    src/jitterBuffer.cpp \
     src/opusCodec.cpp
 
 HEADERS += \
@@ -51,6 +61,8 @@ HEADERS += \
     src/Resampler.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
+    src/jitterBuffer.h \
+    src/VoicePacket.h \
     src/opusCodec.h
 
 FORMS += \

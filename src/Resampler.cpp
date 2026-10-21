@@ -38,6 +38,7 @@ void Resampler::init(){
 QByteArray Resampler::ResampleAudio(const QByteArray &inPCM)
 {
 
+
     QByteArray retBuff;
     if(!m_pResamplerState){
         qDebug() << "error: reSampleState in null: ";

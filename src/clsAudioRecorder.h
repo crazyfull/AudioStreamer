@@ -2,27 +2,29 @@
 #define CLSAUDIORECORDER_H
 
 #include <QObject>
-#include <QAudioInput>
-#include <QAudioBuffer>
+#include <QAudioSource>
+#include <QAudioDecoder>//vase music
 #include "AudioConfig.h"
-#include "Resampler.h"
 
 class clsAudioRecorder : public QObject
 {
     Q_OBJECT
 private:
-    //class QAudioInput* m_pAudioRecorder;
-    //class QIODevice* m_pPCMBufferInput;
-    class QAudioRecorder *m_pRecorder;
-    class QAudioProbe *m_pProbe;
+    QAudioSource *m_pRecorder;        // microphone
+    QIODevice    *m_pPCMBufferInput;  // raw PCM stream returned by start()
     class opusCodec *m_pOpus;
 
     AudioConfig *m_pConfig;
-    Resampler *m_pResampler;
     QByteArray m_cacheBuffer;
+    quint16 m_seq;                    // +1 per 20ms frame (also for frames skipped by DTX)
+    bool m_marker;                    // next packet follows a silence gap         // mic bytes that don't fill a whole opus frame yet
 
+    QAudioDecoder *m_pDecoder;
+    QByteArray m_musicBuffer;
     void init();
-    void onReadBuffer(const QByteArray &PCMBuffer);
+    void LoadMusic();
+    void PlayMusic();
+
 public:
     explicit clsAudioRecorder(QObject *parent = nullptr);
     ~clsAudioRecorder();
@@ -31,11 +33,12 @@ public:
     void SetConfig(AudioConfig *pConfig);
 
 signals:
-
+    // exactly ONE datagram per emit: 3 byte header + opus packet (see VoicePacket.h)
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
 
 private slots:
-    void onAudioBufferProbed(const QAudioBuffer &PCMBuffer);
+    void onReadyRead();
+    void OnbufferReady();
 };
 
 #endif // CLSAUDIORECORDER_H

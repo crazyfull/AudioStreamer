@@ -3,6 +3,9 @@
 
 #include <QMainWindow>
 #include <QTimer>
+#include <QTcpSocket>
+#include <QDateTime>
+
 #include "src/AudioConfig.h"
 //#include "src/clsAudioRecorder.h"
 
@@ -14,12 +17,24 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
 private:
-    class clsAudioRecorder *m_pAudioRecorder;
-    class clsAudioPlayer *m_pAudioPlayer;
+    class clsAudioRecorder *m_pAudioRecorder = nullptr;
+    class clsAudioPlayer *m_pAudioPlayer  = nullptr;
     AudioConfig m_AudioConfig;
     class QUdpSocket *m_pUDPClient;
+    class QTcpSocket *m_pTCPClient;
+
     QTimer m_RateTimer;
+    QTimer m_PlayerTimer;
+
     qint64    m_Rate;
+    QByteArray m_lostpck;
+    QDateTime aTime;
+    QDateTime bTime;
+    QByteArray m_playbuffpck;
+    qint64 lastRecPacketTime;
+    QByteArray m_packet;
+
+
 
 public:
     MainWindow(QWidget *parent = nullptr);
@@ -32,12 +47,22 @@ private slots:
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
     void onReceiveUDPData();
     void OnRateTimer();
+    void OnPlayerTimer();
+
+    void OnTCPConnected();
+    void OnTCPClosed();
+    void OnTCPReceiveData();
+    void OnTCPError(QAbstractSocket::SocketError error);
 
 private:
     Ui::MainWindow *ui;
-
+    void initTCP();
     qint64 SendUDP(const QByteArray &Buff, bool bypasWithDNS = false);
     void CreateTimer();
     QString GetFormatSize(qint64 Size);
+    void initAudio();
+
 };
+
+
 #endif // MAINWINDOW_H

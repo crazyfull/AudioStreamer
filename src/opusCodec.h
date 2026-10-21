@@ -3,32 +3,34 @@
 
 #include "opus.h"
 #include <QByteArray>
-#include "SigProc_FIX.h"
 #include "AudioConfig.h"
 
-//#define FRAME_SIZE  640   //for 8000
-//#define FRAME_SIZE  1280*3 //1280    // 1280 for 16000    //640 //320 //160   960     1280
-
+// One call = one Opus packet. Packets are NOT concatenated, so each one can be
+// sent as its own datagram and decoded independently by the receiver.
 class opusCodec
 {
 private:
     OpusEncoder *m_pEncoder;
-    OpusDecoder *m_pDecryptor;
-    AudioConfig *m_pConfig;
-
-    void initEncoder();
-    void initDecoder();
-
-    opus_int32 encodeFrame(const char *pcmBuffer, char *OutPut, int OutputBufferSize);
-    int decodeFrame(const char *EncodedBuffer, opus_int32 EncodedBufferLength, char *OutPutPCM);
+    OpusDecoder *m_pDecoder;
+    int m_encChannels;
+    int m_decChannels;
+    int m_frameBytes;
 
 public:
     opusCodec();
     ~opusCodec();
 
-    QByteArray Encode(const char *PCMBuffer, int PCMBufferLength);
-    QByteArray Decode(const char *Buffer, int BufferSize);
-    void SetConfig(AudioConfig *pConfig);
+    bool InitEncoder(const AudioConfig &cfg);
+    bool InitDecoder(int sampleRate, int channels);
+
+    // pcmFrame must be exactly cfg.frameBytes() bytes (16bit little endian PCM)
+    QByteArray Encode(const QByteArray &pcmFrame);
+    // packet = exactly one Opus packet, returns 16bit PCM
+    QByteArray Decode(const QByteArray &packet);
+    // recover the frame BEFORE `nextPacket` from its inband FEC data (falls back to PLC if it has none)
+    QByteArray DecodeFec(const QByteArray &nextPacket, int frameSamples);
+    // packet lost and no FEC: let Opus extrapolate the signal
+    QByteArray DecodePlc(int frameSamples);
 };
 
 #endif // OPUSCODEC_H
