@@ -177,7 +177,7 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
         m_pAudioPlayer->Play(encodedBuffer);
     }
 
-     qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
+     //qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
     m_Rate += encodedBuffer.size();     //for get transfer rate monitor
 }
 

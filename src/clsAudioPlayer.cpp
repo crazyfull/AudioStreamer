@@ -100,8 +100,10 @@ void clsAudioPlayer::init(){
 // next frame from the jitter buffer (real audio, FEC-recovered or concealed).
 void clsAudioPlayer::pump()
 {
-    if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter)
+    if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter){
+        qDebug() << "pump() error";
         return;
+    }
 
     const int fb = m_pJitter->frameBytes();
     const qint64 lowWater = fb * 2;
@@ -116,6 +118,7 @@ void clsAudioPlayer::pump()
         if(pcm.isEmpty())
             break;
 
+        qDebug() << "pcm play buffer: " << pcm.size();
         m_pbufferOutput->write(pcm.constData(), pcm.size());
     }
 }
@@ -125,5 +128,6 @@ void clsAudioPlayer::Play(const QByteArray &datagram){
         return;
 
     m_pJitter->Push(datagram);
+    //qDebug() << "datagram: " << datagram.size();
     pump();
 }
