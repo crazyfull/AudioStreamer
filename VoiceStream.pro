@@ -36,20 +36,20 @@ win32 {
 linux {
     #GCC
     message("linux x64 build")
-    LIBS += $$PWD/libs/opus/linux/libopus_64.a
     TARGET = ../../AudioStreamer_x64
 
-    #include
-    INCLUDEPATH += $$PWD/libs/opus/linux/include
-    DEPENDPATH += $$PWD/libs/opus/linux/include
-}
+    unix:!macx: LIBS += -L$$PWD/../VoiceCodec/build/lib/ -lopus
+    INCLUDEPATH += $$PWD/../VoiceCodec/build/include/opus
+    DEPENDPATH += $$PWD/../VoiceCodec/build/include/opus
+    unix:!macx: PRE_TARGETDEPS += $$PWD/../VoiceCodec/build/lib/libopus.a
 
+
+}
 
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
     src/AudioConfig.cpp \
-    src/Resampler.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
     src/jitterBuffer.cpp \
@@ -58,7 +58,6 @@ SOURCES += \
 HEADERS += \
     mainwindow.h \
     src/AudioConfig.h \
-    src/Resampler.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
     src/jitterBuffer.h \

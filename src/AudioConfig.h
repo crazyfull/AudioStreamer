@@ -53,7 +53,7 @@ struct AudioConfig
     bool useFec = true;         //inband FEC: each packet carries a low-rate copy of the previous frame
     bool playMusic = false;
     QString musicPath;
-    int expectedLossPerc = 80;  //20  //tells the encoder how much redundancy to spend (0..100)
+    int expectedLossPerc = 60;  //20  //tells the encoder how much redundancy to spend (0..100)
     int MaxBandwith = 3002;
 
     int frameSamples() const {

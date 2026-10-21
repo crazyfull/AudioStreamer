@@ -36,19 +36,6 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     m_AudioConfig.inputRate = 48000;
     m_AudioConfig.outputRate = 48000;   //decoder/speaker rate (8000 12000 16000 24000 48000)
 
-    //onAudioBufferProbed, sampleCount:  1920  lenth:  3840  frameCount:  1920  format:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian,
-    //onAudioBufferProbed, sampleCount:  1920  lenth:  3840  frameCount:  1920  format:  QAudioFormat(48000Hz, 16bit, channelCount=1, sampleType=SignedInt, byteOrder=LittleEndian,
-
-        //outPutLength:  5760  InputSize:  11520    22050
-        //outPutLength:  3840  InputSize:  11520    16000
-
-        // m_pAudioRecorder = new clsAudioRecorder(this);
-        // m_pAudioPlayer = new clsAudioPlayer(this);
-
-        // m_pAudioRecorder->SetConfig(&m_AudioConfig);
-        // m_pAudioPlayer->SetConfig(&m_AudioConfig);
-
-        connect(m_pAudioRecorder, SIGNAL(onReadEncodedBuffer(QByteArray)), this, SLOT(onReadEncodedBuffer(QByteArray)));
 
     //
     CreateTimer();
@@ -190,7 +177,7 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
         m_pAudioPlayer->Play(encodedBuffer);
     }
 
-    // qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
+     qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
     m_Rate += encodedBuffer.size();     //for get transfer rate monitor
 }
 
