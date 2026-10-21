@@ -43,7 +43,6 @@ public:
 private slots:
     void on_btnStartRecording_clicked();
     void on_btnStopRecording_clicked();
-    void on_spinBox_valueChanged(int arg1);
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
     void onReceiveUDPData();
     void OnRateTimer();

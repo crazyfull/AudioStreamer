@@ -155,12 +155,6 @@ void MainWindow::on_btnStopRecording_clicked()
     //m_PlayerTimer.stop();
 }
 
-
-void MainWindow::on_spinBox_valueChanged(int arg1)
-{
-    //m_pAudioRecorder->PlusFrame(ui->spinBox->value() );
-}
-
 void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
 {
     /*
