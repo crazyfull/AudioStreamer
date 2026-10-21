@@ -46,9 +46,12 @@ private:
     bool m_underrunPending;      // buffer ran dry; was it end of speech (DTX) or a late network?
     Stats m_stats;
 
-    static const int MinTarget = 2;
-    static const int MaxTarget = 10;
-    static const int MaxPlcRun = 4;
+    // all limits are derived from frameMs so 20ms and 60ms frames behave the same in TIME
+    int m_minTarget;
+    int m_maxTarget;
+    int m_maxPlcRun;
+    int m_catchUpSlack;
+    int m_shrinkAfter;      // frames without trouble before the target shrinks
 
     QByteArray takeNext();
 };

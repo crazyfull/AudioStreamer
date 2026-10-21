@@ -7,6 +7,15 @@ JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int 
       m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
 {
+    if(frameMs < 1) frameMs = 20;
+    auto frames = [frameMs](int ms){ return qMax(1, (ms + frameMs - 1) / frameMs); };   // ceil(ms / frameMs)
+
+    m_minTarget    = frames(40);                    // 20ms:2  40ms:1  60ms:1
+    m_target       = qMax(m_minTarget, frames(60)); // 20ms:3  40ms:2  60ms:1
+    m_maxTarget    = qMax(m_target + 1, frames(200));
+    m_maxPlcRun    = frames(80);                    // conceal at most ~80ms, then re-buffer
+    m_catchUpSlack = qMax(1, 120 / frameMs);
+    m_shrinkAfter  = qMax(10, 10000 / frameMs);     // ~10s
 }
 
 void JitterBuffer::Push(const QByteArray &datagram)
@@ -47,7 +56,7 @@ void JitterBuffer::Push(const QByteArray &datagram)
     // After a dry buffer: a marker packet means the sender had been silent (normal),
     // a plain packet means the network was late -> buffer deeper from now on.
     if(m_underrunPending && !m_playing){
-        if(!marker && m_target < MaxTarget)
+        if(!marker && m_target < m_maxTarget)
             m_target++;
         m_underrunPending = false;
     }
@@ -65,7 +74,7 @@ void JitterBuffer::Push(const QByteArray &datagram)
 
     // we're far ahead of playout (burst after a stall): drop the oldest audio
     // instead of letting latency grow
-    if(m_playing && m_highest - m_next > m_target + 6){
+    if(m_playing && m_highest - m_next > m_target + m_catchUpSlack){
         qint64 newNext = m_highest - m_target;
         m_stats.skipped += quint32(newNext - m_next);
         m_next = newNext;
@@ -103,7 +112,7 @@ QByteArray JitterBuffer::PopFrame()
     if(m_buf.contains(m_next)){
         m_plcRun = 0;
         m_stats.played++;
-        if(++m_goodRun > 500 && m_target > MinTarget){   // ~10s without trouble: shrink latency
+        if(++m_goodRun > m_shrinkAfter && m_target > m_minTarget){   // ~10s without trouble: shrink latency
             m_target--;
             m_goodRun = 0;
         }
@@ -118,7 +127,7 @@ QByteArray JitterBuffer::PopFrame()
         // re-buffer with a deeper target.
         if(m_plcRun == 0)
             m_stats.underrun++;
-        if(m_plcRun >= MaxPlcRun){
+        if(m_plcRun >= m_maxPlcRun){
             m_playing = false;
             m_underrunPending = true;
             return QByteArray();
