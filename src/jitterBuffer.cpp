@@ -5,7 +5,7 @@
 JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_pCodec(codec), m_channels(channels), m_frameSamples(decoderRate * frameMs / 1000),
       m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
-      m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
+      m_lastTx(0), m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
 {
     if(frameMs < 1) frameMs = 20;
     auto frames = [frameMs](int ms){ return qMax(1, (ms + frameMs - 1) / frameMs); };   // ceil(ms / frameMs)
@@ -20,8 +20,8 @@ JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int 
 
 void JitterBuffer::Push(const QByteArray &datagram)
 {
-    quint16 seq; bool marker; QByteArray payload;
-    if(!VoicePacket::parse(datagram, seq, marker, payload))
+    quint16 seq; bool marker; quint8 tx; QByteArray payload;
+    if(!VoicePacket::parse(datagram, seq, marker, tx, payload))
         return;
 
     // extend 16bit sequence to a monotonically growing number
@@ -30,19 +30,47 @@ void JitterBuffer::Push(const QByteArray &datagram)
         m_haveSeq = true;
         ext = seq;
         m_highest = ext;
+        m_lastTx = tx;
+        m_seen.insert(ext);
     }else{
         qint16 diff = qint16(quint16(seq - quint16(m_highest & 0xFFFF)));
         ext = m_highest + diff;
         if(qAbs(diff) > 3000){      // sender restarted / huge jump: resync
             m_buf.clear();
+            m_seen.clear();
+            m_lastTx = tx;
             m_playing = false;
             m_plcRun = 0;
             ext = seq;
             m_highest = ext;
+            m_seen.insert(ext);
         }
     }
 
     m_stats.received++;
+
+    // ---- loss accounting (network loss only)
+    if(ext > m_highest){
+        // newest packet: a hole in the tx counter = packets that were sent but never arrived.
+        // (a hole in the sequence alone can just be DTX silence, so it isn't used here)
+        quint8 holes = quint8((tx - m_lastTx - 1) & VoicePacket::TxMask);
+        m_stats.lost += holes;
+        m_lastTx = tx;
+        m_seen.insert(ext);
+    }else if(!m_seen.contains(ext)){
+        // older than the newest one and never seen before: it was only late / reordered, not lost
+        if(m_stats.lost > 0) m_stats.lost--;
+        m_stats.reordered++;
+        m_seen.insert(ext);
+    }
+    if(m_seen.size() > 1024){       // forget old entries
+        for(auto it = m_seen.begin(); it != m_seen.end(); ){
+            if(*it < m_highest - 512)
+                it = m_seen.erase(it);
+            else
+                ++it;
+        }
+    }
 
     if(m_playing || !m_buf.isEmpty()){
         if(ext < m_next && m_playing){      // too late, its time has passed

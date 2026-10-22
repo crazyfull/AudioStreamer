@@ -17,6 +17,7 @@ private:
     AudioConfig *m_pConfig;
     QByteArray m_cacheBuffer;
     quint16 m_seq;                    // +1 per 20ms frame (also for frames skipped by DTX)
+    quint8 m_tx;                      // counts transmitted packets (loss statistics on the receiver)
     bool m_marker;                    // next packet follows a silence gap         // mic bytes that don't fill a whole opus frame yet
 
     QAudioDecoder *m_pDecoder;

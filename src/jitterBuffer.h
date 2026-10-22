@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 #include <QMap>
+#include <QSet>
 #include "opusCodec.h"
 
 // Receiver side: reorders packets, hides loss (Opus FEC, then PLC) and gives the
@@ -13,6 +14,8 @@ class JitterBuffer
 public:
     struct Stats {
         quint32 received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
+        quint32 lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted)
+        quint32 reordered = 0;   // arrived out of order (first counted as lost, then taken back)
     };
 
     JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
@@ -35,6 +38,8 @@ private:
     int m_channels;
     int m_frameSamples;
 
+    QSet<qint64> m_seen;         // recently received sequence numbers (to tell reordering from duplicates)
+    quint8 m_lastTx;             // tx counter of the newest packet
     QMap<qint64, Pkt> m_buf;     // key = extended (32bit+) sequence
     bool m_playing;
     bool m_haveSeq;

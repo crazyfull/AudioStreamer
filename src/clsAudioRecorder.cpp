@@ -18,6 +18,7 @@ clsAudioRecorder::clsAudioRecorder(QObject *parent) : QObject(parent)
     m_pOpus = nullptr;
     m_pConfig = nullptr;
     m_seq = 0;
+    m_tx = 0;
     m_marker = true;
 }
 
@@ -108,7 +109,7 @@ void clsAudioRecorder::onReadyRead()
             continue;
         }
 
-        emit onReadEncodedBuffer(VoicePacket::wrap(seq, m_marker, encoded));
+        emit onReadEncodedBuffer(VoicePacket::wrap(seq, m_marker, m_tx++, encoded));
         m_marker = false;
     }
 }
@@ -219,7 +220,7 @@ void clsAudioRecorder::PlayMusic()
             continue;
         }
 
-        emit onReadEncodedBuffer(VoicePacket::wrap(seq, m_marker, encoded));
+        emit onReadEncodedBuffer(VoicePacket::wrap(seq, m_marker, m_tx++, encoded));
         m_marker = false;
     }
 }

@@ -146,3 +146,14 @@ void clsAudioPlayer::Play(const QByteArray &datagram){
     //qDebug() << "datagram: " << datagram.size();
     pump();
 }
+
+bool clsAudioPlayer::GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const
+{
+    if(!m_pJitter || !m_pConfig)
+        return false;
+
+    stats = m_pJitter->stats();
+    bufferFrames = m_pJitter->targetDepth();
+    frameMs = m_pConfig->frameMs;
+    return true;
+}
