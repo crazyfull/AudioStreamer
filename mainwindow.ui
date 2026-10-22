@@ -62,7 +62,7 @@
        <item>
         <widget class="QLineEdit" name="txtMusicPath">
          <property name="text">
-          <string>D:\Mojtaba\C++\VoiceStream\Too Baroon [WikiSeda].wav</string>
+          <string>C:\Users\DeathCrow\Downloads\Music\Rondò Veneziano - La Serenissima (Harty, 22.11.1983).wav</string>
          </property>
         </widget>
        </item>
