@@ -240,8 +240,8 @@ void MainWindow::OnStatsTimer()
             .arg(lost5).arg(pct(lost5, recv5), 0, 'f', 1);
     t += QString("Recovered: FEC %1   PLC %2   too late %3   reordered %4\n")
             .arg(st.fec).arg(st.plc).arg(st.late).arg(st.reordered);
-    t += QString("Buffer   : %1 frames (%2 ms)   underruns %3")
-            .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
+    t += QString("Buffer   : %1 frames (%2 ms)   network jitter ~%3 ms   underruns %4")
+            .arg(depthFrames).arg(depthFrames * frameMs).arg(st.jitterMs).arg(st.underrun);
     m_lblStats->setText(t);
 }
 

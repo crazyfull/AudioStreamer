@@ -83,7 +83,7 @@ void clsAudioPlayer::init(){
     if(!m_pOpus->InitDecoder(m_rate, m_channels))
         return;
 
-    m_pJitter = new JitterBuffer(m_pOpus, m_rate, m_channels, m_pConfig->frameMs);
+    m_pJitter = new JitterBuffer(m_pOpus, m_rate, m_channels, m_pConfig->frameMs, 120, m_pConfig->maxBufferMs);
 
     m_pAudioPlayer = new QAudioSink(infoPlayer, PlayerFormat, this);
 

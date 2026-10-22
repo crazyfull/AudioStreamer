@@ -47,6 +47,7 @@ struct AudioConfig
     int channels = 1;
 
     // ---- Opus (most compressed voice profile) ----
+    int maxBufferMs = 1500;     //deepest jitter buffer on a bad (3G) network. Lower = less delay, more glitches
     int frameMs = 60;           //20 //2.5 5 10 20 40 60 (bigger = less overhead, more latency)
     int opusBitrate = 800;    //8000 12000 16000 24000 48000    //bps. 6000..16000 is good for voice (FEC needs some headroom)
     bool useDtx = false;         //silence -> no packets

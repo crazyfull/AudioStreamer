@@ -4,6 +4,8 @@
 #include <QByteArray>
 #include <QMap>
 #include <QSet>
+#include <QElapsedTimer>
+#include <deque>
 #include "opusCodec.h"
 
 // Receiver side: reorders packets, hides loss (Opus FEC, then PLC) and gives the
@@ -16,11 +18,14 @@ public:
         quint32 received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
         quint32 lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted)
         quint32 reordered = 0;   // arrived out of order (first counted as lost, then taken back)
+        quint32 jitterMs = 0;    // measured network delay variation (97th percentile of the recent packets)
     };
 
-    JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
+    // startMs: initial depth; maxMs: the deepest the buffer may grow on a very bad (3G) network
+    JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120, int maxMs = 1500);
 
-    void Push(const QByteArray &datagram);
+    void Push(const QByteArray &datagram);                       // uses the internal clock
+    void Push(const QByteArray &datagram, double nowMs);         // explicit clock (unit tests)
     // Returns exactly one frame of PCM, or an empty array when there is nothing to
     // play (prefilling after start / after a long gap or DTX silence).
     QByteArray PopFrame();
@@ -29,7 +34,7 @@ public:
 
     int frameBytes() const { return m_frameSamples * m_channels * 2; }
     const Stats &stats() const { return m_stats; }
-    int targetDepth() const { return m_target; }
+    int targetDepth() const { return m_target; }   // frames
 
 private:
     struct Pkt { QByteArray payload; bool marker; };
@@ -57,6 +62,18 @@ private:
     int m_maxPlcRun;
     int m_catchUpSlack;
     int m_shrinkAfter;      // frames without trouble before the target shrinks
+
+    // ---- network delay measurement: how much later than the fastest recent packet does a
+    // packet arrive? The buffer must be about as deep as the (almost) worst of those delays.
+    QElapsedTimer m_clock;
+    int m_frameMs;
+    struct DelaySample { double at; double delay; };
+    std::deque<DelaySample> m_delays;
+    int m_samples;           // packets measured so far
+    int m_warmup;            // measured packets needed before the very first playout
+    bool m_everPlayed;
+    int m_needed;            // frames the measured jitter asks for
+    void MeasureDelay(qint64 ext, double nowMs);
 
     QByteArray takeNext();
 };
