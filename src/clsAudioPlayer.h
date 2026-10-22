@@ -31,6 +31,8 @@ public:
     void SetConfig(AudioConfig *pConfig);
 
     void init();
+    // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running
+    bool GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const;
     void Play(const QByteArray &datagram);   // one received datagram (header + opus packet)
 signals:
 

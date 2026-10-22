@@ -5,6 +5,9 @@
 #include <QDebug>
 #include <QUdpSocket>
 #include <QTcpSocket>
+#include <QLabel>
+#include <QGridLayout>
+#include <QFontDatabase>
 
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -101,6 +104,18 @@ void MainWindow::CreateTimer()
     m_Rate = 0;
     ui->statusbar->showMessage("0");
 
+    // ---- live receive statistics (packet loss etc.), below the controls
+    m_lblStats = new QLabel(this);
+    m_lblStats->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_lblStats->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_lblStats->setContentsMargins(10, 0, 10, 10);
+    ui->gridLayout->addWidget(m_lblStats, 9, 0, 1, 3);
+    OnStatsTimer();
+
+    connect(&m_StatsTimer, SIGNAL(timeout()), this, SLOT(OnStatsTimer()));
+    m_StatsTimer.setInterval(1000);
+    m_StatsTimer.start();
+
     /*
     connect(&m_PlayerTimer, SIGNAL(timeout()), this, SLOT(OnPlayerTimer()));
     m_PlayerTimer.setSingleShot(true);
@@ -144,6 +159,7 @@ void MainWindow::initAudio()
 void MainWindow::on_btnStartRecording_clicked()
 {
     initAudio();
+    m_statHistory.clear();      // new player = new counters
     m_pAudioRecorder->Start();
     //m_PlayerTimer.start();
 }
@@ -189,6 +205,44 @@ void MainWindow::onReceiveUDPData(){
 
         m_pAudioPlayer->Play(encodedBuffer);
     }
+}
+
+void MainWindow::OnStatsTimer()
+{
+    JitterBuffer::Stats st;
+    int depthFrames = 0, frameMs = 0;
+
+    if(!m_lblStats)
+        return;
+
+    if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
+        m_lblStats->setText("Receive stats: (press Start)");
+        return;
+    }
+
+    auto pct = [](quint32 lost, quint32 recv){
+        quint32 total = recv + lost;
+        return total ? 100.0 * lost / total : 0.0;
+    };
+
+    // "last 5 seconds": compare with the snapshot taken 5 seconds ago
+    m_statHistory.append(qMakePair(st.received, st.lost));
+    while(m_statHistory.size() > 6)
+        m_statHistory.removeFirst();
+    const auto &old = m_statHistory.first();
+    quint32 recv5 = st.received - old.first;
+    quint32 lost5 = st.lost > old.second ? st.lost - old.second : 0;
+
+    QString t;
+    t += QString("Received : %1 packets\n").arg(st.received);
+    t += QString("Lost     : %1 packets (%2%)   last 5s: %3 (%4%)\n")
+            .arg(st.lost).arg(pct(st.lost, st.received), 0, 'f', 1)
+            .arg(lost5).arg(pct(lost5, recv5), 0, 'f', 1);
+    t += QString("Recovered: FEC %1   PLC %2   too late %3   reordered %4\n")
+            .arg(st.fec).arg(st.plc).arg(st.late).arg(st.reordered);
+    t += QString("Buffer   : %1 frames (%2 ms)   underruns %3")
+            .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
+    m_lblStats->setText(t);
 }
 
 void MainWindow::OnRateTimer()
