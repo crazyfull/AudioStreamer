@@ -27,7 +27,7 @@ struct AudioConfig
     bool playMusic = false;
     std::string musicPath;      // UTF-8
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
-    int MaxBandwith = 3002;
+    int MaxBandwith = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
     int frameSamples() const {
         return inputRate * frameMs / 1000; //per channel

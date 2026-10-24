@@ -1,5 +1,6 @@
-// the ONLY place that includes miniaudio. Put miniaudio.h (>= 0.11) in libs/miniaudio/
-#define MINIAUDIO_IMPLEMENTATION
+// the ONLY place that includes miniaudio. miniaudio/ holds the split version (miniaudio.h + miniaudio.c,
+// the .c is compiled by VoiceStream.pro). Don't define MINIAUDIO_IMPLEMENTATION here: it would
+// duplicate the implementation (link errors) if miniaudio.h is ever swapped for the single-file version.
 #include "miniaudio.h"
 
 #include "audioDevice.h"
