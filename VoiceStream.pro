@@ -3,7 +3,8 @@ QT += core gui
 QT += network
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-#CONFIG += c++17
+# src/* uses std::make_unique (C++14) - don't depend on the Qt kit's default standard
+CONFIG += c++17
 
 #QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 
@@ -14,14 +15,17 @@ DEPENDPATH += $$PWD/miniaudio
 
 
 target.path = /root
-win32:contains(QMAKE_TARGET.arch, x86_64) {
-    message("x64 build")
-    LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
-    TARGET = ../../AudioStreamer_x64
-} else {
-    message("x86 build")
-    LIBS += $$PWD/libs/opus/win32/libopus_x86.lib
-    TARGET = ../../AudioStreamer_x86
+# the .lib files are Windows-only: keep them out of Linux/macOS builds (the old "else" also hit those)
+win32 {
+    contains(QMAKE_TARGET.arch, x86_64) {
+        message("win x64 build")
+        LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
+        TARGET = ../../AudioStreamer_x64
+    } else {
+        message("win x86 build")
+        LIBS += $$PWD/libs/opus/win32/libopus_x86.lib
+        TARGET = ../../AudioStreamer_x86
+    }
 }
 
 win32 {
