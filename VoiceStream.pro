@@ -1,36 +1,45 @@
+# Qt is only used for the GUI + UDP socket now. The whole audio part (src/*) is Qt-free.
 QT += core gui
 QT += network
-QT += multimedia
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-CONFIG += c++17
+#CONFIG += c++17
 
-# You can make your code fail to compile if it uses deprecated APIs.
-# In order to do so, uncomment the following line.
-#DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
+#QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 
-QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 
+#Includes
+INCLUDEPATH += $$PWD/miniaudio
+DEPENDPATH += $$PWD/miniaudio
+
+
+target.path = /root
+win32:contains(QMAKE_TARGET.arch, x86_64) {
+    message("x64 build")
+    LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
+    TARGET = ../../AudioStreamer_x64
+} else {
+    message("x86 build")
+    LIBS += $$PWD/libs/opus/win32/libopus_x86.lib
+    TARGET = ../../AudioStreamer_x86
+}
 
 win32 {
-    #vc2019
-    message("win32 x86 build")
-    LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
-    TARGET = ../../AudioStreamer_x86
-
-    #QMAKE_CXXFLAGS_DEBUG += /MTd
-    #QMAKE_CXXFLAGS_RELEASE += /MT
-
-
-    #CONFIG += -static-runtime
-    ##win32: LIBS += MSVCRT.lib
-    #LIBS += libucrt.lib libucrtd.lib libvcruntime.lib
-    #win32:QMAKE_CXXFLAGS_DEBUG += /MTd
-    #win32:QMAKE_CXXFLAGS_RELEASE += /MT
-
-    #include
     INCLUDEPATH += $$PWD/libs/opus/win32/include
     DEPENDPATH += $$PWD/libs/opus/win32/include
+
+    QMAKE_CFLAGS_RELEASE += /MT
+    QMAKE_CXXFLAGS_RELEASE += /MT
+    QMAKE_CFLAGS_DEBUG += /MTd
+    QMAKE_CXXFLAGS_DEBUG += /MTd
+
+
+    LIBS += libucrt.lib libucrtd.lib libvcruntime.lib
+
+    #CONFIG += -static-runtime
+    #
+    # static compile more details: https://blogs.msdn.microsoft.com/vcblog/2015/03/03/introducing-the-universal-crt/
+    #LIBS += bcrypt.lib libcmt.lib Shell32.lib Shlwapi.lib User32.lib kernel32.lib Ws2_32.lib advapi32.lib crypt32.lib iphlpapi.lib psapi.lib gdi32.lib
 }
 
 linux {
@@ -43,13 +52,19 @@ linux {
     DEPENDPATH += $$PWD/../VoiceCodec/build/include/opus
     unix:!macx: PRE_TARGETDEPS += $$PWD/../VoiceCodec/build/lib/libopus.a
 
+    # miniaudio loads ALSA/Pulse/JACK dynamically
+    LIBS += -ldl -lpthread -lm
+}
 
+macx {
+    LIBS += -framework CoreFoundation -framework CoreAudio -framework AudioToolbox
 }
 
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
-    src/AudioConfig.cpp \
+    miniaudio/miniaudio.c \
+    src/audioDevice.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
     src/jitterBuffer.cpp \
@@ -58,6 +73,8 @@ SOURCES += \
 HEADERS += \
     mainwindow.h \
     src/AudioConfig.h \
+    src/AudioTypes.h \
+    src/audioDevice.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
     src/jitterBuffer.h \

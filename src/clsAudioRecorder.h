@@ -1,44 +1,48 @@
 #ifndef CLSAUDIORECORDER_H
 #define CLSAUDIORECORDER_H
 
-#include <QObject>
-#include <QAudioSource>
-#include <QAudioDecoder>//vase music
+#include <functional>
+#include <memory>
+#include "AudioTypes.h"
 #include "AudioConfig.h"
+#include "audioDevice.h"
+#include "opusCodec.h"
 
-class clsAudioRecorder : public QObject
+// Capture side: microphone (or a music file) -> opus packets. No Qt.
+// The packet handler is called on the AUDIO THREAD, once per datagram:
+// 3 byte header + opus packet (see VoicePacket.h). Keep it short; hand the data over to your
+// own thread (the Qt GUI uses a queued invoke).
+class clsAudioRecorder
 {
-    Q_OBJECT
+public:
+    using PacketHandler = std::function<void(const Bytes &datagram)>;
+
 private:
-    QAudioSource *m_pRecorder;        // microphone
-    QIODevice    *m_pPCMBufferInput;  // raw PCM stream returned by start()
-    class opusCodec *m_pOpus;
-
     AudioConfig *m_pConfig;
-    QByteArray m_cacheBuffer;
-    quint16 m_seq;                    // +1 per 20ms frame (also for frames skipped by DTX)
-    bool m_marker;                    // next packet follows a silence gap         // mic bytes that don't fill a whole opus frame yet
+    std::unique_ptr<opusCodec> m_pOpus;
+    PacketHandler m_handler;
 
-    QAudioDecoder *m_pDecoder;
-    QByteArray m_musicBuffer;
+    Pcm m_cache;                      // mic samples that don't fill a whole opus frame yet
+    uint16_t m_seq;                   // +1 per frame (also for frames skipped by DTX)
+    uint8_t m_tx;                     // counts transmitted packets (loss statistics on the receiver)
+    bool m_marker;                    // next packet follows a silence gap
+
+    Pcm m_music;                      // whole music file, already at inputRate / channels
+    size_t m_musicPos;
+
+    AudioInput m_input;               // declared last: destroyed first
+
     void init();
-    void LoadMusic();
-    void PlayMusic();
+    bool LoadMusic();
+    void onCapture(const int16_t *pcm, uint32_t frames);   // audio thread
 
 public:
-    explicit clsAudioRecorder(QObject *parent = nullptr);
+    clsAudioRecorder();
     ~clsAudioRecorder();
+    void SetConfig(AudioConfig *pConfig);
+    void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
     void Start();
     void Stop();
-    void SetConfig(AudioConfig *pConfig);
-
-signals:
-    // exactly ONE datagram per emit: 3 byte header + opus packet (see VoicePacket.h)
-    void onReadEncodedBuffer(const QByteArray &encodedBuffer);
-
-private slots:
-    void onReadyRead();
-    void OnbufferReady();
 };
 
 #endif // CLSAUDIORECORDER_H

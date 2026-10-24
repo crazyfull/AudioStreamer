@@ -1,39 +1,42 @@
 #ifndef CLSAUDIOPLAYER_H
 #define CLSAUDIOPLAYER_H
 
-#include <QObject>
-#include <QAudioFormat>
-#include <QAudioDevice>
-#include <QAudioSink>
-#include <QTimer>
+#include <memory>
+#include <mutex>
+#include "AudioTypes.h"
 #include "AudioConfig.h"
+#include "audioDevice.h"
 #include "jitterBuffer.h"
 
-class clsAudioPlayer : public QObject
+// Receive side: datagram -> JitterBuffer (reorder / FEC / PLC) -> opus decode -> speaker.
+// No Qt. Play() may be called from any thread; the speaker pulls frames from the audio thread.
+class clsAudioPlayer
 {
-    Q_OBJECT
-    QAudioSink *m_pAudioPlayer;
-    QIODevice *m_pbufferOutput;
-    class opusCodec *m_pOpus;
     AudioConfig *m_pConfig;
+    std::unique_ptr<opusCodec> m_pOpus;
+    std::unique_ptr<JitterBuffer> m_pJitter;
 
-    JitterBuffer *m_pJitter;   // reorder + loss concealment
-    QByteArray m_pending;      // decoded PCM not yet accepted by the sink (partial writes)
-    QTimer m_pumpTimer;        // feeds the sink with an even stream of frames
+    mutable std::mutex m_mutex;     // protects m_pJitter / m_pOpus / m_pending (GUI/network thread <-> audio thread)
+    Pcm m_pending;                  // decoded PCM of the current frame, not consumed by the device yet
+    size_t m_pendingPos;
     int m_rate;
     int m_channels;
 
-    void pump();
+    AudioOutput m_output;           // declared last: destroyed first
+
+    void onDeviceData(int16_t *out, uint32_t frames);
 
 public:
-    explicit clsAudioPlayer(QObject *parent = nullptr);
+    clsAudioPlayer();
     ~clsAudioPlayer();
     void SetConfig(AudioConfig *pConfig);
 
     void init();
-    void Play(const QByteArray &datagram);   // one received datagram (header + opus packet)
-signals:
-
+    // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running
+    bool GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const;
+    // one received datagram (header + opus packet)
+    void Play(const uint8_t *datagram, size_t size);
+    void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }
 };
 
 #endif // CLSAUDIOPLAYER_H

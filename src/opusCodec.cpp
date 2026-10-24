@@ -1,36 +1,20 @@
 #include "opusCodec.h"
 
-#include <QDebug>
-#include <cstring>
-
-/*
-    NB (narrowband)             4 kHz 	8 kHz
-    MB (medium-band)[note 1] 	6 kHz 	12 kHz
-    WB (wideband)           	8 kHz 	16 kHz
-    SWB (super-wideband)     	12 kHz 	24 kHz
-    FB (fullband)[note 2]    	20 kHz 	48 kHz
-*/
-
 opusCodec::opusCodec()
 {
     m_pEncoder = nullptr;
     m_pDecoder = nullptr;
     m_encChannels = 1;
     m_decChannels = 1;
-    m_frameBytes = 0;
+    m_frameSamples = 0;
 }
 
 opusCodec::~opusCodec()
 {
-    if(m_pEncoder){
+    if(m_pEncoder)
         opus_encoder_destroy(m_pEncoder);
-        m_pEncoder = nullptr;
-    }
-
-    if(m_pDecoder){
+    if(m_pDecoder)
         opus_decoder_destroy(m_pDecoder);
-        m_pDecoder = nullptr;
-    }
 }
 
 bool opusCodec::InitEncoder(const AudioConfig &cfg)
@@ -41,20 +25,20 @@ bool opusCodec::InitEncoder(const AudioConfig &cfg)
     int err = OPUS_OK;
     m_pEncoder = opus_encoder_create(cfg.inputRate, cfg.channels, OPUS_APPLICATION_VOIP, &err);
     if(err != OPUS_OK || !m_pEncoder){
-        qWarning() << "opus_encoder_create failed:" << opus_strerror(err);
+        AUDIO_WARN("opus_encoder_create failed: %s", opus_strerror(err));
         m_pEncoder = nullptr;
         return false;
     }
 
     m_encChannels = cfg.channels;
-    m_frameBytes = cfg.frameBytes();
+    m_frameSamples = cfg.frameSamples();
 
     // ---- most compressed voice profile ----
     opus_encoder_ctl(m_pEncoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_BITRATE(cfg.opusBitrate));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_VBR(1));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_VBR_CONSTRAINT(0));
-    opus_encoder_ctl(m_pEncoder, OPUS_SET_MAX_BANDWIDTH(cfg.MaxBandwith)); // 8kHz is enough for speech
+    opus_encoder_ctl(m_pEncoder, OPUS_SET_MAX_BANDWIDTH(cfg.MaxBandwith));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_COMPLEXITY(10));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_LSB_DEPTH(16));
     opus_encoder_ctl(m_pEncoder, OPUS_SET_DTX(cfg.useDtx ? 1 : 0));
@@ -72,7 +56,7 @@ bool opusCodec::InitDecoder(int sampleRate, int channels)
     int err = OPUS_OK;
     m_pDecoder = opus_decoder_create(sampleRate, channels, &err);
     if(err != OPUS_OK || !m_pDecoder){
-        qWarning() << "opus_decoder_create failed:" << opus_strerror(err);
+        AUDIO_WARN("opus_decoder_create failed: %s", opus_strerror(err));
         m_pDecoder = nullptr;
         return false;
     }
@@ -81,78 +65,73 @@ bool opusCodec::InitDecoder(int sampleRate, int channels)
     return true;
 }
 
-QByteArray opusCodec::Encode(const QByteArray &pcmFrame)
+Bytes opusCodec::Encode(const int16_t *pcm, int frameSamples)
 {
-    if(!m_pEncoder)
-        return QByteArray();
+    if(!m_pEncoder || !pcm)
+        return Bytes();
 
-    if(pcmFrame.size() != m_frameBytes){
-        qWarning() << "opus Encode: wrong frame size" << pcmFrame.size() << "expected" << m_frameBytes;
-        return QByteArray();
+    if(frameSamples != m_frameSamples){
+        AUDIO_WARN("opus Encode: wrong frame size %d expected %d", frameSamples, m_frameSamples);
+        return Bytes();
     }
-
-    const int frameSamples = m_frameBytes / (2 * m_encChannels);
-
-    // copy to an aligned int16 buffer
-    QByteArray pcm = pcmFrame;
-    opus_int16 *in = reinterpret_cast<opus_int16*>(pcm.data());
 
     unsigned char out[1500];
-    opus_int32 n = opus_encode(m_pEncoder, in, frameSamples, out, sizeof(out));
+    opus_int32 n = opus_encode(m_pEncoder, pcm, frameSamples, out, sizeof(out));
     if(n < 0){
-        qWarning() << "opus_encode failed:" << opus_strerror(n);
-        return QByteArray();
+        AUDIO_WARN("opus_encode failed: %s", opus_strerror(n));
+        return Bytes();
     }
 
-    return QByteArray(reinterpret_cast<const char*>(out), n);
+    return Bytes(out, out + n);
 }
 
-QByteArray opusCodec::Decode(const QByteArray &packet)
+Pcm opusCodec::Decode(const Bytes &packet)
 {
-    if(!m_pDecoder || packet.isEmpty())
-        return QByteArray();
+    if(!m_pDecoder || packet.empty())
+        return Pcm();
 
     // 5760 = 120ms @ 48kHz, the biggest possible Opus packet
     static const int MAX_SAMPLES = 5760;
-    opus_int16 pcm[MAX_SAMPLES * 2];
+    Pcm pcm(size_t(MAX_SAMPLES) * m_decChannels);
 
-    int samples = opus_decode(m_pDecoder,
-                              reinterpret_cast<const unsigned char*>(packet.constData()),
-                              packet.size(), pcm, MAX_SAMPLES, 0);
+    int samples = opus_decode(m_pDecoder, packet.data(), int(packet.size()), pcm.data(), MAX_SAMPLES, 0);
     if(samples < 0){
-        qWarning() << "opus_decode failed:" << opus_strerror(samples);
-        return QByteArray();
+        AUDIO_WARN("opus_decode failed: %s", opus_strerror(samples));
+        return Pcm();
     }
 
-    return QByteArray(reinterpret_cast<const char*>(pcm), samples * m_decChannels * int(sizeof(opus_int16)));
+    pcm.resize(size_t(samples) * m_decChannels);
+    return pcm;
 }
 
-QByteArray opusCodec::DecodeFec(const QByteArray &nextPacket, int frameSamples)
+Pcm opusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples)
 {
-    if(!m_pDecoder || nextPacket.isEmpty())
-        return QByteArray();
+    if(!m_pDecoder || nextPacket.empty())
+        return Pcm();
 
-    opus_int16 pcm[5760 * 2];
-    int samples = opus_decode(m_pDecoder,
-                              reinterpret_cast<const unsigned char*>(nextPacket.constData()),
-                              nextPacket.size(), pcm, frameSamples, 1);
+    Pcm pcm(size_t(frameSamples) * m_decChannels);
+    int samples = opus_decode(m_pDecoder, nextPacket.data(), int(nextPacket.size()), pcm.data(), frameSamples, 1);
     if(samples < 0){
-        qWarning() << "opus_decode(fec) failed:" << opus_strerror(samples);
+        AUDIO_WARN("opus_decode(fec) failed: %s", opus_strerror(samples));
         return DecodePlc(frameSamples);
     }
-    return QByteArray(reinterpret_cast<const char*>(pcm), samples * m_decChannels * int(sizeof(opus_int16)));
+
+    pcm.resize(size_t(samples) * m_decChannels);
+    return pcm;
 }
 
-QByteArray opusCodec::DecodePlc(int frameSamples)
+Pcm opusCodec::DecodePlc(int frameSamples)
 {
     if(!m_pDecoder)
-        return QByteArray();
+        return Pcm();
 
-    opus_int16 pcm[5760 * 2];
-    int samples = opus_decode(m_pDecoder, nullptr, 0, pcm, frameSamples, 0);
+    Pcm pcm(size_t(frameSamples) * m_decChannels);
+    int samples = opus_decode(m_pDecoder, nullptr, 0, pcm.data(), frameSamples, 0);
     if(samples < 0){
-        qWarning() << "opus_decode(plc) failed:" << opus_strerror(samples);
-        return QByteArray();
+        AUDIO_WARN("opus_decode(plc) failed: %s", opus_strerror(samples));
+        return Pcm();
     }
-    return QByteArray(reinterpret_cast<const char*>(pcm), samples * m_decChannels * int(sizeof(opus_int16)));
+
+    pcm.resize(size_t(samples) * m_decChannels);
+    return pcm;
 }

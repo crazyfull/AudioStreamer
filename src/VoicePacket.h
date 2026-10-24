@@ -1,38 +1,37 @@
 #ifndef VOICEPACKET_H
 #define VOICEPACKET_H
 
-#include <QByteArray>
-#include <QtGlobal>
+#include "AudioTypes.h"
 
 // Wire format (3 byte header + one Opus packet):
-//   byte 0   : flags   bit0 = marker (first packet after silence / DTX gap)
-//   byte 1-2 : sequence number, uint16 little endian, +1 for EVERY 20ms frame
-// The receiver needs the sequence to reorder, to detect loss (-> FEC / PLC)
-// and to tell real loss apart from DTX silence (marker).
+//   byte 0   : bit0    = marker (first packet after silence / DTX gap)
+//              bit1-7  = tx counter: +1 (mod 128) for every packet actually TRANSMITTED
+//   byte 1-2 : sequence number, uint16 little endian, +1 for EVERY frame (also DTX-skipped ones)
 namespace VoicePacket
 {
     const int HeaderSize = 3;
-    const quint8 FlagMarker = 0x01;
+    const uint8_t FlagMarker = 0x01;
+    const uint8_t TxMask = 0x7F;
 
-    inline QByteArray wrap(quint16 seq, bool marker, const QByteArray &opusPayload)
+    inline Bytes wrap(uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
     {
-        QByteArray p;
+        Bytes p;
         p.reserve(HeaderSize + opusPayload.size());
-        p.append(char(marker ? FlagMarker : 0));
-        p.append(char(seq & 0xFF));
-        p.append(char((seq >> 8) & 0xFF));
-        p.append(opusPayload);
+        p.push_back(uint8_t((marker ? FlagMarker : 0) | ((tx & TxMask) << 1)));
+        p.push_back(uint8_t(seq & 0xFF));
+        p.push_back(uint8_t((seq >> 8) & 0xFF));
+        p.insert(p.end(), opusPayload.begin(), opusPayload.end());
         return p;
     }
 
-    inline bool parse(const QByteArray &datagram, quint16 &seq, bool &marker, QByteArray &opusPayload)
+    inline bool parse(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx, Bytes &opusPayload)
     {
-        if(datagram.size() <= HeaderSize)
+        if(!d || size <= size_t(HeaderSize))
             return false;
-        const uchar *d = reinterpret_cast<const uchar*>(datagram.constData());
         marker = (d[0] & FlagMarker) != 0;
-        seq = quint16(d[1] | (d[2] << 8));
-        opusPayload = datagram.mid(HeaderSize);
+        tx = uint8_t(d[0] >> 1);
+        seq = uint16_t(d[1] | (d[2] << 8));
+        opusPayload.assign(d + HeaderSize, d + size);
         return true;
     }
 }

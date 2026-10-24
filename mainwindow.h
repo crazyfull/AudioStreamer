@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QTcpSocket>
 #include <QDateTime>
+#include <QList>
+#include <QPair>
 
 #include "src/AudioConfig.h"
 //#include "src/clsAudioRecorder.h"
@@ -25,6 +27,9 @@ private:
 
     QTimer m_RateTimer;
     QTimer m_PlayerTimer;
+    QTimer m_StatsTimer;                  // refreshes the live loss statistics (1s)
+    class QLabel *m_lblStats = nullptr;
+    QList<QPair<quint32,quint32> > m_statHistory;   // (received, lost) once per second, for the "last 5s" figures
 
     qint64    m_Rate;
     QByteArray m_lostpck;
@@ -46,6 +51,7 @@ private slots:
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
     void onReceiveUDPData();
     void OnRateTimer();
+    void OnStatsTimer();
     void OnPlayerTimer();
 
     void OnTCPConnected();

@@ -1,41 +1,19 @@
 #include "clsAudioPlayer.h"
 #include "opusCodec.h"
-#include <QAudioSink>
-#include <QMediaDevices>
-#include <QAudioFormat>
-#include <QDebug>
+#include <algorithm>
+#include <cstring>
 
-clsAudioPlayer::clsAudioPlayer(QObject *parent): QObject{parent}
+clsAudioPlayer::clsAudioPlayer()
 {
-    m_pAudioPlayer = nullptr;
     m_pConfig = nullptr;
-    m_pbufferOutput = nullptr;
-    m_pOpus = nullptr;
+    m_pendingPos = 0;
     m_rate = 48000;
     m_channels = 1;
-
-    m_pJitter = nullptr;
-    m_pumpTimer.setInterval(5);
-    m_pumpTimer.setTimerType(Qt::PreciseTimer);
-    connect(&m_pumpTimer, &QTimer::timeout, this, [this]{ pump(); });
 }
 
 clsAudioPlayer::~clsAudioPlayer()
 {
-    m_pumpTimer.stop();
-    if(m_pAudioPlayer){
-        m_pAudioPlayer->stop();
-        delete m_pAudioPlayer;
-        m_pAudioPlayer = nullptr;
-    }
-
-    delete m_pJitter;
-    m_pJitter = nullptr;
-
-    if(m_pOpus){
-        delete m_pOpus;
-        m_pOpus = nullptr;
-    }
+    m_output.stop();        // after this the audio callback can no longer touch the jitter buffer
 }
 
 void clsAudioPlayer::SetConfig(AudioConfig *pConfig)
@@ -49,100 +27,80 @@ static bool isOpusRate(int r)
     return r == 8000 || r == 12000 || r == 16000 || r == 24000 || r == 48000;
 }
 
-void clsAudioPlayer::init(){
-    if(m_pAudioPlayer || !m_pConfig)
-        return;
-
-    QAudioDevice infoPlayer = QMediaDevices::defaultAudioOutput();
-    if(infoPlayer.isNull()){
-        qWarning() << "No audio output device found!";
-        return;
-    }
-
-    QAudioFormat PlayerFormat;
-    PlayerFormat.setSampleRate(m_pConfig->outputRate);
-    PlayerFormat.setChannelCount(1);
-    PlayerFormat.setSampleFormat(QAudioFormat::Int16);
-
-    if(!infoPlayer.isFormatSupported(PlayerFormat)){
-        // Opus decoder can output 8/12/16/24/48k and mono/stereo from the same stream,
-        // so just adapt to what the speaker wants instead of giving up.
-        QAudioFormat pref = infoPlayer.preferredFormat();
-        qWarning() << "PlayerFormat not supported, device preferred:" << pref;
-
-        PlayerFormat.setSampleRate(isOpusRate(pref.sampleRate()) ? pref.sampleRate() : 48000);
-        PlayerFormat.setChannelCount(1);
-        if(!infoPlayer.isFormatSupported(PlayerFormat))
-            PlayerFormat.setChannelCount(2);
-    }
-
-    m_rate = PlayerFormat.sampleRate();
-    m_channels = PlayerFormat.channelCount();
-
-    m_pOpus = new opusCodec;
-    if(!m_pOpus->InitDecoder(m_rate, m_channels))
-        return;
-
-    m_pJitter = new JitterBuffer(m_pOpus, m_rate, m_channels, m_pConfig->frameMs);
-
-    m_pAudioPlayer = new QAudioSink(infoPlayer, PlayerFormat, this);
-
-    // Sink buffer = 2 frames + 40ms. It is time based on purpose: with 60ms frames "4 frames"
-    // would be 240ms of hidden latency. Note that Pulse/PipeWire round the requested size to
-    // something that is NOT a multiple of the frame, so pump() must handle partial writes.
-    m_pAudioPlayer->setBufferSize(m_pJitter->frameBytes() * 2 + m_rate * m_channels * 2 * 40 / 1000);
-
-    m_pbufferOutput = m_pAudioPlayer->start();
-    qDebug() << "Player device:" << infoPlayer.description() << PlayerFormat << "ok:" << (m_pbufferOutput != nullptr);
-    if(m_pbufferOutput)
-        m_pumpTimer.start();
-}
-
-// Keeps the sound card topped up. Two levels:
-//  - about to run dry (< ~30ms queued): we MUST give it something, so take the next frame
-//    even if that means FEC / concealment.
-//  - otherwise: top up only with real, on-time audio, so we never conceal earlier than needed.
-//
-// IMPORTANT (Linux): PulseAudio / PipeWire don't start playing until the sink buffer reaches its
-// prebuffer level, and the buffer size they give us is NOT a multiple of our frame size
-// (frameMs 40/60 -> e.g. 9600 or 13440 bytes). If we only wrote whole frames, the last
-// "free" bytes would never be filled, the prebuffer level never reached = permanent silence.
-// So decoded frames go through m_pending and are written in whatever pieces fit.
-void clsAudioPlayer::pump()
+void clsAudioPlayer::init()
 {
-    if(!m_pbufferOutput || !m_pAudioPlayer || !m_pJitter)
+    if(m_output.isRunning() || !m_pConfig)
         return;
 
-    const qint64 urgent = qMin<qint64>(m_rate * m_channels * 2 * 30 / 1000, m_pAudioPlayer->bufferSize() / 2);
+    // Opus decoder can output 8/12/16/24/48k. miniaudio converts rate/channels to what the
+    // real speaker needs, so there is no "format not supported" fallback anymore.
+    m_rate = isOpusRate(m_pConfig->outputRate) ? m_pConfig->outputRate : 48000;
+    m_channels = m_pConfig->channels;
 
-    for(;;){
-        qint64 free = m_pAudioPlayer->bytesFree();
-        if(free <= 0)
-            break;
+    auto codec = std::make_unique<opusCodec>();
+    if(!codec->InitDecoder(m_rate, m_channels))
+        return;
 
-        if(m_pending.isEmpty()){
-            qint64 buffered = m_pAudioPlayer->bufferSize() - free;
-            if(buffered >= urgent && !m_pJitter->HasFrameReady())
-                break;
-
-            m_pending = m_pJitter->PopFrame();
-            if(m_pending.isEmpty())
-                break;
-        }
-
-        qint64 n = qMin<qint64>(free, m_pending.size());
-        qint64 w = m_pbufferOutput->write(m_pending.constData(), n);
-        if(w <= 0)
-            break;
-        m_pending.remove(0, int(w));
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_pOpus = std::move(codec);
+        m_pJitter = std::make_unique<JitterBuffer>(m_pOpus.get(), m_rate, m_channels, m_pConfig->frameMs);
+        m_pending.clear();
+        m_pendingPos = 0;
     }
+
+    // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
+    std::string err;
+    bool ok = m_output.start(m_rate, m_channels, 10, [this](int16_t *out, uint32_t frames){ onDeviceData(out, frames); }, &err);
+    if(!ok)
+        AUDIO_WARN("player: %s", err.c_str());
+    else
+        AUDIO_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
 }
 
-void clsAudioPlayer::Play(const QByteArray &datagram){
+// Runs on the audio thread, exactly when the device needs data.
+// Whatever the jitter buffer can't deliver (prefilling, DTX silence) is played as silence.
+void clsAudioPlayer::onDeviceData(int16_t *out, uint32_t frames)
+{
+    size_t need = size_t(frames) * m_channels;
+    size_t done = 0;
+
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        while(done < need && m_pJitter){
+            if(m_pendingPos >= m_pending.size()){
+                m_pending = m_pJitter->PopFrame();     // may be real audio, FEC or PLC
+                m_pendingPos = 0;
+                if(m_pending.empty())
+                    break;
+            }
+            size_t n = std::min(need - done, m_pending.size() - m_pendingPos);
+            std::memcpy(out + done, m_pending.data() + m_pendingPos, n * sizeof(int16_t));
+            m_pendingPos += n;
+            done += n;
+        }
+    }
+
+    if(done < need)
+        std::memset(out + done, 0, (need - done) * sizeof(int16_t));
+}
+
+void clsAudioPlayer::Play(const uint8_t *datagram, size_t size)
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
     if(!m_pJitter)
         return;
+    m_pJitter->Push(datagram, size);
+}
 
-    m_pJitter->Push(datagram);
-    //qDebug() << "datagram: " << datagram.size();
-    pump();
+bool clsAudioPlayer::GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const
+{
+    std::lock_guard<std::mutex> lk(m_mutex);
+    if(!m_pJitter || !m_pConfig)
+        return false;
+
+    stats = m_pJitter->stats();
+    bufferFrames = m_pJitter->targetDepth();
+    frameMs = m_pConfig->frameMs;
+    return true;
 }
