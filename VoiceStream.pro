@@ -17,6 +17,9 @@ DEPENDPATH += $$PWD/miniaudio
 target.path = /root
 # the .lib files are Windows-only: keep them out of Linux/macOS builds (the old "else" also hit those)
 win32 {
+    INCLUDEPATH += $$PWD/libs/opus/win32/include
+    DEPENDPATH += $$PWD/libs/opus/win32/include
+
     contains(QMAKE_TARGET.arch, x86_64) {
         message("win x64 build")
         LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
@@ -29,32 +32,42 @@ win32 {
 }
 
 win32 {
-    INCLUDEPATH += $$PWD/libs/opus/win32/include
-    DEPENDPATH += $$PWD/libs/opus/win32/include
 
     # Echo cancellation: webrtc-audio-processing 1.3, static. Build it with libs/webrtc/build_win.bat
     # (headers + libs land in libs/webrtc/win32). Debug and release need their own lib: /MTd and /MT can't be mixed.
-    INCLUDEPATH += $$PWD/libs/webrtc/win32/include
-    DEPENDPATH += $$PWD/libs/webrtc/win32/include
-    contains(QMAKE_TARGET.arch, x86_64) {
-        CONFIG(debug, debug|release) {
-            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64d.lib
-        } else {
-            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64.lib
-        }
-    } else {
-        CONFIG(debug, debug|release) {
-            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86d.lib
-        } else {
-            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86.lib
-        }
-    }
+    #INCLUDEPATH += $$PWD/libs/webrtc/win32/include
+    #DEPENDPATH += $$PWD/libs/webrtc/win32/include
+    #contains(QMAKE_TARGET.arch, x86_64) {
+    #    CONFIG(debug, debug|release) {
+    #        LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64d.lib
+    #    } else {
+    #        LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64.lib
+    #    }
+    #} else {
+    #    CONFIG(debug, debug|release) {
+    #        LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86d.lib
+    #    } else {
+    #        LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86.lib
+    #    }
+    #}
+
+    #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-coding-1.a
+    #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.a
+    LIBS += $$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.a
+
+    INCLUDEPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
+    DEPENDPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
+
+    INCLUDEPATH += $$PWD/../webRTC-audio-process/install/include
+    DEPENDPATH += $$PWD/../webRTC-audio-process/install/include
+
+
     LIBS += winmm.lib dbghelp.lib advapi32.lib     # used by webrtc / abseil
 
     QMAKE_CFLAGS_RELEASE += /MT
     QMAKE_CXXFLAGS_RELEASE += /MT
-    QMAKE_CFLAGS_DEBUG += /MTd
-    QMAKE_CXXFLAGS_DEBUG += /MTd
+    #QMAKE_CFLAGS_DEBUG += /MTd
+    #QMAKE_CXXFLAGS_DEBUG += /MTd
 
 
     LIBS += libucrt.lib libucrtd.lib libvcruntime.lib
