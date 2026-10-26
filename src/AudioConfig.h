@@ -31,6 +31,7 @@ struct AudioConfig
 
     // ---- echo cancellation (webrtc-audio-processing, see echoCanceller.h) ----
     bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
+    int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
     int aecDelayMs = 50;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
 
     // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000
