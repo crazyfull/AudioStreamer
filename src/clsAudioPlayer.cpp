@@ -6,6 +6,9 @@
 clsAudioPlayer::clsAudioPlayer()
 {
     m_pConfig = nullptr;
+    m_ready = false;
+    m_ingestDropped = 0;
+    m_depthCopy = 0;
     m_pendingPos = 0;
     m_rate = 48000;
     m_channels = 1;
@@ -13,6 +16,7 @@ clsAudioPlayer::clsAudioPlayer()
 
 clsAudioPlayer::~clsAudioPlayer()
 {
+    m_ready = false;
     m_output.stop();        // after this the audio callback can no longer touch the jitter buffer
 }
 
@@ -36,12 +40,18 @@ void clsAudioPlayer::init()
     if(!codec->InitDecoder(m_rate, m_channels))
         return;
 
+    // the speaker is not running yet, so nothing else touches these
+    m_pOpus = std::move(codec);
+    m_pJitter = std::make_unique<JitterBuffer>(m_pOpus.get(), m_rate, m_channels, m_pConfig->frameMs);
+    m_pending.clear();
+    m_pending.reserve(size_t(m_rate) * 120 / 1000 * m_channels);   // the biggest Opus frame (120 ms)
+    m_pendingPos = 0;
+    m_queue.clear();
+    m_ingestDropped = 0;
     {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        m_pOpus = std::move(codec);
-        m_pJitter = std::make_unique<JitterBuffer>(m_pOpus.get(), m_rate, m_channels, m_pConfig->frameMs);
-        m_pending.clear();
-        m_pendingPos = 0;
+        std::lock_guard<std::mutex> lk(m_statsMutex);
+        m_statsCopy = JitterBuffer::Stats();
+        m_depthCopy = m_pJitter->targetDepth();
     }
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
@@ -49,58 +59,73 @@ void clsAudioPlayer::init()
     bool ok = m_output.start(m_rate, m_channels, 10, [this](int16_t *out, uint32_t frames){ onDeviceData(out, frames); }, &err);
     if(!ok)
         AUDIO_WARN("player: %s", err.c_str());
-    else
+    else{
+        m_ready = true;
         AUDIO_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
+    }
 }
 
 // Runs on the audio thread, exactly when the device needs data.
 // Whatever the jitter buffer can't deliver (prefilling, DTX silence) is played as silence.
 void clsAudioPlayer::onDeviceData(int16_t *out, uint32_t frames)
 {
-    size_t need = size_t(frames) * m_channels;
+    const size_t need = size_t(frames) * m_channels;
     size_t done = 0;
 
-    {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        while(done < need && m_pJitter){
+    if(m_pJitter){
+        // datagrams that arrived since the last callback (no lock: see PacketQueue)
+        m_queue.drain([this](const uint8_t *d, size_t n){ m_pJitter->Push(d, n); });
+
+        while(done < need){
             if(m_pendingPos >= m_pending.size()){
-                m_pending = m_pJitter->PopFrame();     // may be real audio, FEC or PLC
+                m_pJitter->PopFrame(m_pending);     // may be real audio, FEC or PLC
                 m_pendingPos = 0;
                 if(m_pending.empty())
                     break;
             }
-            size_t n = std::min(need - done, m_pending.size() - m_pendingPos);
+            const size_t n = std::min(need - done, m_pending.size() - m_pendingPos);
             std::memcpy(out + done, m_pending.data() + m_pendingPos, n * sizeof(int16_t));
             m_pendingPos += n;
             done += n;
         }
+        publishStats();
     }
 
     if(done < need)
         std::memset(out + done, 0, (need - done) * sizeof(int16_t));
 
     // the canceller must see EXACTLY what goes to the speaker, silence included.
-    // Outside the lock: it must not delay the network thread that calls Play().
     if(m_aec)
         m_aec->render(out, frames);
 }
 
+// audio thread: copy the numbers for the GUI. If the GUI is reading right now, skip, the next callback (10 ms) tries again.
+void clsAudioPlayer::publishStats()
+{
+    std::unique_lock<std::mutex> lk(m_statsMutex, std::try_to_lock);
+    if(!lk.owns_lock())
+        return;
+    m_statsCopy = m_pJitter->stats();
+    m_statsCopy.ingestDropped = m_ingestDropped.load(std::memory_order_relaxed);
+    m_depthCopy = m_pJitter->targetDepth();
+}
+
 void clsAudioPlayer::Play(const uint8_t *datagram, size_t size)
 {
-    std::lock_guard<std::mutex> lk(m_mutex);
-    if(!m_pJitter)
+    if(!m_ready.load(std::memory_order_acquire))
         return;
-    m_pJitter->Push(datagram, size);
+    if(!m_queue.push(datagram, size))
+        m_ingestDropped.fetch_add(1, std::memory_order_relaxed);
 }
 
 bool clsAudioPlayer::GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const
 {
-    std::lock_guard<std::mutex> lk(m_mutex);
-    if(!m_pJitter || !m_pConfig)
+    if(!m_ready.load(std::memory_order_acquire) || !m_pConfig)
         return false;
 
-    stats = m_pJitter->stats();
-    bufferFrames = m_pJitter->targetDepth();
+    std::lock_guard<std::mutex> lk(m_statsMutex);
+    stats = m_statsCopy;
+    bufferFrames = m_depthCopy;
     frameMs = m_pConfig->frameMs;
     return true;
 }

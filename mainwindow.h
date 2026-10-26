@@ -33,7 +33,8 @@ private:
     QTimer m_PlayerTimer;
     QTimer m_StatsTimer;                  // refreshes the live loss statistics (1s)
     class QLabel *m_lblStats = nullptr;
-    QList<QPair<quint32,quint32> > m_statHistory;   // (received, lost) once per second, for the "last 5s" figures
+    struct StatSnapshot { quint32 received, lostEvents, reordered; };
+    QList<StatSnapshot> m_statHistory;      // once per second, for the "last 5s" figures
 
     qint64    m_Rate;
     QByteArray m_lostpck;

@@ -8,6 +8,7 @@
 #include "audioDevice.h"
 #include "opusCodec.h"
 #include "echoCanceller.h"
+#include "blockCutter.h"
 
 // Capture side: microphone (or a music file) -> opus packets. No Qt.
 // The packet handler is called on the AUDIO THREAD, once per datagram:
@@ -24,7 +25,12 @@ private:
     PacketHandler m_handler;
     std::shared_ptr<EchoCanceller> m_aec;   // shared with clsAudioPlayer (it feeds the speaker signal)
 
-    Pcm m_cache;                      // mic samples that don't fill a whole opus frame yet
+    // Audio thread rule: after Start() nothing below allocates. Everything is sized once in Start()
+    // (frames are cut straight out of the device buffer, only the < 1 frame tail is kept).
+    Pcm m_cache;                      // tail of mic samples that don't fill a whole opus frame yet (< 1 frame)
+    Pcm m_scratch;                    // echo canceller output / music samples for the current device chunk
+    Bytes m_encoded;                  // one opus packet
+    Bytes m_datagram;                 // header + opus packet, handed to the packet handler
     uint16_t m_seq;                   // +1 per frame (also for frames skipped by DTX)
     uint8_t m_tx;                     // counts transmitted packets (loss statistics on the receiver)
     bool m_marker;                    // next packet follows a silence gap
@@ -37,6 +43,7 @@ private:
     void init();
     bool LoadMusic();
     void onCapture(const int16_t *pcm, uint32_t frames);   // audio thread
+    void onFrame(const int16_t *frame);                     // audio thread: exactly one opus frame
 
 public:
     clsAudioRecorder();

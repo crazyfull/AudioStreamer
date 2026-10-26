@@ -42,6 +42,7 @@
 #endif
 
 #include "echoCanceller.h"
+#include "blockCutter.h"
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -58,7 +59,8 @@ struct EchoCanceller::Impl
     std::atomic<bool> ready{false};
     std::atomic<int>  delayMs{0};
 
-    // each FIFO and scratch buffer belongs to ONE thread: capture* -> mic thread, render* -> speaker thread
+    // each FIFO and scratch buffer belongs to ONE thread: capture* -> mic thread, render* -> speaker thread.
+    // The FIFOs only ever hold the incomplete tail (< 1 block) of the previous call, see cutBlocks().
     std::vector<int16_t> capFifo;
     std::vector<int16_t> renFifo;
     std::vector<int16_t> renScratch;    // ProcessReverseStream output (render side isn't modified, we don't use it)
@@ -155,8 +157,8 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
 
     d->capFifo.clear();
     d->renFifo.clear();
-    d->capFifo.reserve(d->capBlock * 8);             // normal device chunks never reallocate on the audio thread
-    d->renFifo.reserve(d->renBlock * 8);
+    d->capFifo.reserve(d->capBlock);                 // exactly enough: the tail is always < 1 block, never reallocates
+    d->renFifo.reserve(d->renBlock);
     d->renScratch.assign(d->renBlock, 0);
 
     // The first call of each stream allocates and initializes AEC3 (takes milliseconds). Do it here
@@ -196,20 +198,14 @@ void EchoCanceller::render(const int16_t *pcm, uint32_t frames)
     if(!s.ready.load() || !pcm || !frames)
         return;
 
-    s.renFifo.insert(s.renFifo.end(), pcm, pcm + size_t(frames) * s.channels);
-
-    size_t off = 0;
-    while(s.renFifo.size() - off >= s.renBlock){
-        int rc = s.apm->ProcessReverseStream(s.renFifo.data() + off, s.renCfg, s.renCfg, s.renScratch.data());
+    // 10 ms blocks are taken straight from `pcm`; only a tail of < 10 ms is copied (no allocation, no big memmove)
+    cutBlocks(s.renFifo, s.renBlock, pcm, size_t(frames) * s.channels, [&s](const int16_t *block){
+        int rc = s.apm->ProcessReverseStream(block, s.renCfg, s.renCfg, s.renScratch.data());
         if(rc != webrtc::AudioProcessing::kNoError && !s.renErrorLogged){
             s.renErrorLogged = true;
             AUDIO_WARN("echo canceller: ProcessReverseStream error %d", rc);
         }
-        off += s.renBlock;
-    }
-
-    if(off)
-        s.renFifo.erase(s.renFifo.begin(), s.renFifo.begin() + off);
+    });
 }
 
 // mic thread
@@ -226,29 +222,23 @@ void EchoCanceller::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
     if(!pcm || !frames)
         return;
 
-    s.capFifo.insert(s.capFifo.end(), pcm, pcm + size_t(frames) * s.channels);
-
-    size_t off = 0;
-    while(s.capFifo.size() - off >= s.capBlock){
+    // `out` is the caller's scratch (cleared each call, so its capacity is reused)
+    cutBlocks(s.capFifo, s.capBlock, pcm, size_t(frames) * s.channels, [&s, &out](const int16_t *block){
         const size_t pos = out.size();
         out.resize(pos + s.capBlock);
 
         // "must be called before every ProcessStream() when echo processing is on"
         s.apm->set_stream_delay_ms(s.delayMs.load());
-        int rc = s.apm->ProcessStream(s.capFifo.data() + off, s.capCfg, s.capCfg, out.data() + pos);
+        int rc = s.apm->ProcessStream(block, s.capCfg, s.capCfg, out.data() + pos);
         if(rc != webrtc::AudioProcessing::kNoError){
             // keep the audio flowing even if webrtc complains
-            std::memcpy(out.data() + pos, s.capFifo.data() + off, s.capBlock * sizeof(int16_t));
+            std::memcpy(out.data() + pos, block, s.capBlock * sizeof(int16_t));
             if(!s.capErrorLogged){
                 s.capErrorLogged = true;
                 AUDIO_WARN("echo canceller: ProcessStream error %d", rc);
             }
         }
-        off += s.capBlock;
-    }
-
-    if(off)
-        s.capFifo.erase(s.capFifo.begin(), s.capFifo.begin() + off);
+    });
 }
 
 bool EchoCanceller::getStats(Stats &st) const

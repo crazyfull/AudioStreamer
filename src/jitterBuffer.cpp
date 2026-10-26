@@ -5,7 +5,7 @@
 
 JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_pCodec(codec), m_channels(channels), m_frameSamples(0),
-      m_lastTx(0), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
+      m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
 {
     if(frameMs < 1) frameMs = 20;
@@ -54,8 +54,22 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
 
     // ---- loss accounting (network loss only)
     if(ext > m_highest){
-        uint8_t holes = uint8_t((tx - m_lastTx - 1) & VoicePacket::TxMask);
+        // The tx counter has 7 bits (it counts transmitted packets only, so DTX silence doesn't show up in it):
+        // alone it can only tell "holes mod 128", a loss run of 128+ packets would wrap around.
+        // The sequence gap is an UPPER bound (silent frames add to it but are not losses).
+        //  - A marker packet whose gap is bigger than the tx counter explains proves the sender skips silence
+        //    (DTX). From then on the gap can't be trusted, only the tx counter is used.
+        //  - Without DTX every frame is transmitted, so take the largest value that matches the tx counter and
+        //    fits in the gap: exact for loss runs of any length.
+        const uint32_t holesMod = uint32_t((tx - m_lastTx - 1) & VoicePacket::TxMask);
+        const uint32_t holesMax = uint32_t(ext - m_highest - 1);
+        if(marker && holesMax > holesMod)
+            m_dtxSeen = true;
+        uint32_t holes = holesMod;
+        if(!m_dtxSeen && holesMax > holesMod)
+            holes += ((holesMax - holesMod) / (VoicePacket::TxMask + 1)) * (VoicePacket::TxMask + 1);
         m_stats.lost += holes;
+        m_stats.lostEvents += holes;
         m_lastTx = tx;
         m_seen.insert(ext);
     }else if(m_seen.find(ext) == m_seen.end()){
@@ -112,13 +126,13 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
     }
 }
 
-Pcm JitterBuffer::takeNext()
+bool JitterBuffer::takeNext(Pcm &out)
 {
     auto it = m_buf.find(m_next);
     Pkt p = std::move(it->second);
     m_buf.erase(it);
     m_next++;
-    return m_pCodec->Decode(p.payload);
+    return m_pCodec->Decode(p.payload, out);
 }
 
 bool JitterBuffer::HasFrameReady() const
@@ -130,9 +144,17 @@ bool JitterBuffer::HasFrameReady() const
 
 Pcm JitterBuffer::PopFrame()
 {
+    Pcm out;
+    PopFrame(out);
+    return out;
+}
+
+bool JitterBuffer::PopFrame(Pcm &out)
+{
+    out.clear();
     if(!m_playing){
         if(int(m_buf.size()) < m_target)
-            return Pcm();                   // prefill
+            return false;                   // prefill
         m_next = m_buf.begin()->first;
         m_playing = true;
         m_plcRun = 0;
@@ -146,7 +168,7 @@ Pcm JitterBuffer::PopFrame()
             m_target--;
             m_goodRun = 0;
         }
-        return takeNext();
+        return takeNext(out);
     }
 
     // ---- missing packet
@@ -160,12 +182,12 @@ Pcm JitterBuffer::PopFrame()
         if(m_plcRun >= m_maxPlcRun){
             m_playing = false;
             m_underrunPending = true;
-            return Pcm();
+            return false;
         }
         m_plcRun++;
         m_next++;
         m_stats.plc++;
-        return m_pCodec->DecodePlc(m_frameSamples);
+        return m_pCodec->DecodePlc(m_frameSamples, out);
     }
 
     const int64_t first = m_buf.begin()->first;
@@ -177,19 +199,19 @@ Pcm JitterBuffer::PopFrame()
         m_next = first;
         m_plcRun = 0;
         m_stats.played++;
-        return takeNext();
+        return takeNext(out);
     }
 
     m_plcRun = 0;
     if(first == m_next + 1){
         // next packet carries a low-bitrate copy of the lost frame (inband FEC)
-        Pcm pcm = m_pCodec->DecodeFec(fp.payload, m_frameSamples);
+        const bool ok = m_pCodec->DecodeFec(fp.payload, m_frameSamples, out);
         m_next++;
         m_stats.fec++;
-        return pcm;
+        return ok;
     }
 
     m_next++;
     m_stats.plc++;
-    return m_pCodec->DecodePlc(m_frameSamples);
+    return m_pCodec->DecodePlc(m_frameSamples, out);
 }
