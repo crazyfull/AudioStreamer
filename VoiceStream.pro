@@ -53,7 +53,7 @@ win32 {
 
     #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-coding-1.a
     #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.a
-    LIBS += $$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.a
+    LIBS += $$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.lib
 
     INCLUDEPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
     DEPENDPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
