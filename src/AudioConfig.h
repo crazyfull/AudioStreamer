@@ -21,8 +21,8 @@ struct AudioConfig
     int channels = 1;
 
     // ---- Opus (most compressed voice profile) ----
-    int frameMs = 60;           //2.5 5 10 20 40 60 (bigger = less overhead, more latency)
-    int opusBitrate = 800;      //bps
+    int frameMs = 20;           //2.5 5 10 20 40 60 (bigger = less overhead, more latency)
+    int opusBitrate = 8000;      //bps
     bool useDtx = false;        //silence -> no packets
     bool useFec = true;         //inband FEC
     bool playMusic = false;
@@ -35,7 +35,7 @@ struct AudioConfig
     int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
     int noiseSuppression = 0;   //0 = off, 1..4 = low .. very high (webrtc noise suppression on the mic)
     bool autoGain = false;      //webrtc AGC2: automatic mic level + limiter
-    int aecDelayMs = 50;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
+    int aecDelayMs = 100;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
 
     // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000
     int renderRate() const {
