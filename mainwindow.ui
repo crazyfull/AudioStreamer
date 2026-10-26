@@ -199,6 +199,23 @@
        </item>
       </widget>
      </item>
+     <item row="5" column="0">
+      <widget class="QComboBox" name="noise_comboBox">
+       <property name="toolTip">
+        <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QCheckBox" name="autoGain_checkBox">
+       <property name="toolTip">
+        <string>Automatic mic level + limiter (webrtc AGC2)</string>
+       </property>
+       <property name="text">
+        <string>Auto gain</string>
+       </property>
+      </widget>
+     </item>
      <item row="5" column="2">
       <widget class="QComboBox" name="echoLevel_comboBox">
        <property name="toolTip">

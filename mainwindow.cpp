@@ -53,6 +53,12 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->BandWith_comboBox->addItem("Supper-wideband - 12 kHz	24 kHz", OPUS_BANDWIDTH_SUPERWIDEBAND);
     ui->BandWith_comboBox->addItem("fullband - 20 kHz	48 kHz", OPUS_BANDWIDTH_FULLBAND);
 
+    ui->noise_comboBox->addItem("Noise: off");
+    ui->noise_comboBox->addItem("Noise: low");
+    ui->noise_comboBox->addItem("Noise: moderate");
+    ui->noise_comboBox->addItem("Noise: high");
+    ui->noise_comboBox->addItem("Noise: very high");
+
     ui->echoLevel_comboBox->addItem("Echo: default");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 1");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 2");
@@ -168,14 +174,20 @@ void MainWindow::initAudio()
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
     m_AudioConfig.useEchoCancel = ui->echoCancel_checkBox->isChecked();
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
+    m_AudioConfig.noiseSuppression = ui->noise_comboBox->currentIndex();
+    m_AudioConfig.autoGain = ui->autoGain_checkBox->isChecked();
 
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
-    if(m_AudioConfig.useEchoCancel && !m_AudioConfig.playMusic){
+    const bool wantAec = m_AudioConfig.useEchoCancel;
+    if((wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
         auto aec = std::make_shared<EchoCanceller>();
         EchoCanceller::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;
         opt.nearendProtection = m_AudioConfig.aecNearendProtection;
+        opt.echoCancel = wantAec;
+        opt.noiseSuppression = m_AudioConfig.noiseSuppression;
+        opt.autoGain = m_AudioConfig.autoGain;
         std::string err;
         if(aec->init(m_AudioConfig.inputRate, m_AudioConfig.renderRate(), m_AudioConfig.channels, opt, &err))
             m_pAec = aec;
@@ -281,7 +293,7 @@ void MainWindow::OnStatsTimer()
              .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
 
     EchoCanceller::Stats aec;
-    if(m_pAec && m_pAec->getStats(aec)){
+    if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->getStats(aec)){
         t += aec.hasDelay ? QString("\nEcho     : cancelling, estimated echo delay %1 ms").arg(aec.delayMs)
                           : QString("\nEcho     : cancelling (still measuring the delay)");
     }else{
