@@ -26,8 +26,17 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include "modules/audio_processing/include/audio_processing.h"
-#include "api/audio/echo_canceller3_config.h"
-#include "api/audio/echo_canceller3_factory.h"
+
+// "meson install" does NOT install api/audio/echo_canceller3_factory.h. Without it the near-end
+// protection tuning is not available (the canceller itself works, with webrtc defaults).
+// To enable it, make this header visible: add <webrtc-audio-processing-1.3>/webrtc to the include path.
+#if defined(__has_include)
+  #if __has_include("api/audio/echo_canceller3_config.h") && __has_include("api/audio/echo_canceller3_factory.h")
+    #include "api/audio/echo_canceller3_config.h"
+    #include "api/audio/echo_canceller3_factory.h"
+    #define AEC_HAVE_EC3_FACTORY 1
+  #endif
+#endif
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -85,6 +94,7 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
 
     // Create() returns an object with reference count 0: the scoped_refptr takes the first reference.
     webrtc::AudioProcessingBuilder builder;
+#ifdef AEC_HAVE_EC3_FACTORY
     if(opt.nearendProtection > 0){
         // Tune only the "is the near end (my voice) dominant?" detector of the suppressor: the earlier it
         // decides "dominant", the less the suppressor gates the mic. Level 0 keeps the webrtc defaults.
@@ -105,6 +115,10 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
         webrtc::EchoCanceller3Config::Validate(&ec3);     // clamps anything out of range
         builder.SetEchoControlFactory(std::make_unique<webrtc::EchoCanceller3Factory>(ec3));
     }
+#else
+    if(opt.nearendProtection > 0)
+        AUDIO_WARN("echo canceller: echo_canceller3_factory.h not found, near-end protection ignored (see echoCanceller.cpp)");
+#endif
     rtc::scoped_refptr<webrtc::AudioProcessing> apm(builder.Create());
     if(!apm)
         return fail("echo canceller: cannot create AudioProcessing");
