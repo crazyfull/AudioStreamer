@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>533</width>
-    <height>400</height>
+    <width>529</width>
+    <height>523</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -20,7 +20,7 @@
       <x>0</x>
       <y>0</y>
       <width>521</width>
-      <height>370</height>
+      <height>501</height>
      </rect>
     </property>
     <property name="frameShape">
@@ -30,7 +30,21 @@
      <enum>QFrame::Raised</enum>
     </property>
     <layout class="QGridLayout" name="gridLayout">
-     <item row="8" column="0">
+     <item row="5" column="1">
+      <widget class="QComboBox" name="noise_comboBox">
+       <property name="toolTip">
+        <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QComboBox" name="BandWith_comboBox">
+       <property name="currentIndex">
+        <number>-1</number>
+       </property>
+      </widget>
+     </item>
+     <item row="12" column="0">
       <spacer name="verticalSpacer">
        <property name="orientation">
         <enum>Qt::Vertical</enum>
@@ -43,55 +57,69 @@
        </property>
       </spacer>
      </item>
-     <item row="3" column="2">
-      <widget class="QLabel" name="label_4">
+     <item row="4" column="1">
+      <widget class="QCheckBox" name="autoGain_checkBox">
+       <property name="toolTip">
+        <string>Automatic mic level + limiter (webrtc AGC2)</string>
+       </property>
        <property name="text">
-        <string>%</string>
+        <string>Auto gain</string>
        </property>
       </widget>
      </item>
-     <item row="6" column="0" colspan="3">
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item row="10" column="0" colspan="3">
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
        <item>
-        <widget class="QCheckBox" name="playMusic_checkBox">
+        <widget class="QPushButton" name="btnStartRecording">
          <property name="text">
-          <string>PlayMusic</string>
+          <string> Start Recording </string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="txtMusicPath">
+        <widget class="QPushButton" name="btnStopRecording">
          <property name="text">
-          <string>C:/Users/DeathCrow/Music/La Serenissima (Harty, 22.11.1983).mp3</string>
+          <string>Stop</string>
          </property>
         </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Expanding</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </item>
-     <item row="2" column="2">
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item row="0" column="0">
-      <widget class="QLabel" name="label_5">
+     <item row="7" column="1">
+      <widget class="QCheckBox" name="useDtx_checkBox">
        <property name="text">
-        <string>Max Bandwith:</string>
+        <string>useDtx</string>
        </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QComboBox" name="BandWith_comboBox">
-       <property name="currentIndex">
-        <number>-1</number>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+       <property name="autoRepeat">
+        <bool>false</bool>
+       </property>
+       <property name="autoExclusive">
+        <bool>false</bool>
        </property>
       </widget>
      </item>
@@ -160,10 +188,17 @@
        </item>
       </widget>
      </item>
-     <item row="2" column="0">
-      <widget class="QLabel" name="label_2">
+     <item row="3" column="0">
+      <widget class="QLabel" name="label_3">
        <property name="text">
-        <string>frameMs:</string>
+        <string>Loss Perc:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="2">
+      <widget class="QLabel" name="label_4">
+       <property name="text">
+        <string>%</string>
        </property>
       </widget>
      </item>
@@ -199,31 +234,28 @@
        </item>
       </widget>
      </item>
-     <item row="5" column="0">
-      <widget class="QComboBox" name="noise_comboBox">
-       <property name="toolTip">
-        <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
-       </property>
-      </widget>
-     </item>
-     <item row="4" column="0">
-      <widget class="QCheckBox" name="autoGain_checkBox">
-       <property name="toolTip">
-        <string>Automatic mic level + limiter (webrtc AGC2)</string>
-       </property>
+     <item row="0" column="0">
+      <widget class="QLabel" name="label_5">
        <property name="text">
-        <string>Auto gain</string>
+        <string>Max Bandwith:</string>
        </property>
       </widget>
      </item>
-     <item row="5" column="2">
+     <item row="6" column="1">
       <widget class="QComboBox" name="echoLevel_comboBox">
        <property name="toolTip">
         <string>Higher = your voice is cut less while the speaker plays (more echo may pass). Applied on Start.</string>
        </property>
       </widget>
      </item>
-     <item row="5" column="1">
+     <item row="2" column="0">
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>frameMs:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="1">
       <widget class="QCheckBox" name="LoopBack_checkBox">
        <property name="text">
         <string>Loopback</string>
@@ -236,13 +268,6 @@
        </property>
        <property name="autoExclusive">
         <bool>false</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="0">
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>opusBitrate:</string>
        </property>
       </widget>
      </item>
@@ -291,78 +316,59 @@
        </item>
       </widget>
      </item>
-     <item row="7" column="0" colspan="3">
-      <layout class="QHBoxLayout" name="horizontalLayout">
+     <item row="1" column="0">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>opusBitrate:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="2">
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item row="9" column="0" colspan="3">
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QCheckBox" name="playMusic_checkBox">
+         <property name="text">
+          <string>PlayMusic</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="txtMusicPath">
+         <property name="text">
+          <string>G:/desktop2/sdcard/Download/Music/Shad-Ghadimi/martik.ahooye por kereshmeh.mp3</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="11" column="0" colspan="3">
+      <layout class="QHBoxLayout" name="horizontalLayout_logs">
        <property name="leftMargin">
+        <number>10</number>
+       </property>
+       <property name="topMargin">
+        <number>10</number>
+       </property>
+       <property name="rightMargin">
         <number>10</number>
        </property>
        <property name="bottomMargin">
         <number>10</number>
        </property>
-       <item>
-        <widget class="QPushButton" name="btnStartRecording">
-         <property name="text">
-          <string>Start</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnStopRecording">
-         <property name="text">
-          <string>Stop</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="horizontalSpacer_2">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
       </layout>
-     </item>
-     <item row="3" column="0">
-      <widget class="QLabel" name="label_3">
-       <property name="text">
-        <string>Loss Perc:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="4" column="2">
-      <widget class="QCheckBox" name="echoCancel_checkBox">
-       <property name="toolTip">
-        <string>Remove the speaker sound from the microphone (webrtc echo canceller)</string>
-       </property>
-       <property name="text">
-        <string>Echo cancel</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="4" column="1">
-      <widget class="QCheckBox" name="useDtx_checkBox">
-       <property name="text">
-        <string>useDtx</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-       <property name="autoRepeat">
-        <bool>false</bool>
-       </property>
-       <property name="autoExclusive">
-        <bool>false</bool>
-       </property>
-      </widget>
      </item>
     </layout>
    </widget>

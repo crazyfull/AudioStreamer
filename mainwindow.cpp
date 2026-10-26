@@ -59,6 +59,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->noise_comboBox->addItem("Noise: high");
     ui->noise_comboBox->addItem("Noise: very high");
 
+    ui->echoLevel_comboBox->addItem("Echo: off");
     ui->echoLevel_comboBox->addItem("Echo: default");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 1");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 2");
@@ -125,7 +126,9 @@ void MainWindow::CreateTimer()
     m_lblStats->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     m_lblStats->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_lblStats->setContentsMargins(10, 0, 10, 10);
-    ui->gridLayout->addWidget(m_lblStats, 9, 0, 1, 3);
+    //ui->gridLayout->addWidget(m_lblStats, 9, 0, 1, 3);
+    ui->horizontalLayout_logs->addWidget(m_lblStats);
+
     OnStatsTimer();
 
     connect(&m_StatsTimer, SIGNAL(timeout()), this, SLOT(OnStatsTimer()));
@@ -172,7 +175,7 @@ void MainWindow::initAudio()
     m_AudioConfig.MaxBandwith = ui->BandWith_comboBox->currentData().toInt();
     m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
-    m_AudioConfig.useEchoCancel = ui->echoCancel_checkBox->isChecked();
+    m_AudioConfig.useEchoCancel = ui->echoLevel_comboBox->currentIndex() == 0 ? false: true;
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
     m_AudioConfig.noiseSuppression = ui->noise_comboBox->currentIndex();
     m_AudioConfig.autoGain = ui->autoGain_checkBox->isChecked();
