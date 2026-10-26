@@ -64,10 +64,15 @@ static int16_t clip(double v)
 
 int main(int argc, char **argv)
 {
-    const int renderRate = argc > 1 ? std::atoi(argv[1]) : 48000;
-    if(kCapRate % renderRate != 0){ std::printf("renderRate must divide 48000\n"); return 2; }
+    // arguments in any order: "noref" and/or a render rate
+    int renderRate = 48000;
+    bool noref = false;
+    for(int i = 1; i < argc; i++){
+        if(std::string(argv[i]) == "noref") noref = true;
+        else renderRate = std::atoi(argv[i]);
+    }
+    if(renderRate <= 0 || kCapRate % renderRate != 0){ std::printf("renderRate must divide 48000\n"); return 2; }
     const int decim = kCapRate / renderRate;
-    const bool noref = argc > 2 && std::string(argv[2]) == "noref";
 
     // pass-through sanity: not initialized -> output == input
     {
