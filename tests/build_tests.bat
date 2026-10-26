@@ -61,9 +61,21 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\e2e_aec.exe" tests\e2e_aec.cpp tests\
    /link "%OPUS_LIB%" %LIBLIST% %SYSLIBS% || goto fail
 
 echo.
+echo === unit_test.exe  (no webrtc needed)
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp src\jitterBuffer.cpp src\opusCodec.cpp ^
+   /link "%OPUS_LIB%" || goto fail
+
+echo.
+echo === noalloc_test.exe  (no webrtc needed)
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\noalloc_test.exe" tests\noalloc_test.cpp tests\stub\audioDevice_stub.cpp ^
+   src\clsAudioRecorder.cpp src\opusCodec.cpp /link "%OPUS_LIB%" || goto fail
+
+echo.
 echo Built OK. Run:
 echo     tests\bin\aec_test.exe             (add "noref" for the control run, it must show about 0 dB)
 echo     tests\bin\e2e_aec.exe
+echo     tests\bin\unit_test.exe            (must end with ALL PASS)
+echo     tests\bin\noalloc_test.exe         (must end with PASS)
 popd
 exit /b 0
 

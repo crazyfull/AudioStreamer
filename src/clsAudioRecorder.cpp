@@ -62,8 +62,14 @@ void clsAudioRecorder::Start()
     if(m_input.isRunning())
         return;
 
+    const size_t frameChunk = size_t(m_pConfig->frameSamples()) * m_pConfig->channels;
     m_cache.clear();
-    m_cache.reserve(size_t(m_pConfig->frameSamples()) * m_pConfig->channels * 2);
+    m_cache.reserve(frameChunk);                    // holds the < 1 frame tail
+    // device chunks are 10 ms; 100 ms of room means even odd driver chunk sizes never reallocate
+    m_scratch.clear();
+    m_scratch.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_encoded.reserve(1500);
+    m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
     m_musicPos = 0;
 
@@ -78,6 +84,7 @@ void clsAudioRecorder::Stop()
 {
     m_input.stop();         // returns when the callback is guaranteed to be finished
     m_cache.clear();
+    m_scratch.clear();
 }
 
 // audio thread
@@ -87,50 +94,50 @@ void clsAudioRecorder::onCapture(const int16_t *pcm, uint32_t frames)
         return;
 
     const size_t count = size_t(frames) * m_pConfig->channels;
+    const int16_t *src = pcm;       // what goes to the encoder for this device chunk
+    size_t n = count;
 
     if(m_pConfig->playMusic){
         // the mic only acts as a clock: the same amount of samples is taken from the music file
-        size_t avail = m_musicPos < m_music.size() ? m_music.size() - m_musicPos : 0;
-        size_t n = std::min(count, avail);
-        m_cache.insert(m_cache.end(), m_music.begin() + m_musicPos, m_music.begin() + m_musicPos + n);
-        m_cache.insert(m_cache.end(), count - n, int16_t(0));   // file ended -> silence
-        m_musicPos += n;
+        const size_t avail = m_musicPos < m_music.size() ? m_music.size() - m_musicPos : 0;
+        const size_t take = std::min(count, avail);
+        m_scratch.resize(count);
+        std::copy(m_music.begin() + m_musicPos, m_music.begin() + m_musicPos + take, m_scratch.begin());
+        std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // file ended -> silence
+        m_musicPos += take;
+        src = m_scratch.data();
     }else if(m_aec && m_aec->isReady()){
-        // echo-free samples are appended to the cache (less than 10 ms can stay inside the canceller)
-        m_aec->capture(pcm, frames, m_cache);
-    }else{
-        m_cache.insert(m_cache.end(), pcm, pcm + count);
+        // echo-free samples (less than 10 ms can stay inside the canceller)
+        m_scratch.clear();
+        m_aec->capture(pcm, frames, m_scratch);
+        src = m_scratch.data();
+        n = m_scratch.size();
     }
 
     // opus needs EXACT frames (e.g. 20ms), device chunks have arbitrary sizes -> cut them
-    const int frameSamples = m_pConfig->frameSamples();
-    const size_t chunk = size_t(frameSamples) * m_pConfig->channels;
-    size_t off = 0;
+    const size_t chunk = size_t(m_pConfig->frameSamples()) * m_pConfig->channels;
+    cutBlocks(m_cache, chunk, src, n, [this](const int16_t *frame){ onFrame(frame); });
+}
 
-    while(m_cache.size() - off >= chunk){
-        Bytes encoded = m_pOpus->Encode(m_cache.data() + off, frameSamples);
-        off += chunk;
+// audio thread: one frame -> (maybe) one datagram
+void clsAudioRecorder::onFrame(const int16_t *frame)
+{
+    const uint16_t seq = m_seq++;     // every frame consumes a number, even silent ones
 
-        const uint16_t seq = m_seq++;     // every frame consumes a number, even silent ones
-
-        if(encoded.empty()){
-            m_marker = true;
-            continue;
-        }
-
-        // DTX: 1-2 byte packets mean "silence", nothing to transmit.
-        // The next real packet gets the marker so the receiver knows it was silence, not loss.
-        if(m_pConfig->useDtx && encoded.size() <= 2){
-            m_marker = true;
-            continue;
-        }
-
-        Bytes datagram = VoicePacket::wrap(seq, m_marker, m_tx++, encoded);
-        m_marker = false;
-        if(m_handler)
-            m_handler(datagram);
+    if(!m_pOpus->Encode(frame, m_pConfig->frameSamples(), m_encoded)){
+        m_marker = true;
+        return;
     }
 
-    if(off)
-        m_cache.erase(m_cache.begin(), m_cache.begin() + off);
+    // DTX: 1-2 byte packets mean "silence", nothing to transmit.
+    // The next real packet gets the marker so the receiver knows it was silence, not loss.
+    if(m_pConfig->useDtx && m_encoded.size() <= 2){
+        m_marker = true;
+        return;
+    }
+
+    VoicePacket::wrapInto(m_datagram, seq, m_marker, m_tx++, m_encoded);
+    m_marker = false;
+    if(m_handler)
+        m_handler(m_datagram);
 }

@@ -13,14 +13,22 @@ namespace VoicePacket
     const uint8_t FlagMarker = 0x01;
     const uint8_t TxMask = 0x7F;
 
-    inline Bytes wrap(uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
+    // Writes the datagram into `p` (cleared first). Reusing the same `p` every time means no allocation
+    // after the first packet: this is what the audio thread uses.
+    inline void wrapInto(Bytes &p, uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
     {
-        Bytes p;
-        p.reserve(HeaderSize + opusPayload.size());
+        p.clear();
         p.push_back(uint8_t((marker ? FlagMarker : 0) | ((tx & TxMask) << 1)));
         p.push_back(uint8_t(seq & 0xFF));
         p.push_back(uint8_t((seq >> 8) & 0xFF));
         p.insert(p.end(), opusPayload.begin(), opusPayload.end());
+    }
+
+    inline Bytes wrap(uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
+    {
+        Bytes p;
+        p.reserve(HeaderSize + opusPayload.size());
+        wrapInto(p, seq, marker, tx, opusPayload);
         return p;
     }
 

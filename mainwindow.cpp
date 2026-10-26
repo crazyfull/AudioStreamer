@@ -275,12 +275,17 @@ void MainWindow::OnStatsTimer()
     };
 
     // "last 5 seconds": compare with the snapshot taken 5 seconds ago
-    m_statHistory.append(qMakePair(st.received, st.lost));
+    // st.lost is a NET number (it goes down again when a packet counted lost arrives late), so its difference
+    // is wrong. lostEvents and reordered only ever grow: lost in the window = new losses - new late arrivals.
+    const StatSnapshot snap = { st.received, st.lostEvents, st.reordered };
+    m_statHistory.append(snap);
     while(m_statHistory.size() > 6)
         m_statHistory.removeFirst();
     const auto &old = m_statHistory.first();
-    quint32 recv5 = st.received - old.first;
-    quint32 lost5 = st.lost > old.second ? st.lost - old.second : 0;
+    const quint32 recv5 = st.received - old.received;
+    const quint32 newLost = st.lostEvents - old.lostEvents;
+    const quint32 newLate = st.reordered - old.reordered;
+    const quint32 lost5 = newLost > newLate ? newLost - newLate : 0;   // a late one can belong to an earlier window
 
     QString t;
     t += QString("Received : %1 packets\n").arg(st.received);
@@ -291,6 +296,8 @@ void MainWindow::OnStatsTimer()
              .arg(st.fec).arg(st.plc).arg(st.late).arg(st.reordered);
     t += QString("Buffer   : %1 frames (%2 ms)   underruns %3")
              .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
+    if(st.ingestDropped)
+        t += QString("   dropped before buffer %1").arg(st.ingestDropped);
 
     EchoCanceller::Stats aec;
     if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->getStats(aec)){

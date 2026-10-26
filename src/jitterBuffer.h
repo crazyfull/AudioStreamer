@@ -14,8 +14,12 @@ class JitterBuffer
 public:
     struct Stats {
         uint32_t received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
-        uint32_t lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted)
+        uint32_t lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted).
+                                  // Net value: goes DOWN again when a packet that was counted lost arrives late.
         uint32_t reordered = 0;   // arrived out of order (first counted as lost, then taken back)
+        uint32_t lostEvents = 0;  // every packet ever counted lost, NEVER decreased. For windowed figures use
+                                  // delta(lostEvents) - delta(reordered), not delta(lost) (which can go backwards).
+        uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (clsAudioPlayer's queue was full)
     };
 
     JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
@@ -24,6 +28,8 @@ public:
     // Returns exactly one frame of PCM, or an empty vector when there is nothing to
     // play (prefilling after start / after a long gap or DTX silence).
     Pcm PopFrame();
+    // Same, but writes into `out` (reuses its capacity: no allocation once warmed up). false = nothing to play.
+    bool PopFrame(Pcm &out);
     // true if PopFrame() would return real, on-time audio (no concealment needed).
     bool HasFrameReady() const;
 
@@ -41,6 +47,7 @@ private:
 
     std::set<int64_t> m_seen;         // recently received sequence numbers
     uint8_t m_lastTx;                 // tx counter of the newest packet
+    bool m_dtxSeen;                   // the sender skips silent frames (DTX): sequence gaps are then NOT losses
     std::map<int64_t, Pkt> m_buf;     // key = extended (32bit+) sequence
     bool m_playing;
     bool m_haveSeq;
@@ -59,7 +66,7 @@ private:
     int m_catchUpSlack;
     int m_shrinkAfter;
 
-    Pcm takeNext();
+    bool takeNext(Pcm &out);
 };
 
 #endif // JITTERBUFFER_H

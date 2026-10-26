@@ -2,6 +2,7 @@
 #define AUDIOCONFIG_H
 
 #include <string>
+#include <cstdio>
 
 /*
 NB (narrowband)             4 kHz   8 kHz
@@ -40,6 +41,32 @@ struct AudioConfig
     int renderRate() const {
         return (outputRate == 8000 || outputRate == 12000 || outputRate == 16000 ||
                 outputRate == 24000 || outputRate == 48000) ? outputRate : 48000;
+    }
+
+    // Rejects values Opus can't use, so a bad form entry fails at start-up with a clear message
+    // instead of giving bad quality or odd behaviour later. `err` (optional) gets the reason.
+    bool validate(std::string *err = nullptr) const {
+        auto fail = [&](const char *what, int v){
+            if(err){
+                char b[96];
+                std::snprintf(b, sizeof(b), "invalid audio config: %s = %d", what, v);
+                *err = b;
+            }
+            return false;
+        };
+        if(!(inputRate == 8000 || inputRate == 12000 || inputRate == 16000 || inputRate == 24000 || inputRate == 48000))
+            return fail("inputRate (Opus: 8000/12000/16000/24000/48000)", inputRate);
+        if(channels < 1 || channels > 2)
+            return fail("channels (1 or 2)", channels);
+        if(!(frameMs == 5 || frameMs == 10 || frameMs == 20 || frameMs == 40 || frameMs == 60))
+            return fail("frameMs (5/10/20/40/60)", frameMs);
+        if(opusBitrate < 500 || opusBitrate > 512000)
+            return fail("opusBitrate (500..512000 bps)", opusBitrate);
+        if(expectedLossPerc < 0 || expectedLossPerc > 100)
+            return fail("expectedLossPerc (0..100)", expectedLossPerc);
+        if(MaxBandwith < 1101 || MaxBandwith > 1105)
+            return fail("MaxBandwith (1101..1105)", MaxBandwith);
+        return true;
     }
 
     int frameSamples() const {

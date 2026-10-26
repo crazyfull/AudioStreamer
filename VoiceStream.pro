@@ -120,6 +120,8 @@ HEADERS += \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
     src/echoCanceller.h \
+    src/blockCutter.h \
+    src/packetQueue.h \
     src/jitterBuffer.h \
     src/VoicePacket.h \
     src/opusCodec.h
