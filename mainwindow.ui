@@ -62,7 +62,7 @@
        <item>
         <widget class="QLineEdit" name="txtMusicPath">
          <property name="text">
-          <string>C:\Users\DeathCrow\Downloads\Music\Rondò Veneziano - La Serenissima (Harty, 22.11.1983).wav</string>
+          <string>C:/Users/DeathCrow/Music/La Serenissima (Harty, 22.11.1983).mp3</string>
          </property>
         </widget>
        </item>
