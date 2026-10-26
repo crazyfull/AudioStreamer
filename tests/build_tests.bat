@@ -7,9 +7,11 @@ rem
 rem Start it from "x64 Native Tools Command Prompt for VS 2019":   tests\build_tests.bat
 rem
 rem Settings (change here or set the variable before running):
-rem   WEBRTC_INC   folder that contains modules\audio_processing\include\audio_processing.h (and absl\)
-rem   WEBRTC_LIBS  folder with the webrtc + abseil libraries: every *.lib and *.a in it is linked
-rem   CRT          /MT (same as VoiceStream.pro) or /MD. MUST be the same runtime the webrtc libs were built with.
+rem Defaults are taken from VoiceStream.pro (win32 section): ..\webRTC-audio-process\install\...
+rem   WEBRTC_ROOT  the "install" folder of webrtc-audio-processing (contains include\ and lib\)
+rem   WEBRTC_LIB   the library file that VoiceStream.pro links (libwebrtc-audio-processing-1.lib)
+rem   WEBRTC_EXTRA extra libs, only if the link asks for them (e.g. abseil .lib files), optional
+rem   CRT          /MT (same as VoiceStream.pro release) or /MD. MUST be the runtime the webrtc lib was built with.
 rem ===========================================================================
 setlocal EnableDelayedExpansion
 
@@ -18,8 +20,11 @@ pushd "%ROOT%" || exit /b 1
 set "ROOT=%CD%"
 
 if "%CRT%"=="" set "CRT=/MT"
-if "%WEBRTC_INC%"=="" set "WEBRTC_INC=%ROOT%\..\webRTC-audio-process\install\include\webrtc-audio-processing-1"
-if "%WEBRTC_LIBS%"=="" set "WEBRTC_LIBS=%ROOT%\..\webRTC-audio-process\install\lib"
+if "%WEBRTC_ROOT%"=="" set "WEBRTC_ROOT=%ROOT%\..\webRTC-audio-process\install"
+if "%WEBRTC_LIB%"=="" set "WEBRTC_LIB=%WEBRTC_ROOT%\lib\libwebrtc-audio-processing-1.lib"
+rem same two include folders as VoiceStream.pro: webrtc headers, and install\include (abseil)
+set "WEBRTC_INC=%WEBRTC_ROOT%\include\webrtc-audio-processing-1"
+set "WEBRTC_INC2=%WEBRTC_ROOT%\include"
 set "OPUS_INC=%ROOT%\libs\opus\win32\include"
 set "OPUS_LIB=%ROOT%\libs\opus\win32\libopus_x64.lib"
 
@@ -30,21 +35,20 @@ if not exist "%WEBRTC_INC%\modules\audio_processing\include\audio_processing.h" 
     goto fail
 )
 if not exist "%OPUS_LIB%" (echo [error] %OPUS_LIB% not found & goto fail)
+if not exist "%WEBRTC_LIB%" (echo [error] %WEBRTC_LIB% not found & goto fail)
 
-rem every library of the webrtc folder (webrtc itself + abseil + helper libs)
-set "LIBLIST="
-for %%f in ("%WEBRTC_LIBS%\*.lib" "%WEBRTC_LIBS%\*.a") do set LIBLIST=!LIBLIST! "%%~ff"
-if "%LIBLIST%"=="" (echo [error] no .lib / .a files in WEBRTC_LIBS=%WEBRTC_LIBS% & goto fail)
+set LIBLIST="%WEBRTC_LIB%" %WEBRTC_EXTRA%
 
 echo CRT      : %CRT%
-echo webrtc   : %WEBRTC_INC%
-echo libs     : %WEBRTC_LIBS%
+echo include  : %WEBRTC_INC%
+echo include  : %WEBRTC_INC2%
+echo lib      : %WEBRTC_LIB% %WEBRTC_EXTRA%
 echo.
 
 if not exist tests\bin mkdir tests\bin
 if not exist tests\obj mkdir tests\obj
 
-set "CFLAGS=/nologo /std:c++17 /EHsc /O2 %CRT% /utf-8 /W3 /D_USE_MATH_DEFINES /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /Isrc /I"%WEBRTC_INC%" /I"%OPUS_INC%""
+set CFLAGS=/nologo /std:c++17 /EHsc /O2 %CRT% /utf-8 /W3 /D_USE_MATH_DEFINES /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /Isrc /I"%WEBRTC_INC%" /I"%WEBRTC_INC2%" /I"%OPUS_INC%"
 set "SYSLIBS=winmm.lib dbghelp.lib advapi32.lib ws2_32.lib"
 
 echo === aec_test.exe
