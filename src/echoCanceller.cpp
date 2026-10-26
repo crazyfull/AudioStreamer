@@ -124,10 +124,25 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
         return fail("echo canceller: cannot create AudioProcessing");
 
     webrtc::AudioProcessing::Config cfg;
-    cfg.echo_canceller.enabled = true;
+    cfg.echo_canceller.enabled = opt.echoCancel;
     cfg.echo_canceller.mobile_mode = false;          // AEC3 (full), not AECM
     cfg.high_pass_filter.enabled = opt.highPassFilter;
-    // everything else (noise suppression, AGC, ...) stays disabled on purpose
+
+    if(opt.noiseSuppression > 0){
+        using Level = webrtc::AudioProcessing::Config::NoiseSuppression::Level;
+        cfg.noise_suppression.enabled = true;
+        switch(opt.noiseSuppression){
+        case 1:  cfg.noise_suppression.level = Level::kLow; break;
+        case 2:  cfg.noise_suppression.level = Level::kModerate; break;
+        case 3:  cfg.noise_suppression.level = Level::kHigh; break;
+        default: cfg.noise_suppression.level = Level::kVeryHigh; break;
+        }
+    }
+    if(opt.autoGain){
+        // AGC2 digital only (no OS volume control): adaptive gain + limiter
+        cfg.gain_controller2.enabled = true;
+        cfg.gain_controller2.adaptive_digital.enabled = true;
+    }
     apm->ApplyConfig(cfg);
 
     d->capCfg = webrtc::StreamConfig(captureRate, size_t(channels));

@@ -1,7 +1,8 @@
 #ifndef ECHOCANCELLER_H
 #define ECHOCANCELLER_H
 
-// Acoustic echo cancellation (AEC3 from webrtc-audio-processing 1.3), Qt-free.
+// Acoustic echo cancellation (AEC3 from webrtc-audio-processing 1.3) + optional noise suppression
+// and automatic gain (AGC2) on the same mic stream, Qt-free.
 // The webrtc headers are only included by echoCanceller.cpp, nothing else depends on them.
 //
 // How it works: the AEC must know what the speaker plays (far end / "render") to remove it from
@@ -35,6 +36,12 @@ public:
         // (double talk). 0 = webrtc defaults. Higher = your voice is cut less, but a little more echo
         // can pass. Try 1..3 when your voice breaks up (mic very close to the speaker, loud speaker).
         int  nearendProtection = 0;     // 0..3
+
+        bool echoCancel = true;         // false = only the other processing below (render() is then ignored)
+
+        // other webrtc processing on the mic signal (same 10 ms blocks, no extra latency)
+        int  noiseSuppression = 0;      // 0 = off, 1 = low, 2 = moderate, 3 = high, 4 = very high
+        bool autoGain = false;          // AGC2: evens out the level (adaptive digital gain) + limiter against clipping
     };
 
     struct Stats
