@@ -13,3 +13,6 @@ g++ -std=c++17 -O2 -pthread -Isrc $WEBRTC tests/aec_test.cpp src/echoCanceller.c
 2) whole pipeline, loopback through a simulated room (~20 s real time): recorder + opus + player + canceller
 g++ -std=c++17 -O2 -pthread -Isrc $WEBRTC tests/e2e_aec.cpp tests/stub/audioDevice_room_stub.cpp src/echoCanceller.cpp \
     src/clsAudioRecorder.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o e2e_aec $WEBRTC_LIBS
+
+Windows (MSVC 2019 x64): tests\build_tests.bat builds both echo canceller tests into tests\bin
+(run it from "x64 Native Tools Command Prompt for VS 2019"; settings are at the top of the file).
