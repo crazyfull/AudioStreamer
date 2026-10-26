@@ -32,6 +32,25 @@ win32 {
     INCLUDEPATH += $$PWD/libs/opus/win32/include
     DEPENDPATH += $$PWD/libs/opus/win32/include
 
+    # Echo cancellation: webrtc-audio-processing 1.3, static. Build it with libs/webrtc/build_win.bat
+    # (headers + libs land in libs/webrtc/win32). Debug and release need their own lib: /MTd and /MT can't be mixed.
+    INCLUDEPATH += $$PWD/libs/webrtc/win32/include
+    DEPENDPATH += $$PWD/libs/webrtc/win32/include
+    contains(QMAKE_TARGET.arch, x86_64) {
+        CONFIG(debug, debug|release) {
+            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64d.lib
+        } else {
+            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x64.lib
+        }
+    } else {
+        CONFIG(debug, debug|release) {
+            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86d.lib
+        } else {
+            LIBS += $$PWD/libs/webrtc/win32/webrtc_apm_x86.lib
+        }
+    }
+    LIBS += winmm.lib dbghelp.lib advapi32.lib     # used by webrtc / abseil
+
     QMAKE_CFLAGS_RELEASE += /MT
     QMAKE_CXXFLAGS_RELEASE += /MT
     QMAKE_CFLAGS_DEBUG += /MTd
@@ -58,6 +77,11 @@ linux {
 
     # miniaudio loads ALSA/Pulse/JACK dynamically
     LIBS += -ldl -lpthread -lm
+
+    # Echo cancellation: libwebrtc-audio-processing-1-dev (Ubuntu 24.10+/Debian 13), or build 1.3 with
+    # meson and `ninja install` (see libs/webrtc/README.md). Found through pkg-config (shared lib).
+    CONFIG += link_pkgconfig
+    PKGCONFIG += webrtc-audio-processing-1
 }
 
 macx {
@@ -71,6 +95,7 @@ SOURCES += \
     src/audioDevice.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
+    src/echoCanceller.cpp \
     src/jitterBuffer.cpp \
     src/opusCodec.cpp
 
@@ -81,6 +106,7 @@ HEADERS += \
     src/audioDevice.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
+    src/echoCanceller.h \
     src/jitterBuffer.h \
     src/VoicePacket.h \
     src/opusCodec.h

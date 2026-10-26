@@ -29,6 +29,16 @@ struct AudioConfig
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
     int MaxBandwith = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
+    // ---- echo cancellation (webrtc-audio-processing, see echoCanceller.h) ----
+    bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
+    int aecDelayMs = 50;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
+
+    // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000
+    int renderRate() const {
+        return (outputRate == 8000 || outputRate == 12000 || outputRate == 16000 ||
+                outputRate == 24000 || outputRate == 48000) ? outputRate : 48000;
+    }
+
     int frameSamples() const {
         return inputRate * frameMs / 1000; //per channel
     }

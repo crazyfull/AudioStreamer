@@ -95,6 +95,9 @@ void clsAudioRecorder::onCapture(const int16_t *pcm, uint32_t frames)
         m_cache.insert(m_cache.end(), m_music.begin() + m_musicPos, m_music.begin() + m_musicPos + n);
         m_cache.insert(m_cache.end(), count - n, int16_t(0));   // file ended -> silence
         m_musicPos += n;
+    }else if(m_aec && m_aec->isReady()){
+        // echo-free samples are appended to the cache (less than 10 ms can stay inside the canceller)
+        m_aec->capture(pcm, frames, m_cache);
     }else{
         m_cache.insert(m_cache.end(), pcm, pcm + count);
     }

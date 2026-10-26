@@ -71,3 +71,5 @@ Thumbs.db
 *.dll
 *.exe
 
+# webrtc-audio-processing build folders (libs/webrtc/build_win.bat)
+libs/webrtc/_build_*/
