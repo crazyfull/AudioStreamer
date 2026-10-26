@@ -26,6 +26,8 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include "modules/audio_processing/include/audio_processing.h"
+#include "api/audio/echo_canceller3_config.h"
+#include "api/audio/echo_canceller3_factory.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -33,6 +35,7 @@
 #include "echoCanceller.h"
 #include <atomic>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 struct EchoCanceller::Impl
@@ -81,7 +84,28 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
         return fail("echo canceller: only 1 or 2 channels are supported");
 
     // Create() returns an object with reference count 0: the scoped_refptr takes the first reference.
-    rtc::scoped_refptr<webrtc::AudioProcessing> apm(webrtc::AudioProcessingBuilder().Create());
+    webrtc::AudioProcessingBuilder builder;
+    if(opt.nearendProtection > 0){
+        // Tune only the "is the near end (my voice) dominant?" detector of the suppressor: the earlier it
+        // decides "dominant", the less the suppressor gates the mic. Level 0 keeps the webrtc defaults.
+        struct Level { float enr; float enrExit; float snr; int hold; };
+        static const Level levels[] = {
+            { 0.25f, 0.10f, 30.f,  50 },    // 0: defaults (not used here)
+            { 0.40f, 0.20f, 25.f,  75 },    // 1
+            { 0.60f, 0.30f, 20.f, 100 },    // 2
+            { 1.00f, 0.50f, 15.f, 150 },    // 3
+        };
+        const int lv = opt.nearendProtection > 3 ? 3 : opt.nearendProtection;
+
+        webrtc::EchoCanceller3Config ec3;
+        ec3.suppressor.dominant_nearend_detection.enr_threshold = levels[lv].enr;
+        ec3.suppressor.dominant_nearend_detection.enr_exit_threshold = levels[lv].enrExit;
+        ec3.suppressor.dominant_nearend_detection.snr_threshold = levels[lv].snr;
+        ec3.suppressor.dominant_nearend_detection.hold_duration = levels[lv].hold;
+        webrtc::EchoCanceller3Config::Validate(&ec3);     // clamps anything out of range
+        builder.SetEchoControlFactory(std::make_unique<webrtc::EchoCanceller3Factory>(ec3));
+    }
+    rtc::scoped_refptr<webrtc::AudioProcessing> apm(builder.Create());
     if(!apm)
         return fail("echo canceller: cannot create AudioProcessing");
 

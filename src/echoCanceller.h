@@ -30,6 +30,11 @@ public:
         // WebRTC refines it by itself, it is only a starting hint. 0 = don't give a hint.
         int  streamDelayMs  = 50;
         bool highPassFilter = true;     // removes DC / rumble from the mic (recommended with AEC)
+
+        // How hard the AEC3 suppressor protects YOUR voice while the speaker plays at the same time
+        // (double talk). 0 = webrtc defaults. Higher = your voice is cut less, but a little more echo
+        // can pass. Try 1..3 when your voice breaks up (mic very close to the speaker, loud speaker).
+        int  nearendProtection = 0;     // 0..3
     };
 
     struct Stats

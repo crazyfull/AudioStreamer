@@ -53,6 +53,11 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->BandWith_comboBox->addItem("Supper-wideband - 12 kHz	24 kHz", OPUS_BANDWIDTH_SUPERWIDEBAND);
     ui->BandWith_comboBox->addItem("fullband - 20 kHz	48 kHz", OPUS_BANDWIDTH_FULLBAND);
 
+    ui->echoLevel_comboBox->addItem("Echo: default");
+    ui->echoLevel_comboBox->addItem("Echo: protect voice 1");
+    ui->echoLevel_comboBox->addItem("Echo: protect voice 2");
+    ui->echoLevel_comboBox->addItem("Echo: protect voice 3");
+
     ui->statusbar->showMessage("idle");
 }
 
@@ -162,6 +167,7 @@ void MainWindow::initAudio()
     m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
     m_AudioConfig.useEchoCancel = ui->echoCancel_checkBox->isChecked();
+    m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
 
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
@@ -169,6 +175,7 @@ void MainWindow::initAudio()
         auto aec = std::make_shared<EchoCanceller>();
         EchoCanceller::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;
+        opt.nearendProtection = m_AudioConfig.aecNearendProtection;
         std::string err;
         if(aec->init(m_AudioConfig.inputRate, m_AudioConfig.renderRate(), m_AudioConfig.channels, opt, &err))
             m_pAec = aec;
