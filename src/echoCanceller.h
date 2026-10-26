@@ -29,7 +29,7 @@ public:
     {
         // Estimated time from render() to the speaker output + from the mic to capture().
         // WebRTC refines it by itself, it is only a starting hint. 0 = don't give a hint.
-        int  streamDelayMs  = 50;
+        int  streamDelayMs  = 100;
         bool highPassFilter = true;     // removes DC / rumble from the mic (recommended with AEC)
 
         // How hard the AEC3 suppressor protects YOUR voice while the speaker plays at the same time
