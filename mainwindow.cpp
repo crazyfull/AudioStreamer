@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "src/clsAudioRecorder.h"
 #include "src/clsAudioPlayer.h"
+#include "src/echoCanceller.h"
 #include <QDebug>
 #include <QUdpSocket>
 #include <QTcpSocket>
@@ -141,6 +142,8 @@ void MainWindow::initAudio()
 
     }
 
+    m_pAec.reset();     // the old recorder/player are gone, nothing uses it anymore
+
     m_pAudioRecorder = new clsAudioRecorder();
     m_pAudioPlayer = new clsAudioPlayer();
 
@@ -158,8 +161,22 @@ void MainWindow::initAudio()
     m_AudioConfig.MaxBandwith = ui->BandWith_comboBox->currentData().toInt();
     m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
+    m_AudioConfig.useEchoCancel = ui->echoCancel_checkBox->isChecked();
 
-
+    // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
+    // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
+    if(m_AudioConfig.useEchoCancel && !m_AudioConfig.playMusic){
+        auto aec = std::make_shared<EchoCanceller>();
+        EchoCanceller::Options opt;
+        opt.streamDelayMs = m_AudioConfig.aecDelayMs;
+        std::string err;
+        if(aec->init(m_AudioConfig.inputRate, m_AudioConfig.renderRate(), m_AudioConfig.channels, opt, &err))
+            m_pAec = aec;
+        else
+            AUDIO_WARN("echo canceller disabled: %s", err.c_str());
+    }
+    m_pAudioRecorder->SetEchoCanceller(m_pAec);
+    m_pAudioPlayer->SetEchoCanceller(m_pAec);       // before SetConfig: that starts the speaker
 
     m_pAudioRecorder->SetConfig(&m_AudioConfig);
     m_pAudioPlayer->SetConfig(&m_AudioConfig);
@@ -255,6 +272,14 @@ void MainWindow::OnStatsTimer()
              .arg(st.fec).arg(st.plc).arg(st.late).arg(st.reordered);
     t += QString("Buffer   : %1 frames (%2 ms)   underruns %3")
              .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
+
+    EchoCanceller::Stats aec;
+    if(m_pAec && m_pAec->getStats(aec)){
+        t += aec.hasDelay ? QString("\nEcho     : cancelling, estimated echo delay %1 ms").arg(aec.delayMs)
+                          : QString("\nEcho     : cancelling (still measuring the delay)");
+    }else{
+        t += "\nEcho     : off";
+    }
     m_lblStats->setText(t);
 }
 

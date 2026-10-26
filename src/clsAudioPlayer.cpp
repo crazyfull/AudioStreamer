@@ -22,11 +22,6 @@ void clsAudioPlayer::SetConfig(AudioConfig *pConfig)
     init();
 }
 
-static bool isOpusRate(int r)
-{
-    return r == 8000 || r == 12000 || r == 16000 || r == 24000 || r == 48000;
-}
-
 void clsAudioPlayer::init()
 {
     if(m_output.isRunning() || !m_pConfig)
@@ -34,7 +29,7 @@ void clsAudioPlayer::init()
 
     // Opus decoder can output 8/12/16/24/48k. miniaudio converts rate/channels to what the
     // real speaker needs, so there is no "format not supported" fallback anymore.
-    m_rate = isOpusRate(m_pConfig->outputRate) ? m_pConfig->outputRate : 48000;
+    m_rate = m_pConfig->renderRate();
     m_channels = m_pConfig->channels;
 
     auto codec = std::make_unique<opusCodec>();
@@ -83,6 +78,11 @@ void clsAudioPlayer::onDeviceData(int16_t *out, uint32_t frames)
 
     if(done < need)
         std::memset(out + done, 0, (need - done) * sizeof(int16_t));
+
+    // the canceller must see EXACTLY what goes to the speaker, silence included.
+    // Outside the lock: it must not delay the network thread that calls Play().
+    if(m_aec)
+        m_aec->render(out, frames);
 }
 
 void clsAudioPlayer::Play(const uint8_t *datagram, size_t size)

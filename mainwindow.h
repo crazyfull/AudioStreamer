@@ -7,9 +7,12 @@
 #include <QDateTime>
 #include <QList>
 #include <QPair>
+#include <memory>
 
 #include "src/AudioConfig.h"
 //#include "src/clsAudioRecorder.h"
+
+class EchoCanceller;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -21,6 +24,7 @@ class MainWindow : public QMainWindow
 private:
     class clsAudioRecorder *m_pAudioRecorder = nullptr;
     class clsAudioPlayer *m_pAudioPlayer  = nullptr;
+    std::shared_ptr<EchoCanceller> m_pAec;      // shared by recorder (mic) and player (speaker)
     AudioConfig m_AudioConfig;
     class QUdpSocket *m_pUDPClient;
     class QTcpSocket *m_pTCPClient;

@@ -7,6 +7,7 @@
 #include "AudioConfig.h"
 #include "audioDevice.h"
 #include "opusCodec.h"
+#include "echoCanceller.h"
 
 // Capture side: microphone (or a music file) -> opus packets. No Qt.
 // The packet handler is called on the AUDIO THREAD, once per datagram:
@@ -21,6 +22,7 @@ private:
     AudioConfig *m_pConfig;
     std::unique_ptr<opusCodec> m_pOpus;
     PacketHandler m_handler;
+    std::shared_ptr<EchoCanceller> m_aec;   // shared with clsAudioPlayer (it feeds the speaker signal)
 
     Pcm m_cache;                      // mic samples that don't fill a whole opus frame yet
     uint16_t m_seq;                   // +1 per frame (also for frames skipped by DTX)
@@ -41,6 +43,8 @@ public:
     ~clsAudioRecorder();
     void SetConfig(AudioConfig *pConfig);
     void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
+    // optional echo canceller, the SAME instance as the player's. Call before Start(). Ignored while playing music.
+    void SetEchoCanceller(std::shared_ptr<EchoCanceller> aec) { m_aec = std::move(aec); }
     void Start();
     void Stop();
 };
