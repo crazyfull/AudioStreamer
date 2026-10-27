@@ -36,7 +36,8 @@ private:
     struct StatSnapshot { quint32 received, lostEvents, reordered; };
     QList<StatSnapshot> m_statHistory;      // once per second, for the "last 5s" figures
 
-    qint64    m_Rate;
+    qint64    m_Rate;       // bytes sent in the current 5 s window
+    qint64    m_RxRate;     // bytes received in the current 5 s window
     QByteArray m_lostpck;
     QDateTime aTime;
     QDateTime bTime;
