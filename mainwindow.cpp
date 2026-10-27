@@ -119,6 +119,7 @@ void MainWindow::CreateTimer()
     m_RateTimer.setInterval(5*1000);
     m_RateTimer.start();
     m_Rate = 0;
+    m_RxRate = 0;
     ui->statusbar->showMessage("0");
 
     // ---- live receive statistics (packet loss etc.), below the controls
@@ -231,15 +232,16 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
 
     /**/
     if(ui->LoopBack_checkBox->checkState() == false){
-        SendUDP(encodedBuffer);
+        SendUDP(encodedBuffer);         // counts the sent bytes itself (m_Rate): don't count them again here
     }else{
         // network disabled for now: loopback straight into the player (1 call = 1 opus packet)
         if(m_pAudioPlayer)
             m_pAudioPlayer->Play(reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
+        m_Rate += encodedBuffer.size();     // "sent" and "received" at once
+        m_RxRate += encodedBuffer.size();
     }
 
     //qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
-    m_Rate += encodedBuffer.size();     //for get transfer rate monitor
 }
 
 void MainWindow::onReceiveUDPData(){
@@ -254,6 +256,7 @@ void MainWindow::onReceiveUDPData(){
         if(encodedBuffer.isEmpty())
             continue;
 
+        m_RxRate += encodedBuffer.size();       //for get transfer rate monitor
         if(m_pAudioPlayer)
             m_pAudioPlayer->Play(reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
     }
@@ -316,8 +319,10 @@ void MainWindow::OnRateTimer()
 {
 
     QString  msg;
+    // measured over the 5 s timer interval; counts the app payload (Opus packet + header), without IP/UDP headers
     msg.append("Send Rate: " + GetFormatSize(m_Rate/5) + "/sec    ");
-    msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate/5)*2) + "/sec");
+    msg.append("Receive Rate: " + GetFormatSize(m_RxRate/5) + "/sec    ");
+    msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate + m_RxRate)/5) + "/sec");
 
 
     // ui->txtBuffer->setPlainText( "Send Rate: " + GetFormatSize(m_Rate) + "/sec" );
@@ -327,6 +332,7 @@ void MainWindow::OnRateTimer()
 
 
     m_Rate = 0;
+    m_RxRate = 0;
 }
 
 void MainWindow::OnPlayerTimer()
@@ -432,7 +438,7 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
     if(bypasWithDNS){
         // packet.append(m_DNSpck.data(), m_DNSSize);
     }
-    uint sendSize = 0;
+    qint64 sendSize = 0;        // writeDatagram() returns -1 on error: must stay signed, or the rate counter explodes
     m_packet.append(Buff);
     if(m_packet.length() >= 0){
 
@@ -443,7 +449,8 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
         //
 
 
-        m_Rate += sendSize;       //for get transfer rate monitor
+        if(sendSize > 0)
+            m_Rate += sendSize;       //for get transfer rate monitor
 
         m_packet.clear();
     }
