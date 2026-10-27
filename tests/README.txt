@@ -20,5 +20,8 @@ Windows (MSVC 2019 x64): tests\build_tests.bat builds both echo canceller tests 
 Unit tests without webrtc / sound card (Linux; on Windows build_tests.bat builds them as unit_test.exe / noalloc_test.exe):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/unit_test.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o unit_test
       cutBlocks, PacketQueue (2 producer threads), AudioConfig::validate / Opus encoder checks, JitterBuffer loss counters
-  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioRecorder.cpp src/opusCodec.cpp -lopus -o noalloc_test
-      counts operator new while the recorder runs: must be 0 in steady state
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioRecorder.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o noalloc_test
+      counts operator new while recorder and player run (lossy, reordering network): must be 0 in steady state
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc -Itests/ref tests/jitter_diff_test.cpp tests/ref/refJitterBuffer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o jitter_diff_test
+      real (fixed-slot) JitterBuffer vs the old std::map version in tests/ref: random loss / reorder / duplicates / DTX / restarts,
+      every output frame and statistic must be identical

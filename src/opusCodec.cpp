@@ -119,11 +119,16 @@ Bytes opusCodec::Encode(const int16_t *pcm, int frameSamples)
 
 bool opusCodec::Decode(const Bytes &packet, Pcm &out)
 {
+    return Decode(packet.data(), packet.size(), out);
+}
+
+bool opusCodec::Decode(const uint8_t *packet, size_t size, Pcm &out)
+{
     out.clear();
-    if(!m_pDecoder || packet.empty())
+    if(!m_pDecoder || !packet || !size)
         return false;
 
-    int samples = opus_decode(m_pDecoder, packet.data(), int(packet.size()), m_decScratch.data(), MAX_SAMPLES, 0);
+    int samples = opus_decode(m_pDecoder, packet, int(size), m_decScratch.data(), MAX_SAMPLES, 0);
     if(samples < 0){
         AUDIO_WARN("opus_decode failed: %s", opus_strerror(samples));
         return false;
@@ -142,11 +147,16 @@ Pcm opusCodec::Decode(const Bytes &packet)
 
 bool opusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples, Pcm &out)
 {
+    return DecodeFec(nextPacket.data(), nextPacket.size(), frameSamples, out);
+}
+
+bool opusCodec::DecodeFec(const uint8_t *nextPacket, size_t size, int frameSamples, Pcm &out)
+{
     out.clear();
-    if(!m_pDecoder || nextPacket.empty() || frameSamples <= 0 || frameSamples > MAX_SAMPLES)
+    if(!m_pDecoder || !nextPacket || !size || frameSamples <= 0 || frameSamples > MAX_SAMPLES)
         return false;
 
-    int samples = opus_decode(m_pDecoder, nextPacket.data(), int(nextPacket.size()), m_decScratch.data(), frameSamples, 1);
+    int samples = opus_decode(m_pDecoder, nextPacket, int(size), m_decScratch.data(), frameSamples, 1);
     if(samples < 0){
         AUDIO_WARN("opus_decode(fec) failed: %s", opus_strerror(samples));
         return DecodePlc(frameSamples, out);

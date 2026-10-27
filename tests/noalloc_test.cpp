@@ -1,10 +1,10 @@
-// Proves the recorder's audio-thread path allocates nothing once it runs (global operator new is counted).
+// Proves the recorder's AND the player's audio-thread path allocate nothing once they run (global operator new is counted).
 // Uses the fake devices and a pass-through EchoCanceller defined HERE that cuts 10 ms blocks exactly like the real
 // one (src/echoCanceller.cpp), so the "echo canceller ready" branch of the recorder is exercised too.
-// Build:
-//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp
-//       src/clsAudioRecorder.cpp src/opusCodec.cpp -lopus -o noalloc_test   (one line)
+// Build (one line):
+//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioRecorder.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o noalloc_test
 #include "clsAudioRecorder.h"
+#include "clsAudioPlayer.h"
 #include "blockCutter.h"
 #include <atomic>
 #include <chrono>
@@ -59,6 +59,37 @@ static long runCase(bool useAec, int frameMs, bool dtx)
     return g_allocs.load();
 }
 
+// recorder -> lossy / reordering "network" -> player: allocations anywhere in the process while it runs
+static long runPlayerCase(int frameMs, bool dtx)
+{
+    AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
+    clsAudioRecorder rec; clsAudioPlayer play;
+    Bytes held; held.reserve(2000);
+    bool haveHeld = false;
+    unsigned n = 0;
+    rec.SetPacketHandler([&](const Bytes &d){
+        n++;
+        if(n % 10 == 3) return;                                   // 10% lost
+        if(n % 13 == 0 && !haveHeld){ held.assign(d.begin(), d.end()); haveHeld = true; return; }   // reordered: after the next one
+        play.Play(d);
+        if(haveHeld){ play.Play(held); haveHeld = false; }
+    });
+    rec.SetConfig(&cfg); play.SetConfig(&cfg);
+    rec.Start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));      // warm-up
+    g_allocs = 0; g_count = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+    g_count = false;
+    rec.Stop();
+    JitterBuffer::Stats st; int depth, ms;
+    play.GetStats(st, depth, ms);
+    std::printf("  player frame=%2dms dtx=%d : received %u, played %u, fec %u, plc %u, lost %u, allocations in steady state: %ld\n",
+                frameMs, dtx, st.received, st.played, st.fec, st.plc, st.lost, g_allocs.load());
+    long bad = g_allocs.load();
+    if(st.played < 20){ std::printf("  FAIL: nothing was played\n"); bad++; }
+    return bad;
+}
+
 int main()
 {
     long bad = 0;
@@ -66,6 +97,9 @@ int main()
         for(int ms : {20, 60})
             bad += runCase(aec, ms, false);
     bad += runCase(true, 20, true);
+    bad += runPlayerCase(20, false);
+    bad += runPlayerCase(60, false);
+    bad += runPlayerCase(20, true);
     std::printf(bad ? "FAIL: the audio thread allocates\n" : "PASS: no allocation on the audio thread\n");
     return bad ? 1 : 0;
 }

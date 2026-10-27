@@ -1,14 +1,17 @@
 #ifndef JITTERBUFFER_H
 #define JITTERBUFFER_H
 
-#include <map>
-#include <set>
+#include <vector>
 #include "AudioTypes.h"
 #include "opusCodec.h"
 
 // Receiver side: reorders packets, hides loss (Opus FEC, then PLC) and gives the
 // audio device an even stream of frames, no matter how bursty the network is.
-// Pure logic (no Qt, no timers, no audio device, NOT thread safe: the caller locks).
+// Pure logic (no Qt, no timers, no audio device, NOT thread safe: one thread uses it, in clsAudioPlayer
+// that is the audio thread).
+//
+// No allocation after the constructor: packets live in a fixed ring of slots (copied once, from the
+// network datagram into the slot, decoded straight out of it) instead of std::map / std::vector per packet.
 class JitterBuffer
 {
 public:
@@ -39,16 +42,43 @@ public:
     int targetDepth() const { return m_target; }
 
 private:
-    struct Pkt { Bytes payload; bool marker; };
+    // Packets waiting to be played. Slot for sequence `s` = s & (Slots-1). Everything in the buffer lies
+    // within a few frames of each other (the catch-up logic caps it), so two live packets never share a slot
+    // in practice; if they do (a gap of 512+ frames) the newer one wins.
+    static const int Slots = 512;               // power of two (10 s of 20 ms frames)
+    static const size_t MaxPayload = 1500;      // an Opus packet is at most 1275 bytes
+    struct Slot {
+        int64_t key = 0;                        // extended sequence number
+        uint16_t len = 0;
+        bool used = false;
+        bool marker = false;
+        uint8_t data[MaxPayload];
+    };
+    std::vector<Slot> m_slots;                  // allocated once
+    int m_count;                                // used slots
+
+    Slot *findSlot(int64_t seq);
+    bool hasSlot(int64_t seq) const { const Slot &s = m_slots[size_t(seq) & (Slots - 1)]; return s.used && s.key == seq; }
+    Slot *lowestSlot();                         // oldest packet, nullptr if empty
+    void putPacket(int64_t seq, bool marker, const uint8_t *data, size_t len);
+    void eraseSlot(Slot *s);
+    void eraseBelow(int64_t seq);               // drop every packet older than seq
+    void clearPackets();
+
+    // which sequence numbers arrived recently (window of 1024 behind the newest seen), for the loss statistics
+    uint64_t m_seenBits[16];
+    int64_t m_seenTop;
+    bool m_seenAny;
+    bool seenTest(int64_t seq) const;
+    void seenMark(int64_t seq);
+    void seenReset();
 
     opusCodec *m_pCodec;
     int m_channels;
     int m_frameSamples;
 
-    std::set<int64_t> m_seen;         // recently received sequence numbers
     uint8_t m_lastTx;                 // tx counter of the newest packet
     bool m_dtxSeen;                   // the sender skips silent frames (DTX): sequence gaps are then NOT losses
-    std::map<int64_t, Pkt> m_buf;     // key = extended (32bit+) sequence
     bool m_playing;
     bool m_haveSeq;
     int64_t m_next;                   // next sequence to play

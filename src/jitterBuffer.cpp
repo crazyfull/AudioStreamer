@@ -2,12 +2,17 @@
 #include "VoicePacket.h"
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
-    : m_pCodec(codec), m_channels(channels), m_frameSamples(0),
+    : m_count(0), m_seenTop(0), m_seenAny(false),
+      m_pCodec(codec), m_channels(channels), m_frameSamples(0),
       m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
 {
+    m_slots.resize(Slots);              // the only allocation of the jitter buffer
+    seenReset();
+
     if(frameMs < 1) frameMs = 20;
     m_frameSamples = decoderRate * frameMs / 1000;
 
@@ -21,10 +26,103 @@ JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int 
     m_shrinkAfter  = std::max(10, 10000 / frameMs); // ~10s
 }
 
+// ---------------------------------------------------------------- packet slots
+JitterBuffer::Slot *JitterBuffer::findSlot(int64_t seq)
+{
+    Slot &s = m_slots[size_t(seq) & (Slots - 1)];
+    return (s.used && s.key == seq) ? &s : nullptr;
+}
+
+JitterBuffer::Slot *JitterBuffer::lowestSlot()
+{
+    Slot *best = nullptr;
+    for(Slot &s : m_slots)
+        if(s.used && (!best || s.key < best->key))
+            best = &s;
+    return best;
+}
+
+void JitterBuffer::eraseSlot(Slot *s)
+{
+    if(s && s->used){
+        s->used = false;
+        m_count--;
+    }
+}
+
+void JitterBuffer::eraseBelow(int64_t seq)
+{
+    for(Slot &s : m_slots)
+        if(s.used && s.key < seq)
+            eraseSlot(&s);
+}
+
+void JitterBuffer::clearPackets()
+{
+    for(Slot &s : m_slots)
+        s.used = false;
+    m_count = 0;
+}
+
+void JitterBuffer::putPacket(int64_t seq, bool marker, const uint8_t *data, size_t len)
+{
+    Slot &s = m_slots[size_t(seq) & (Slots - 1)];
+    if(s.used){
+        if(s.key >= seq)
+            return;                 // slot holds the same or a NEWER packet: this one is too old for the window
+        m_count--;                  // evict the older packet that shares the slot
+    }
+    s.key = seq;
+    s.marker = marker;
+    s.len = uint16_t(len);
+    std::memcpy(s.data, data, len);
+    s.used = true;
+    m_count++;
+}
+
+// ---------------------------------------------------------------- "already received" window
+void JitterBuffer::seenReset()
+{
+    std::memset(m_seenBits, 0, sizeof(m_seenBits));
+    m_seenAny = false;
+    m_seenTop = 0;
+}
+
+bool JitterBuffer::seenTest(int64_t seq) const
+{
+    if(!m_seenAny || seq > m_seenTop || seq <= m_seenTop - 1024)
+        return false;
+    const size_t bit = size_t(seq) & 1023;
+    return (m_seenBits[bit >> 6] >> (bit & 63)) & 1;
+}
+
+void JitterBuffer::seenMark(int64_t seq)
+{
+    if(!m_seenAny){
+        std::memset(m_seenBits, 0, sizeof(m_seenBits));
+        m_seenAny = true;
+        m_seenTop = seq;
+    }else if(seq > m_seenTop){
+        // the positions of seenTop+1 .. seq still hold sequence numbers 1024 older: clear them
+        const int64_t from = (seq - m_seenTop >= 1024) ? seq - 1023 : m_seenTop + 1;
+        for(int64_t k = from; k <= seq; k++){
+            const size_t b = size_t(k) & 1023;
+            m_seenBits[b >> 6] &= ~(uint64_t(1) << (b & 63));
+        }
+        m_seenTop = seq;
+    }else if(seq <= m_seenTop - 1024){
+        return;                     // older than the window, not tracked
+    }
+    const size_t bit = size_t(seq) & 1023;
+    m_seenBits[bit >> 6] |= uint64_t(1) << (bit & 63);
+}
+
+// ---------------------------------------------------------------- receive
 void JitterBuffer::Push(const uint8_t *datagram, size_t size)
 {
-    uint16_t seq; bool marker; uint8_t tx; Bytes payload;
-    if(!VoicePacket::parse(datagram, size, seq, marker, tx, payload))
+    uint16_t seq; bool marker; uint8_t tx;
+    const uint8_t *payload; size_t payloadSize;
+    if(!VoicePacket::parseHeader(datagram, size, seq, marker, tx, payload, payloadSize) || payloadSize > MaxPayload)
         return;
 
     // extend 16bit sequence to a monotonically growing number
@@ -34,19 +132,19 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
         ext = seq;
         m_highest = ext;
         m_lastTx = tx;
-        m_seen.insert(ext);
+        seenMark(ext);
     }else{
         int16_t diff = int16_t(uint16_t(seq - uint16_t(m_highest & 0xFFFF)));
         ext = m_highest + diff;
         if(std::abs(int(diff)) > 3000){      // sender restarted / huge jump: resync
-            m_buf.clear();
-            m_seen.clear();
+            clearPackets();
+            seenReset();
             m_lastTx = tx;
             m_playing = false;
             m_plcRun = 0;
             ext = seq;
             m_highest = ext;
-            m_seen.insert(ext);
+            seenMark(ext);
         }
     }
 
@@ -71,29 +169,19 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
         m_stats.lost += holes;
         m_stats.lostEvents += holes;
         m_lastTx = tx;
-        m_seen.insert(ext);
-    }else if(m_seen.find(ext) == m_seen.end()){
+        seenMark(ext);
+    }else if(!seenTest(ext)){
         // older than the newest one and never seen before: it was only late / reordered, not lost
         if(m_stats.lost > 0) m_stats.lost--;
         m_stats.reordered++;
-        m_seen.insert(ext);
-    }
-    if(m_seen.size() > 1024){       // forget old entries
-        for(auto it = m_seen.begin(); it != m_seen.end(); ){
-            if(*it < m_highest - 512)
-                it = m_seen.erase(it);
-            else
-                ++it;
-        }
+        seenMark(ext);
     }
 
-    if(m_playing || !m_buf.empty()){
-        if(ext < m_next && m_playing){      // too late, its time has passed
-            m_stats.late++;
-            return;
-        }
+    if(m_playing && ext < m_next){          // too late, its time has passed
+        m_stats.late++;
+        return;
     }
-    if(m_buf.count(ext))
+    if(findSlot(ext))
         return;                              // duplicate
 
     // After a dry buffer: a marker packet means the sender had been silent (normal),
@@ -106,12 +194,10 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
 
     // A marker packet starts a new talkspurt: whatever older is still sitting in the
     // buffer while we're idle is a stray DTX/comfort-noise packet, not part of it.
-    if(marker && !m_playing){
-        while(!m_buf.empty() && m_buf.begin()->first < ext)
-            m_buf.erase(m_buf.begin());
-    }
+    if(marker && !m_playing)
+        eraseBelow(ext);
 
-    m_buf[ext] = Pkt{std::move(payload), marker};
+    putPacket(ext, marker, payload, payloadSize);
     if(ext > m_highest)
         m_highest = ext;
 
@@ -121,25 +207,28 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
         int64_t newNext = m_highest - m_target;
         m_stats.skipped += uint32_t(newNext - m_next);
         m_next = newNext;
-        while(!m_buf.empty() && m_buf.begin()->first < m_next)
-            m_buf.erase(m_buf.begin());
+        eraseBelow(m_next);
     }
 }
 
 bool JitterBuffer::takeNext(Pcm &out)
 {
-    auto it = m_buf.find(m_next);
-    Pkt p = std::move(it->second);
-    m_buf.erase(it);
+    Slot *p = findSlot(m_next);
     m_next++;
-    return m_pCodec->Decode(p.payload, out);
+    if(!p){
+        out.clear();
+        return false;
+    }
+    const bool ok = m_pCodec->Decode(p->data, p->len, out);     // straight from the slot, no copy
+    eraseSlot(p);
+    return ok;
 }
 
 bool JitterBuffer::HasFrameReady() const
 {
     if(!m_playing)
-        return int(m_buf.size()) >= m_target;
-    return m_buf.count(m_next) != 0;
+        return m_count >= m_target;
+    return hasSlot(m_next);
 }
 
 Pcm JitterBuffer::PopFrame()
@@ -153,15 +242,15 @@ bool JitterBuffer::PopFrame(Pcm &out)
 {
     out.clear();
     if(!m_playing){
-        if(int(m_buf.size()) < m_target)
+        if(m_count < m_target)
             return false;                   // prefill
-        m_next = m_buf.begin()->first;
+        m_next = lowestSlot()->key;
         m_playing = true;
         m_plcRun = 0;
     }
 
     // ---- normal case
-    if(m_buf.count(m_next)){
+    if(findSlot(m_next)){
         m_plcRun = 0;
         m_stats.played++;
         if(++m_goodRun > m_shrinkAfter && m_target > m_minTarget){   // ~10s without trouble: shrink latency
@@ -174,7 +263,7 @@ bool JitterBuffer::PopFrame(Pcm &out)
     // ---- missing packet
     m_goodRun = 0;
 
-    if(m_buf.empty()){
+    if(m_count == 0){
         // underrun: nothing at all queued. Conceal a few frames, then stop and
         // re-buffer with a deeper target.
         if(m_plcRun == 0)
@@ -190,10 +279,10 @@ bool JitterBuffer::PopFrame(Pcm &out)
         return m_pCodec->DecodePlc(m_frameSamples, out);
     }
 
-    const int64_t first = m_buf.begin()->first;
-    const Pkt &fp = m_buf.begin()->second;
+    const Slot *fp = lowestSlot();
+    const int64_t first = fp->key;
 
-    if(fp.marker && first > m_next){
+    if(fp->marker && first > m_next){
         // gap + marker = sender went silent (DTX), not a network loss
         m_stats.dtxJump++;
         m_next = first;
@@ -205,7 +294,7 @@ bool JitterBuffer::PopFrame(Pcm &out)
     m_plcRun = 0;
     if(first == m_next + 1){
         // next packet carries a low-bitrate copy of the lost frame (inband FEC)
-        const bool ok = m_pCodec->DecodeFec(fp.payload, m_frameSamples, out);
+        const bool ok = m_pCodec->DecodeFec(fp->data, fp->len, m_frameSamples, out);
         m_next++;
         m_stats.fec++;
         return ok;

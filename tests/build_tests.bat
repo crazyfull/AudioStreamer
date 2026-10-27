@@ -68,7 +68,12 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp sr
 echo.
 echo === noalloc_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\noalloc_test.exe" tests\noalloc_test.cpp tests\stub\audioDevice_stub.cpp ^
-   src\clsAudioRecorder.cpp src\opusCodec.cpp /link "%OPUS_LIB%" || goto fail
+   src\clsAudioRecorder.cpp src\clsAudioPlayer.cpp src\jitterBuffer.cpp src\opusCodec.cpp /link "%OPUS_LIB%" || goto fail
+
+echo.
+echo === jitter_diff_test.exe  (no webrtc needed)
+cl %CFLAGS% /Itests\ref /Fo"tests\obj\\" /Fe"tests\bin\jitter_diff_test.exe" tests\jitter_diff_test.cpp tests\ref\refJitterBuffer.cpp ^
+   src\jitterBuffer.cpp src\opusCodec.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo Built OK. Run:
@@ -76,6 +81,7 @@ echo     tests\bin\aec_test.exe             (add "noref" for the control run, it
 echo     tests\bin\e2e_aec.exe
 echo     tests\bin\unit_test.exe            (must end with ALL PASS)
 echo     tests\bin\noalloc_test.exe         (must end with PASS)
+echo     tests\bin\jitter_diff_test.exe     (must end with PASS)
 popd
 exit /b 0
 

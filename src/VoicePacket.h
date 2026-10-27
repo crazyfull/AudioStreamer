@@ -32,6 +32,20 @@ namespace VoicePacket
         return p;
     }
 
+    // Header only: the opus payload is NOT copied, `payload` points into `d` (valid as long as d is).
+    inline bool parseHeader(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx,
+                            const uint8_t *&payload, size_t &payloadSize)
+    {
+        if(!d || size <= size_t(HeaderSize))
+            return false;
+        marker = (d[0] & FlagMarker) != 0;
+        tx = uint8_t(d[0] >> 1);
+        seq = uint16_t(d[1] | (d[2] << 8));
+        payload = d + HeaderSize;
+        payloadSize = size - HeaderSize;
+        return true;
+    }
+
     inline bool parse(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx, Bytes &opusPayload)
     {
         if(!d || size <= size_t(HeaderSize))
