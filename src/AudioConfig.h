@@ -30,6 +30,10 @@ struct AudioConfig
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
     int MaxBandwith = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
+    // ---- stream id (header of every UDP packet, see VoicePacket.h) ----
+    int streamId = 0;           //0..65535: written into every packet we send
+    int playStreamId = -1;      //-1 = play every stream, 0..65535 = play only packets with this stream id
+
     // ---- echo cancellation (webrtc-audio-processing, see AudioProcessor.h) ----
     bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
     int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
@@ -66,6 +70,10 @@ struct AudioConfig
             return fail("expectedLossPerc (0..100)", expectedLossPerc);
         if(MaxBandwith < 1101 || MaxBandwith > 1105)
             return fail("MaxBandwith (1101..1105)", MaxBandwith);
+        if(streamId < 0 || streamId > 65535)
+            return fail("streamId (0..65535)", streamId);
+        if(playStreamId < -1 || playStreamId > 65535)
+            return fail("playStreamId (-1 = any, 0..65535)", playStreamId);
         return true;
     }
 

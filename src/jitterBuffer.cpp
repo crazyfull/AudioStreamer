@@ -7,7 +7,7 @@
 JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_count(0), m_seenTop(0), m_seenAny(false),
       m_pCodec(codec), m_channels(channels), m_frameSamples(0),
-      m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
+      m_streamFilter(-1), m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
 {
     m_slots.resize(Slots);              // the only allocation of the jitter buffer
@@ -120,10 +120,21 @@ void JitterBuffer::seenMark(int64_t seq)
 // ---------------------------------------------------------------- receive
 void JitterBuffer::Push(const uint8_t *datagram, size_t size)
 {
-    uint16_t seq; bool marker; uint8_t tx;
+    VoicePacket::Header hdr;
     const uint8_t *payload; size_t payloadSize;
-    if(!VoicePacket::parseHeader(datagram, size, seq, marker, tx, payload, payloadSize) || payloadSize > MaxPayload)
+    if(!VoicePacket::parseHeader(datagram, size, hdr, payload, payloadSize) || payloadSize > MaxPayload)
         return;
+    if(hdr.type != VoicePacket::Audio){         // other kinds of packets (future) are not audio
+        m_stats.otherType++;
+        return;
+    }
+    if(m_streamFilter >= 0 && hdr.streamId != uint16_t(m_streamFilter)){
+        m_stats.otherStream++;
+        return;
+    }
+    const uint16_t seq = hdr.seq;
+    const bool marker = hdr.marker;
+    const uint8_t tx = hdr.tx;
 
     // extend 16bit sequence to a monotonically growing number
     int64_t ext;
