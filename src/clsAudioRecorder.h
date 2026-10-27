@@ -7,7 +7,7 @@
 #include "AudioConfig.h"
 #include "audioDevice.h"
 #include "opusCodec.h"
-#include "echoCanceller.h"
+#include "AudioProcessor.h"
 #include "blockCutter.h"
 
 // Capture side: microphone (or a music file) -> opus packets. No Qt.
@@ -23,7 +23,7 @@ private:
     AudioConfig *m_pConfig;
     std::unique_ptr<opusCodec> m_pOpus;
     PacketHandler m_handler;
-    std::shared_ptr<EchoCanceller> m_aec;   // shared with clsAudioPlayer (it feeds the speaker signal)
+    std::shared_ptr<AudioProcessor> m_aec;   // shared with clsAudioPlayer (it feeds the speaker signal)
 
     // Audio thread rule: after Start() nothing below allocates. Everything is sized once in Start()
     // (frames are cut straight out of the device buffer, only the < 1 frame tail is kept).
@@ -51,7 +51,7 @@ public:
     void SetConfig(AudioConfig *pConfig);
     void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
     // optional echo canceller, the SAME instance as the player's. Call before Start(). Ignored while playing music.
-    void SetEchoCanceller(std::shared_ptr<EchoCanceller> aec) { m_aec = std::move(aec); }
+    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
     void Start();
     void Stop();
 };

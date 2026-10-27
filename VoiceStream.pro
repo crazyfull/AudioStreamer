@@ -105,21 +105,21 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     miniaudio/miniaudio.c \
+    src/AudioProcessor.cpp \
     src/audioDevice.cpp \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
-    src/echoCanceller.cpp \
     src/jitterBuffer.cpp \
     src/opusCodec.cpp
 
 HEADERS += \
     mainwindow.h \
     src/AudioConfig.h \
+    src/AudioProcessor.h \
     src/AudioTypes.h \
     src/audioDevice.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
-    src/echoCanceller.h \
     src/blockCutter.h \
     src/packetQueue.h \
     src/jitterBuffer.h \

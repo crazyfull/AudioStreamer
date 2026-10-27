@@ -2,7 +2,7 @@
 #include "ui_mainwindow.h"
 #include "src/clsAudioRecorder.h"
 #include "src/clsAudioPlayer.h"
-#include "src/echoCanceller.h"
+#include "src/AudioProcessor.h"
 #include <QDebug>
 #include <QUdpSocket>
 #include <QTcpSocket>
@@ -184,8 +184,8 @@ void MainWindow::initAudio()
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
     const bool wantAec = m_AudioConfig.useEchoCancel;
     if((wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
-        auto aec = std::make_shared<EchoCanceller>();
-        EchoCanceller::Options opt;
+        auto aec = std::make_shared<AudioProcessor>();
+        AudioProcessor::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;
         opt.nearendProtection = m_AudioConfig.aecNearendProtection;
         opt.echoCancel = wantAec;
@@ -197,8 +197,8 @@ void MainWindow::initAudio()
         else
             AUDIO_WARN("echo canceller disabled: %s", err.c_str());
     }
-    m_pAudioRecorder->SetEchoCanceller(m_pAec);
-    m_pAudioPlayer->SetEchoCanceller(m_pAec);       // before SetConfig: that starts the speaker
+    m_pAudioRecorder->SetAudioProcessor(m_pAec);
+    m_pAudioPlayer->SetAudioProcessor(m_pAec);       // before SetConfig: that starts the speaker
 
     m_pAudioRecorder->SetConfig(&m_AudioConfig);
     m_pAudioPlayer->SetConfig(&m_AudioConfig);
@@ -302,7 +302,7 @@ void MainWindow::OnStatsTimer()
     if(st.ingestDropped)
         t += QString("   dropped before buffer %1").arg(st.ingestDropped);
 
-    EchoCanceller::Stats aec;
+    AudioProcessor::Stats aec;
     if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->getStats(aec)){
         t += aec.hasDelay ? QString("\nEcho     : cancelling, estimated echo delay %1 ms").arg(aec.delayMs)
                           : QString("\nEcho     : cancelling (still measuring the delay)");
@@ -438,12 +438,11 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
 
         //52.20.16.20:40000
         sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("52.43.121.77"), 10001); //public
-        //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("95.38.155.49"), 10001); //khodam
+        //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("217.154.196.225"), 10001); //kharej khodam
+        //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("95.38.155.49"), 10001); //iran khodam
         //if(Buff.length() < 39) return 0;
         //
 
-
-        m_Rate += sendSize;       //for get transfer rate monitor
 
         m_packet.clear();
     }

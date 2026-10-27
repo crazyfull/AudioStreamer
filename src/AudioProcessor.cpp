@@ -41,14 +41,14 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include "echoCanceller.h"
+#include "AudioProcessor.h"
 #include "blockCutter.h"
 #include <atomic>
 #include <cstring>
 #include <memory>
 #include <vector>
 
-struct EchoCanceller::Impl
+struct AudioProcessor::Impl
 {
     rtc::scoped_refptr<webrtc::AudioProcessing> apm;
     webrtc::StreamConfig capCfg;
@@ -68,15 +68,15 @@ struct EchoCanceller::Impl
     bool renErrorLogged = false;
 };
 
-EchoCanceller::EchoCanceller() : d(new Impl) {
+AudioProcessor::AudioProcessor() : d(new Impl) {
 
 }
 
-EchoCanceller::~EchoCanceller() {
+AudioProcessor::~AudioProcessor() {
 
 }
 
-bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Options &opt, std::string *err)
+bool AudioProcessor::init(int captureRate, int renderRate, int channels, const Options &opt, std::string *err)
 {
     auto fail = [&](const char *msg){
         if(err) *err = msg;
@@ -119,7 +119,7 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
     }
 #else
     if(opt.nearendProtection > 0)
-        AUDIO_WARN("echo canceller: echo_canceller3_factory.h not found, near-end protection ignored (see echoCanceller.cpp)");
+        AUDIO_WARN("echo canceller: echo_canceller3_factory.h not found, near-end protection ignored (see AudioProcessor.cpp)");
 #endif
     rtc::scoped_refptr<webrtc::AudioProcessing> apm(builder.Create());
     if(!apm)
@@ -176,23 +176,23 @@ bool EchoCanceller::init(int captureRate, int renderRate, int channels, const Op
     return true;
 }
 
-bool EchoCanceller::init(int captureRate, int renderRate, int channels, std::string *err)
+bool AudioProcessor::init(int captureRate, int renderRate, int channels, std::string *err)
 {
     return init(captureRate, renderRate, channels, Options(), err);
 }
 
-bool EchoCanceller::isReady() const
+bool AudioProcessor::isReady() const
 {
     return d->ready.load();
 }
 
-void EchoCanceller::setStreamDelayMs(int ms)
+void AudioProcessor::setStreamDelayMs(int ms)
 {
     d->delayMs = ms;
 }
 
 // speaker thread
-void EchoCanceller::render(const int16_t *pcm, uint32_t frames)
+void AudioProcessor::render(const int16_t *pcm, uint32_t frames)
 {
     Impl &s = *d;
     if(!s.ready.load() || !pcm || !frames)
@@ -209,7 +209,7 @@ void EchoCanceller::render(const int16_t *pcm, uint32_t frames)
 }
 
 // mic thread
-void EchoCanceller::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
+void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
 {
     Impl &s = *d;
 
@@ -241,7 +241,7 @@ void EchoCanceller::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
     });
 }
 
-bool EchoCanceller::getStats(Stats &st) const
+bool AudioProcessor::getStats(Stats &st) const
 {
     if(!d->ready.load())
         return false;

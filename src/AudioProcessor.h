@@ -1,9 +1,9 @@
-#ifndef ECHOCANCELLER_H
-#define ECHOCANCELLER_H
+#ifndef AUDIOPROCESSOR_H
+#define AUDIOPROCESSOR_H
 
 // Acoustic echo cancellation (AEC3 from webrtc-audio-processing 1.3) + optional noise suppression
 // and automatic gain (AGC2) on the same mic stream, Qt-free.
-// The webrtc headers are only included by echoCanceller.cpp, nothing else depends on them.
+// The webrtc headers are only included by AudioProcessor.cpp, nothing else depends on them.
 //
 // How it works: the AEC must know what the speaker plays (far end / "render") to remove it from
 // what the microphone records (near end / "capture"). So ONE instance is shared:
@@ -22,7 +22,7 @@
 #include <string>
 #include "AudioTypes.h"
 
-class EchoCanceller
+class AudioProcessor
 {
 public:
     struct Options
@@ -54,10 +54,10 @@ public:
         int    delayMs = 0;             // delay estimated by AEC3
     };
 
-    EchoCanceller();
-    ~EchoCanceller();
-    EchoCanceller(const EchoCanceller&) = delete;
-    EchoCanceller& operator=(const EchoCanceller&) = delete;
+    AudioProcessor();
+    ~AudioProcessor();
+    AudioProcessor(const AudioProcessor&) = delete;
+    AudioProcessor& operator=(const AudioProcessor&) = delete;
 
     // captureRate = mic sample rate, renderRate = speaker sample rate (can differ), both >= 8000
     // and a multiple of 100 (10 ms = whole samples). `channels` is the same for both (1 or 2).
@@ -82,4 +82,4 @@ private:
     std::unique_ptr<Impl> d;
 };
 
-#endif // ECHOCANCELLER_H
+#endif // AUDIOPROCESSOR_H

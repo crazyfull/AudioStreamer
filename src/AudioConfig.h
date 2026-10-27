@@ -30,7 +30,7 @@ struct AudioConfig
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
     int MaxBandwith = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
-    // ---- echo cancellation (webrtc-audio-processing, see echoCanceller.h) ----
+    // ---- echo cancellation (webrtc-audio-processing, see AudioProcessor.h) ----
     bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
     int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
     int noiseSuppression = 0;   //0 = off, 1..4 = low .. very high (webrtc noise suppression on the mic)

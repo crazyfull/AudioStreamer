@@ -8,7 +8,7 @@
 #include "AudioConfig.h"
 #include "audioDevice.h"
 #include "jitterBuffer.h"
-#include "echoCanceller.h"
+#include "AudioProcessor.h"
 #include "packetQueue.h"
 
 // Receive side: datagram -> JitterBuffer (reorder / FEC / PLC) -> opus decode -> speaker.
@@ -22,7 +22,7 @@ class clsAudioPlayer
     AudioConfig *m_pConfig;
     std::unique_ptr<opusCodec> m_pOpus;                 // audio thread only (after start)
     std::unique_ptr<JitterBuffer> m_pJitter;            // audio thread only (after start)
-    std::shared_ptr<EchoCanceller> m_aec;   // shared with clsAudioRecorder (we feed it what the speaker plays)
+    std::shared_ptr<AudioProcessor> m_aec;   // shared with clsAudioRecorder (we feed it what the speaker plays)
 
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
@@ -48,7 +48,7 @@ public:
     ~clsAudioPlayer();
     void SetConfig(AudioConfig *pConfig);
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
-    void SetEchoCanceller(std::shared_ptr<EchoCanceller> aec) { m_aec = std::move(aec); }
+    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
 
     void init();
     // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running.
