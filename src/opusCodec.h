@@ -37,9 +37,11 @@ public:
     Bytes Encode(const int16_t *pcm, int frameSamples);
 
     // packet = exactly one Opus packet, gives 16bit PCM (interleaved). false = error (out is empty)
+    bool Decode(const uint8_t *packet, size_t size, Pcm &out);
     bool Decode(const Bytes &packet, Pcm &out);
     Pcm Decode(const Bytes &packet);
     // recover the frame BEFORE `nextPacket` from its inband FEC data (falls back to PLC)
+    bool DecodeFec(const uint8_t *nextPacket, size_t size, int frameSamples, Pcm &out);
     bool DecodeFec(const Bytes &nextPacket, int frameSamples, Pcm &out);
     Pcm DecodeFec(const Bytes &nextPacket, int frameSamples);
     // packet lost and no FEC: let Opus extrapolate the signal
