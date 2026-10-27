@@ -52,12 +52,12 @@ set CFLAGS=/nologo /std:c++17 /EHsc /O2 %CRT% /utf-8 /W3 /D_USE_MATH_DEFINES /DN
 set "SYSLIBS=winmm.lib dbghelp.lib advapi32.lib ws2_32.lib"
 
 echo === aec_test.exe
-cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\aec_test.exe" tests\aec_test.cpp src\echoCanceller.cpp /link %LIBLIST% %SYSLIBS% || goto fail
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\aec_test.exe" tests\aec_test.cpp src\AudioProcessor.cpp /link %LIBLIST% %SYSLIBS% || goto fail
 
 echo.
 echo === e2e_aec.exe
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\e2e_aec.exe" tests\e2e_aec.cpp tests\stub\audioDevice_room_stub.cpp ^
-   src\echoCanceller.cpp src\clsAudioRecorder.cpp src\clsAudioPlayer.cpp src\jitterBuffer.cpp src\opusCodec.cpp ^
+   src\AudioProcessor.cpp src\clsAudioRecorder.cpp src\clsAudioPlayer.cpp src\jitterBuffer.cpp src\opusCodec.cpp ^
    /link "%OPUS_LIB%" %LIBLIST% %SYSLIBS% || goto fail
 
 echo.

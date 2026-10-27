@@ -8,7 +8,7 @@
 //   renderRate  speaker rate, must divide 48000 (default 48000; try 24000 16000)
 //   noref       control run: the far end is NOT given to the canceller, so nothing can be removed.
 //               It must show ~0 dB attenuation, which proves the normal run measures the canceller.
-#include "echoCanceller.h"
+#include "AudioProcessor.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -76,19 +76,19 @@ int main(int argc, char **argv)
 
     // pass-through sanity: not initialized -> output == input
     {
-        EchoCanceller dead;
+        AudioProcessor dead;
         int16_t in[300]; for(int i = 0; i < 300; ++i) in[i] = int16_t(i);
         Pcm out; dead.capture(in, 300, out);
         if(out.size() != 300 || out[299] != 299){ std::printf("FAIL: uninitialized pass-through\n"); return 1; }
     }
 
-    EchoCanceller aec;
+    AudioProcessor aec;
     std::string err;
-    EchoCanceller::Options opt; opt.streamDelayMs = 50;
+    AudioProcessor::Options opt; opt.streamDelayMs = 50;
     if(!aec.init(kCapRate, renderRate, 1, opt, &err)){ std::printf("FAIL: init: %s\n", err.c_str()); return 1; }
 
     // bad parameters must be rejected, not crash
-    { EchoCanceller x; if(x.init(44123, 48000, 1) || x.init(48000, 48000, 5)){ std::printf("FAIL: bad params accepted\n"); return 1; } }
+    { AudioProcessor x; if(x.init(44123, 48000, 1) || x.init(48000, 48000, 5)){ std::printf("FAIL: bad params accepted\n"); return 1; } }
 
     const double totalSec = 14, phase1End = 8;
     const int ticks = int(totalSec * 100);
@@ -103,7 +103,7 @@ int main(int argc, char **argv)
     std::vector<int16_t> micIn, micOut, nearOnly;
     Pcm out;
     long gen = 0;
-    EchoCanceller::Stats stEcho;       // webrtc's own numbers at the end of the echo-only phase
+    AudioProcessor::Stats stEcho;       // webrtc's own numbers at the end of the echo-only phase
 
     for(int tick = 0; tick < ticks; ++tick){
         // ---- far end for this 10 ms
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
     double nearKeep = 10 * std::log10(energy(&micOut[c0], c1 - c0) / std::fmax(1.0, energy(&nearOnly[c0], c1 - c0)));
     double echoLeft = 10 * std::log10(energy(&micIn[c0], c1 - c0) / std::fmax(1.0, energy(&nearOnly[c0], c1 - c0)));
 
-    EchoCanceller::Stats st;
+    AudioProcessor::Stats st;
     aec.getStats(st);
 
     std::printf("render rate %d Hz, capture %d Hz\n", renderRate, kCapRate);

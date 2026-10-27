@@ -136,7 +136,13 @@ void clsAudioRecorder::onFrame(const int16_t *frame)
         return;
     }
 
-    VoicePacket::wrapInto(m_datagram, seq, m_marker, m_tx++, m_encoded);
+    VoicePacket::Header h;
+    h.type = VoicePacket::Audio;
+    h.streamId = uint16_t(m_pConfig->streamId);
+    h.seq = seq;
+    h.marker = m_marker;
+    h.tx = m_tx++;
+    VoicePacket::wrapInto(m_datagram, h, m_encoded);
     m_marker = false;
     if(m_handler)
         m_handler(m_datagram);

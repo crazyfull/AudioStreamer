@@ -142,7 +142,8 @@ struct JB {
     JB(){ codec.InitDecoder(48000, 1); jb = std::make_unique<JitterBuffer>(&codec, 48000, 1, 20); }
     void push(uint16_t seq, bool marker, uint8_t tx){
         Bytes payload = {0x78, 0x01, 0x02, 0x03};
-        Bytes d = VoicePacket::wrap(seq, marker, tx, payload);
+        VoicePacket::Header h; h.seq = seq; h.marker = marker; h.tx = tx;
+        Bytes d = VoicePacket::wrap(h, payload);
         jb->Push(d.data(), d.size());
     }
 };
@@ -186,8 +187,65 @@ static void testJitterLoss()
     }
 }
 
+static void testHeader()
+{
+    std::printf("VoicePacket header / stream filter\n");
+    VoicePacket::Header h; h.type = VoicePacket::Audio; h.streamId = 0xABCD; h.seq = 0x1234; h.marker = true; h.tx = 0x55;
+    Bytes payload = {9, 8, 7};
+    Bytes d = VoicePacket::wrap(h, payload);
+    CHECK(d.size() == size_t(VoicePacket::HeaderSize) + 3 && VoicePacket::HeaderSize == 6);
+    CHECK(d[0] == VoicePacket::Audio);                          // packet type is the FIRST byte
+    CHECK(d[1] == 0xCD && d[2] == 0xAB);                        // stream id, little endian
+    CHECK(d[3] == uint8_t(1 | (0x55 << 1)));                    // marker + tx
+    CHECK(d[4] == 0x34 && d[5] == 0x12);                        // sequence
+    CHECK(d[6] == 9 && d[7] == 8 && d[8] == 7);
+
+    VoicePacket::Header r; Bytes p;
+    CHECK(VoicePacket::parse(d.data(), d.size(), r, p));
+    CHECK(r.type == VoicePacket::Audio && r.streamId == 0xABCD && r.seq == 0x1234 && r.marker && r.tx == 0x55 && p == payload);
+
+    Bytes bad = d; bad[0] = VoicePacket::Invalid;               // type 0 is never valid
+    CHECK(!VoicePacket::parse(bad.data(), bad.size(), r, p));
+    CHECK(!VoicePacket::parse(d.data(), size_t(VoicePacket::HeaderSize), r, p));    // no payload byte
+    CHECK(!VoicePacket::parse(d.data(), 3, r, p));
+    CHECK(!VoicePacket::parse(nullptr, 10, r, p));
+
+    // reused buffer: no allocation after the first packet
+    Bytes reuse; reuse.reserve(64); const uint8_t *before = reuse.data();
+    for(int i = 0; i < 100; i++){ h.seq = uint16_t(i); VoicePacket::wrapInto(reuse, h, payload); }
+    CHECK(reuse.data() == before);
+
+    // jitter buffer: only Audio packets, optionally only one stream
+    {
+        opusCodec codec; codec.InitDecoder(48000, 1);
+        JitterBuffer jb(&codec, 48000, 1, 20);
+        Bytes opusLike = {0x78, 1, 2, 3};
+        VoicePacket::Header a; a.streamId = 7;
+        jb.Push(VoicePacket::wrap(a, opusLike).data(), VoicePacket::HeaderSize + opusLike.size());   // any stream accepted by default
+        CHECK(jb.stats().received == 1);
+
+        jb.SetStreamFilter(7);
+        a.seq = 1; Bytes ok = VoicePacket::wrap(a, opusLike); jb.Push(ok.data(), ok.size());
+        CHECK(jb.stats().received == 2 && jb.stats().otherStream == 0);
+        a.streamId = 8; a.seq = 2; Bytes other = VoicePacket::wrap(a, opusLike); jb.Push(other.data(), other.size());
+        CHECK(jb.stats().received == 2 && jb.stats().otherStream == 1);
+        a.streamId = 7; a.type = 2; a.seq = 3; Bytes ctrl = VoicePacket::wrap(a, opusLike); jb.Push(ctrl.data(), ctrl.size());
+        CHECK(jb.stats().received == 2 && jb.stats().otherType == 1);
+        jb.SetStreamFilter(0);                                  // 0 is a real stream id, not "any"
+        a.type = VoicePacket::Audio; a.streamId = 7; a.seq = 4; Bytes s7 = VoicePacket::wrap(a, opusLike); jb.Push(s7.data(), s7.size());
+        CHECK(jb.stats().received == 2 && jb.stats().otherStream == 2);
+    }
+
+    // config
+    { AudioConfig c; c.streamId = 65536; CHECK(!c.validate()); }
+    { AudioConfig c; c.streamId = -1; CHECK(!c.validate()); }
+    { AudioConfig c; c.playStreamId = -2; CHECK(!c.validate()); }
+    { AudioConfig c; c.streamId = 65535; c.playStreamId = 65535; CHECK(c.validate()); }
+}
+
 int main()
 {
+    testHeader();
     testCutBlocks();
     testPacketQueue();
     testConfigAndEncoder();

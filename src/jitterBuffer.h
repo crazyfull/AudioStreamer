@@ -23,9 +23,14 @@ public:
         uint32_t lostEvents = 0;  // every packet ever counted lost, NEVER decreased. For windowed figures use
                                   // delta(lostEvents) - delta(reordered), not delta(lost) (which can go backwards).
         uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (clsAudioPlayer's queue was full)
+        uint32_t otherType = 0;     // datagrams ignored: packet type is not Audio
+        uint32_t otherStream = 0;   // datagrams ignored: Audio, but for another stream id than the one we play
     };
 
     JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
+
+    // -1 = accept every stream id (default), 0..65535 = only that stream; the others are counted in otherStream
+    void SetStreamFilter(int streamId) { m_streamFilter = streamId; }
 
     void Push(const uint8_t *datagram, size_t size);
     // Returns exactly one frame of PCM, or an empty vector when there is nothing to
@@ -77,6 +82,7 @@ private:
     int m_channels;
     int m_frameSamples;
 
+    int m_streamFilter;               // -1 = any
     uint8_t m_lastTx;                 // tx counter of the newest packet
     bool m_dtxSeen;                   // the sender skips silent frames (DTX): sequence gaps are then NOT losses
     bool m_playing;

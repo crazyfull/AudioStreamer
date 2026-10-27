@@ -44,18 +44,18 @@ static std::pair<double,double> run(bool withAec, int *outLostPackets)
     auto rec  = std::make_unique<clsAudioRecorder>();
     auto play = std::make_unique<clsAudioPlayer>();
 
-    std::shared_ptr<EchoCanceller> aec;
+    std::shared_ptr<AudioProcessor> aec;
     if(withAec){
-        aec = std::make_shared<EchoCanceller>();
-        EchoCanceller::Options o; o.streamDelayMs = cfg.aecDelayMs;
+        aec = std::make_shared<AudioProcessor>();
+        AudioProcessor::Options o; o.streamDelayMs = cfg.aecDelayMs;
         std::string err;
         if(!aec->init(cfg.inputRate, cfg.renderRate(), cfg.channels, o, &err)){
             std::printf("FAIL: aec init: %s\n", err.c_str());
             std::exit(1);
         }
     }
-    rec->SetEchoCanceller(aec);
-    play->SetEchoCanceller(aec);
+    rec->SetAudioProcessor(aec);
+    play->SetAudioProcessor(aec);
 
     rec->SetPacketHandler([&](const Bytes &d){ play->Play(d); });     // loopback, called on the mic thread
     rec->SetConfig(&cfg);
