@@ -4,7 +4,7 @@ QT += network
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 # src/* uses std::make_unique (C++14) - don't depend on the Qt kit's default standard
-CONFIG += c++17
+CONFIG += c++11
 
 #QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 

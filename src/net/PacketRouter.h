@@ -26,14 +26,23 @@ public:
         uint32_t unhandled = 0;     // valid, but no handler for its type (a newer / unknown kind of packet)
     };
 
-    void SetHandler(uint8_t type, Handler handler) { m_handlers[type] = std::move(handler); }
-    void ClearHandler(uint8_t type) { m_handlers[type] = nullptr; }
+    void SetHandler(uint8_t type, Handler handler) {
+        m_handlers[type] = std::move(handler);
+    }
+
+    void ClearHandler(uint8_t type) {
+        m_handlers[type] = nullptr;
+    }
 
     // true if a handler got the packet
     bool Dispatch(const uint8_t *datagram, size_t size);
-    bool Dispatch(const Packet::Bytes &datagram) { return Dispatch(datagram.data(), datagram.size()); }
+    bool Dispatch(const Packet::Bytes &datagram) {
+        return Dispatch(datagram.data(), datagram.size());
+    }
 
-    const Stats &GetStats() const { return m_stats; }
+    const Stats &GetStats() const {
+        return m_stats;
+    }
 
 private:
     std::array<Handler, 256> m_handlers;
