@@ -9,7 +9,6 @@
 #include <random>
 #include <thread>
 
-namespace ravava {
 
 // ---- test control / measurement (declared again with `extern` in tests/e2e_aec.cpp)
 std::atomic<bool>   g_talker{false};         // a person talks into the mic
@@ -35,6 +34,8 @@ void roomReset()
 }
 
 // ------------------------------------------------------------------ microphone
+namespace ravava {
+
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running = false; };
 AudioInput::AudioInput() : d(new Impl) {}
 AudioInput::~AudioInput() { Stop(); }
