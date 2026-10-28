@@ -126,6 +126,7 @@ HEADERS += \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
     src/jitterBuffer.h \
+    src/levelMeter.h \
     src/net/Packet.h \
     src/net/PacketRouter.h \
     src/opusCodec.h \
