@@ -33,3 +33,11 @@ Receive volume (player gain, level meter independent of it; no webrtc, no sound 
 Stream format from the packets (player takes frame size from the Opus packets; any sender rate / bandwidth / mono-stereo,
 format switch while talking, stray packets, sender restart; no webrtc, no sound card):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/format_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o format_test
+
+Stress / fuzz (run under sanitizers; ~25 s plain, ~1-2 min with TSan or ASan+UBSan):
+  Player: 3 threads Play() while the sender frame size flips + garbage + a polling thread (GetStats / levels / SetVolume),
+  then one clean talker must be heard again. JitterBuffer: random loss / reorder / duplicates / DTX / sender restarts,
+  restart must be audible again within 150 frames.
+  g++ -std=c++17 -O1 -g -pthread -fsanitize=thread -I/usr/include/opus -Isrc tests/stress_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o stress_tsan
+  (same with -fsanitize=address,undefined for ASan/UBSan)
+
