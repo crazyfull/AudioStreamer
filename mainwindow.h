@@ -10,7 +10,7 @@
 #include <memory>
 
 #include "src/ravava/AudioConfig.h"
-#include "src/net/PacketRouter.h"
+#include "src/ravava/net/PacketRouter.h"
 //#include "src/ravava/Recorder.h"
 
 namespace ravava { class AudioProcessor; class Recorder; class Player; }
@@ -46,9 +46,9 @@ private:
     qint64 lastRecPacketTime;
     QByteArray m_packet;
 
-    // Network layer: the UDP envelope (packet type + stream id, src/net/Packet.h) is handled HERE.
+    // Network layer: the UDP envelope (packet type + stream id, src/ravava/net/Packet.h) is handled HERE.
     // The audio layer only ever gets the payload of Packet::Audio packets.
-    PacketRouter m_router;
+    ravava::PacketRouter m_router;
     quint16 m_txStreamId = 0;       // stream id written into the packets we send
     quint16 m_rxStreamId = 0;       // stream id of the last audio packet received = who is talking
     qint64  m_rxStreamTime = 0;     // when it arrived (ms since epoch), 0 = nothing yet
@@ -78,7 +78,7 @@ private:
     Ui::MainWindow *ui;
     void initTCP();
     void setupRouter();
-    void onAudioPacket(const Packet::Header &hdr, const uint8_t *payload, size_t size);
+    void onAudioPacket(const ravava::Packet::Header &hdr, const uint8_t *payload, size_t size);
     qint64 SendUDP(const QByteArray &Buff, bool bypasWithDNS = false);
     void CreateTimer();
     QString GetFormatSize(qint64 Size);

@@ -1,5 +1,5 @@
-#ifndef NET_PACKET_H
-#define NET_PACKET_H
+#ifndef RAVAVA_NET_PACKET_H
+#define RAVAVA_NET_PACKET_H
 
 // The envelope of EVERY UDP datagram of the app: 3 bytes in front of the payload. Network layer only:
 // nothing in here (or in PacketRouter) knows what the payload means, and the audio layer never sees the envelope.
@@ -8,24 +8,22 @@
 //              0 is never valid.
 //   byte 1-2 : stream id, uint16 little endian: whose stream this packet belongs to. The server fills it in, so a
 //              receiver knows which user is talking (conference).
-//   byte 3.. : payload. For Packet::Audio that is an audio packet body, see ravava/VoicePacket.h
+//   byte 3.. : payload. For Packet::Audio that is an audio packet body, see ../VoicePacket.h
 //
 // NOT compatible with the old format that started directly with the audio header.
 
-#include <cstddef>
-#include <cstdint>
-#include <vector>
+#include "../AudioTypes.h"
+
+namespace ravava {
 
 namespace Packet
 {
-    using Bytes = std::vector<uint8_t>;          // same type as ravava::Bytes; the network layer does not depend on the audio library
-
     const int HeaderSize = 3;
 
     enum Type : uint8_t
     {
         Invalid = 0,
-        Audio = 1,          // payload = audio packet body (ravava/VoicePacket.h) of one stream
+        Audio = 1,          // payload = audio packet body (../VoicePacket.h) of one stream
     };
 
     struct Header
@@ -64,4 +62,6 @@ namespace Packet
     }
 }
 
-#endif // NET_PACKET_H
+} // namespace ravava
+
+#endif // RAVAVA_NET_PACKET_H

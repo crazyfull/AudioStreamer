@@ -1,5 +1,7 @@
 #include "PacketRouter.h"
 
+namespace ravava {
+
 bool PacketRouter::Dispatch(const uint8_t *datagram, size_t size)
 {
     Packet::Header hdr;
@@ -21,3 +23,5 @@ bool PacketRouter::Dispatch(const uint8_t *datagram, size_t size)
     m_stats.dispatched++;
     return true;
 }
+
+} // namespace ravava

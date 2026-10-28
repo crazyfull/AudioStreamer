@@ -5,7 +5,7 @@
 //   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
 #include "ravava/Recorder.h"
 #include "ravava/Player.h"
-#include "net/PacketRouter.h"
+#include "ravava/net/PacketRouter.h"
 #include "ravava/BlockCutter.h"
 #include <atomic>
 #include <chrono>

@@ -113,7 +113,7 @@ SOURCES += \
     src/ravava/Player.cpp \
     src/ravava/Recorder.cpp \
     src/ravava/JitterBuffer.cpp \
-    src/net/PacketRouter.cpp \
+    src/ravava/net/PacketRouter.cpp \
     src/ravava/OpusCodec.cpp
 
 HEADERS += \
@@ -127,8 +127,8 @@ HEADERS += \
     src/ravava/Recorder.h \
     src/ravava/JitterBuffer.h \
     src/ravava/LevelMeter.h \
-    src/net/Packet.h \
-    src/net/PacketRouter.h \
+    src/ravava/net/Packet.h \
+    src/ravava/net/PacketRouter.h \
     src/ravava/OpusCodec.h \
     src/ravava/PacketQueue.h \
     src/ravava/VoicePacket.h
