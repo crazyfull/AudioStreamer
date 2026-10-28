@@ -31,9 +31,9 @@ public:
 
     // true if a handler got the packet
     bool Dispatch(const uint8_t *datagram, size_t size);
-    bool Dispatch(const Bytes &datagram) { return Dispatch(datagram.data(), datagram.size()); }
+    bool Dispatch(const Packet::Bytes &datagram) { return Dispatch(datagram.data(), datagram.size()); }
 
-    const Stats &stats() const { return m_stats; }
+    const Stats &GetStats() const { return m_stats; }
 
 private:
     std::array<Handler, 256> m_handlers;

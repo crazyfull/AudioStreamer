@@ -1,29 +1,31 @@
-#ifndef CLSAUDIORECORDER_H
-#define CLSAUDIORECORDER_H
+#ifndef RAVAVA_RECORDER_H
+#define RAVAVA_RECORDER_H
 
 #include <functional>
 #include <memory>
 #include "AudioTypes.h"
 #include "AudioConfig.h"
-#include "audioDevice.h"
-#include "opusCodec.h"
+#include "AudioDevice.h"
+#include "OpusCodec.h"
 #include "AudioProcessor.h"
-#include "blockCutter.h"
+#include "BlockCutter.h"
+
+namespace ravava {
 
 // Capture side: microphone (or a music file) -> opus packets. No Qt.
 // The packet handler is called on the AUDIO THREAD, once per datagram:
 // 3 byte audio header + opus packet (see VoicePacket.h); the network layer puts it into a UDP packet (net/Packet.h). Keep it short; hand the data over to your
 // own thread (the Qt GUI uses a queued invoke).
-class clsAudioRecorder
+class Recorder
 {
 public:
     using PacketHandler = std::function<void(const Bytes &datagram)>;
 
 private:
     AudioConfig *m_pConfig;
-    std::unique_ptr<opusCodec> m_pOpus;
+    std::unique_ptr<OpusCodec> m_pOpus;
     PacketHandler m_handler;
-    std::shared_ptr<AudioProcessor> m_aec;   // shared with clsAudioPlayer (it feeds the speaker signal)
+    std::shared_ptr<AudioProcessor> m_aec;   // shared with Player (it feeds the speaker signal)
 
     // Audio thread rule: after Start() nothing below allocates. Everything is sized once in Start()
     // (frames are cut straight out of the device buffer, only the < 1 frame tail is kept).
@@ -41,13 +43,13 @@ private:
     AudioInput m_input;               // declared last: destroyed first
 
     void init();
-    bool LoadMusic();
+    bool loadMusic();
     void onCapture(const int16_t *pcm, uint32_t frames);   // audio thread
     void onFrame(const int16_t *frame);                     // audio thread: exactly one opus frame
 
 public:
-    clsAudioRecorder();
-    ~clsAudioRecorder();
+    Recorder();
+    ~Recorder();
     void SetConfig(AudioConfig *pConfig);
     void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
     // optional echo canceller, the SAME instance as the player's. Call before Start(). Ignored while playing music.
@@ -56,4 +58,6 @@ public:
     void Stop();
 };
 
-#endif // CLSAUDIORECORDER_H
+} // namespace ravava
+
+#endif // RAVAVA_RECORDER_H

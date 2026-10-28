@@ -1,7 +1,9 @@
-#ifndef VOICEPACKET_H
-#define VOICEPACKET_H
+#ifndef RAVAVA_VOICEPACKET_H
+#define RAVAVA_VOICEPACKET_H
 
 #include "AudioTypes.h"
+
+namespace ravava {
 
 // Audio packet body = everything the audio layer knows about a packet: 3 byte audio header + one Opus packet.
 // The UDP envelope in front of it (packet type, stream id) belongs to the network layer, see net/Packet.h:
@@ -19,7 +21,7 @@ namespace VoicePacket
 
     // Writes the datagram into `p` (cleared first). Reusing the same `p` every time means no allocation
     // after the first packet: this is what the audio thread uses.
-    inline void wrapInto(Bytes &p, uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
+    inline void WrapInto(Bytes &p, uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
     {
         p.clear();
         p.push_back(uint8_t((marker ? FlagMarker : 0) | ((tx & TxMask) << 1)));
@@ -28,16 +30,16 @@ namespace VoicePacket
         p.insert(p.end(), opusPayload.begin(), opusPayload.end());
     }
 
-    inline Bytes wrap(uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
+    inline Bytes Wrap(uint16_t seq, bool marker, uint8_t tx, const Bytes &opusPayload)
     {
         Bytes p;
         p.reserve(HeaderSize + opusPayload.size());
-        wrapInto(p, seq, marker, tx, opusPayload);
+        WrapInto(p, seq, marker, tx, opusPayload);
         return p;
     }
 
     // Header only: the opus payload is NOT copied, `payload` points into `d` (valid as long as d is).
-    inline bool parseHeader(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx,
+    inline bool ParseHeader(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx,
                             const uint8_t *&payload, size_t &payloadSize)
     {
         if(!d || size <= size_t(HeaderSize))
@@ -50,7 +52,7 @@ namespace VoicePacket
         return true;
     }
 
-    inline bool parse(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx, Bytes &opusPayload)
+    inline bool Parse(const uint8_t *d, size_t size, uint16_t &seq, bool &marker, uint8_t &tx, Bytes &opusPayload)
     {
         if(!d || size <= size_t(HeaderSize))
             return false;
@@ -62,4 +64,6 @@ namespace VoicePacket
     }
 }
 
-#endif // VOICEPACKET_H
+} // namespace ravava
+
+#endif // RAVAVA_VOICEPACKET_H

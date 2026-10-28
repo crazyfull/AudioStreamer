@@ -8,20 +8,24 @@
 //              0 is never valid.
 //   byte 1-2 : stream id, uint16 little endian: whose stream this packet belongs to. The server fills it in, so a
 //              receiver knows which user is talking (conference).
-//   byte 3.. : payload. For Packet::Audio that is an audio packet body, see ../VoicePacket.h
+//   byte 3.. : payload. For Packet::Audio that is an audio packet body, see ravava/VoicePacket.h
 //
 // NOT compatible with the old format that started directly with the audio header.
 
-#include "../AudioTypes.h"
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace Packet
 {
+    using Bytes = std::vector<uint8_t>;          // same type as ravava::Bytes; the network layer does not depend on the audio library
+
     const int HeaderSize = 3;
 
     enum Type : uint8_t
     {
         Invalid = 0,
-        Audio = 1,          // payload = audio packet body (VoicePacket.h) of one stream
+        Audio = 1,          // payload = audio packet body (ravava/VoicePacket.h) of one stream
     };
 
     struct Header
@@ -31,7 +35,7 @@ namespace Packet
     };
 
     // Writes envelope + payload into `out` (cleared first). Reusing the same `out` avoids allocations.
-    inline void wrapInto(Bytes &out, const Header &h, const uint8_t *payload, size_t payloadSize)
+    inline void WrapInto(Bytes &out, const Header &h, const uint8_t *payload, size_t payloadSize)
     {
         out.clear();
         out.push_back(h.type);
@@ -41,14 +45,14 @@ namespace Packet
             out.insert(out.end(), payload, payload + payloadSize);
     }
 
-    inline void wrapInto(Bytes &out, const Header &h, const Bytes &payload)
+    inline void WrapInto(Bytes &out, const Header &h, const Bytes &payload)
     {
-        wrapInto(out, h, payload.data(), payload.size());
+        WrapInto(out, h, payload.data(), payload.size());
     }
 
     // The payload is NOT copied: `payload` points into `d`, valid as long as d is.
     // false = shorter than the envelope + 1 payload byte, or type 0.
-    inline bool parse(const uint8_t *d, size_t size, Header &h, const uint8_t *&payload, size_t &payloadSize)
+    inline bool Parse(const uint8_t *d, size_t size, Header &h, const uint8_t *&payload, size_t &payloadSize)
     {
         if(!d || size <= size_t(HeaderSize) || d[0] == Invalid)
             return false;

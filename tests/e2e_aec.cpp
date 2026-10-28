@@ -2,10 +2,10 @@
 // This is the "Loopback" situation of the app: the player's output comes straight back into the
 // microphone. Without echo cancellation the loop keeps ringing after the talker stops.
 //
-// Real webrtc-audio-processing + real libopus, fake devices (tests/stub/audioDevice_room_stub.cpp).
+// Real webrtc-audio-processing + real libopus, fake devices (tests/stub/audio_device_room_stub.cpp).
 // Build: see tests/README.txt. Takes ~20 s (real time).
-#include "clsAudioRecorder.h"
-#include "clsAudioPlayer.h"
+#include "ravava/Recorder.h"
+#include "ravava/Player.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -13,6 +13,8 @@
 #include <memory>
 #include <thread>
 #include <vector>
+
+using namespace ravava;
 
 extern std::atomic<bool>   g_talker;
 extern std::atomic<double> g_echoGain;
@@ -41,15 +43,15 @@ static std::pair<double,double> run(bool withAec, int *outLostPackets)
     cfg.frameMs = 20; cfg.opusBitrate = 24000; cfg.expectedLossPerc = 0; cfg.useDtx = false;
     cfg.useEchoCancel = withAec;
 
-    auto rec  = std::make_unique<clsAudioRecorder>();
-    auto play = std::make_unique<clsAudioPlayer>();
+    auto rec  = std::make_unique<Recorder>();
+    auto play = std::make_unique<Player>();
 
     std::shared_ptr<AudioProcessor> aec;
     if(withAec){
         aec = std::make_shared<AudioProcessor>();
         AudioProcessor::Options o; o.streamDelayMs = cfg.aecDelayMs;
         std::string err;
-        if(!aec->init(cfg.inputRate, cfg.renderRate(), cfg.channels, o, &err)){
+        if(!aec->Init(cfg.inputRate, cfg.RenderRate(), cfg.channels, o, &err)){
             std::printf("FAIL: aec init: %s\n", err.c_str());
             std::exit(1);
         }

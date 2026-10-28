@@ -57,7 +57,7 @@ win32 {
     # not found (or CONFIG += no_webrtc) = the project still builds, those features are just off.
     WEBRTC_ROOT = $$PWD/../webRTC-audio-process/install
     !no_webrtc:exists($$WEBRTC_ROOT/lib/libwebrtc-audio-processing-1.lib) {
-        DEFINES += VOICE_WITH_WEBRTC
+        DEFINES += RAVAVA_WITH_WEBRTC
         LIBS += $$WEBRTC_ROOT/lib/libwebrtc-audio-processing-1.lib
         INCLUDEPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1 $$WEBRTC_ROOT/include
         DEPENDPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1 $$WEBRTC_ROOT/include
@@ -95,7 +95,7 @@ linux {
     # Optional: not installed (or CONFIG += no_webrtc) = builds without it, those features are off.
     CONFIG += link_pkgconfig
     !no_webrtc:packagesExist(webrtc-audio-processing-1) {
-        DEFINES += VOICE_WITH_WEBRTC
+        DEFINES += RAVAVA_WITH_WEBRTC
         PKGCONFIG += webrtc-audio-processing-1
     }
 }
@@ -108,35 +108,35 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     miniaudio/miniaudio.c \
-    src/AudioProcessor.cpp \
-    src/audioDevice.cpp \
-    src/clsAudioPlayer.cpp \
-    src/clsAudioRecorder.cpp \
-    src/jitterBuffer.cpp \
+    src/ravava/AudioProcessor.cpp \
+    src/ravava/AudioDevice.cpp \
+    src/ravava/Player.cpp \
+    src/ravava/Recorder.cpp \
+    src/ravava/JitterBuffer.cpp \
     src/net/PacketRouter.cpp \
-    src/opusCodec.cpp
+    src/ravava/OpusCodec.cpp
 
 HEADERS += \
     mainwindow.h \
-    src/AudioConfig.h \
-    src/AudioProcessor.h \
-    src/AudioTypes.h \
-    src/audioDevice.h \
-    src/blockCutter.h \
-    src/clsAudioPlayer.h \
-    src/clsAudioRecorder.h \
-    src/jitterBuffer.h \
-    src/levelMeter.h \
+    src/ravava/AudioConfig.h \
+    src/ravava/AudioProcessor.h \
+    src/ravava/AudioTypes.h \
+    src/ravava/AudioDevice.h \
+    src/ravava/BlockCutter.h \
+    src/ravava/Player.h \
+    src/ravava/Recorder.h \
+    src/ravava/JitterBuffer.h \
+    src/ravava/LevelMeter.h \
     src/net/Packet.h \
     src/net/PacketRouter.h \
-    src/opusCodec.h \
-    src/packetQueue.h \
-    src/VoicePacket.h
+    src/ravava/OpusCodec.h \
+    src/ravava/PacketQueue.h \
+    src/ravava/VoicePacket.h
 
 FORMS += \
     mainwindow.ui
 
-contains(DEFINES, VOICE_WITH_WEBRTC) {
+contains(DEFINES, RAVAVA_WITH_WEBRTC) {
     message("webrtc-audio-processing: ON (echo cancellation, noise suppression, AGC)")
 } else {
     message("webrtc-audio-processing: OFF (not found or CONFIG+=no_webrtc), building without it")

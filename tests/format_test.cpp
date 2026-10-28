@@ -1,14 +1,16 @@
 // The player takes the stream format from the packets, not from AudioConfig: any sender input rate, frame size,
 // bitrate, bandwidth and mono / stereo, switching while it talks, and a stray other-format packet that must not
-// disturb the stream. Real player + real Opus, fake speaker (tests/stub/audioDevice_stub.cpp), no sound card.
-#include "clsAudioPlayer.h"
-#include "opusCodec.h"
-#include "VoicePacket.h"
+// disturb the stream. Real player + real Opus, fake speaker (tests/stub/audio_device_stub.cpp), no sound card.
+#include "ravava/Player.h"
+#include "ravava/OpusCodec.h"
+#include "ravava/VoicePacket.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <thread>
+
+using namespace ravava;
 
 extern void (*g_stubSpeakerTap)(const int16_t*, uint32_t, int);
 static std::atomic<double> g_sumSq{0};
@@ -25,26 +27,26 @@ static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
 struct Sender {
-    AudioConfig cfg; opusCodec enc; uint16_t seq = 0; double ph = 0; Bytes wire;
+    AudioConfig cfg; OpusCodec enc; uint16_t seq = 0; double ph = 0; Bytes wire;
     Sender(int rate, int ch, int frameMs, int bitrate, int bandwidth, bool dtx = false) {
         cfg.inputRate = rate; cfg.channels = ch; cfg.frameMs = frameMs; cfg.opusBitrate = bitrate;
-        cfg.MaxBandwith = bandwidth; cfg.useDtx = dtx;
+        cfg.maxBandwidth = bandwidth; cfg.useDtx = dtx;
         if(!enc.InitEncoder(cfg)){ std::printf("encoder init failed\n"); std::exit(2); }
     }
     Bytes next() {                                      // one packet of a 1 kHz tone
-        const int n = cfg.frameSamples();
+        const int n = cfg.FrameSamples();
         std::vector<int16_t> pcm(size_t(n) * cfg.channels);
         for(int i = 0; i < n; i++){
             const int16_t v = int16_t(8000.0 * std::sin(ph)); ph += 2 * M_PI * 1000 / cfg.inputRate;
             for(int c = 0; c < cfg.channels; c++) pcm[size_t(i) * cfg.channels + c] = v;
         }
         Bytes opus = enc.Encode(pcm.data(), n);
-        VoicePacket::wrapInto(wire, seq, seq == 0, uint8_t(seq & 0x7F), opus); seq++;      // tx counts packets, like the recorder
+        VoicePacket::WrapInto(wire, seq, seq == 0, uint8_t(seq & 0x7F), opus); seq++;      // tx counts packets, like the recorder
         return wire;
     }
 };
 
-static void talk(clsAudioPlayer &p, Sender &s, int ms)
+static void talk(Player &p, Sender &s, int ms)
 {
     for(int t = 0; t < ms; t += s.cfg.frameMs){
         p.Play(s.next());
@@ -57,7 +59,7 @@ int main()
     g_stubSpeakerTap = tap;
     // the speaker side: stereo 24 kHz here, to show the sender formats don't have to match it
     AudioConfig spk; spk.channels = 2; spk.outputRate = 24000;
-    clsAudioPlayer play; play.SetConfig(&spk);
+    Player play; play.SetConfig(&spk);
 
     struct Case { const char *name; int rate, ch, ms, bitrate, bw; } cases[] = {
         { "48k mono   20ms 24kbps fullband  ", 48000, 1, 20, 24000, OPUS_BANDWIDTH_FULLBAND },

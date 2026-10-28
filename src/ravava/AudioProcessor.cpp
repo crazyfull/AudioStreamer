@@ -1,13 +1,13 @@
 // the ONLY place that includes webrtc-audio-processing (version 1.x API).
 //
-// webrtc is OPTIONAL. With -DVOICE_WITH_WEBRTC this file is the real echo canceller / noise
+// webrtc is OPTIONAL. With -DRAVAVA_WITH_WEBRTC this file is the real echo canceller / noise
 // suppressor / AGC2; without it the bottom of this file builds a pass-through with the same
-// interface (init() fails with a message, isReady() is false, capture() copies the mic as is),
+// interface (Init() fails with a message, IsReady() is false, Capture() copies the mic as is),
 // so the whole project builds and runs without the library. VoiceStream.pro defines
-// VOICE_WITH_WEBRTC by itself when the library is found.
+// RAVAVA_WITH_WEBRTC by itself when the library is found.
 #include "AudioProcessor.h"
 
-#ifdef VOICE_WITH_WEBRTC
+#ifdef RAVAVA_WITH_WEBRTC
 //
 // Compiler defines the webrtc headers need (the same ones the library's own pkg-config file hands out).
 // They are set here so the .pro doesn't need them and they can't leak into the Qt / miniaudio sources.
@@ -50,11 +50,13 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include "blockCutter.h"
+#include "BlockCutter.h"
 #include <atomic>
 #include <cstring>
 #include <memory>
 #include <vector>
+
+namespace ravava {
 
 struct AudioProcessor::Impl
 {
@@ -68,7 +70,7 @@ struct AudioProcessor::Impl
     std::atomic<int>  delayMs{0};
 
     // each FIFO and scratch buffer belongs to ONE thread: capture* -> mic thread, render* -> speaker thread.
-    // The FIFOs only ever hold the incomplete tail (< 1 block) of the previous call, see cutBlocks().
+    // The FIFOs only ever hold the incomplete tail (< 1 block) of the previous call, see CutBlocks().
     std::vector<int16_t> capFifo;
     std::vector<int16_t> renFifo;
     std::vector<int16_t> renScratch;    // ProcessReverseStream output (render side isn't modified, we don't use it)
@@ -84,7 +86,7 @@ AudioProcessor::~AudioProcessor() {
 
 }
 
-bool AudioProcessor::init(int captureRate, int renderRate, int channels, const Options &opt, std::string *err)
+bool AudioProcessor::Init(int captureRate, int renderRate, int channels, const Options &opt, std::string *err)
 {
     auto fail = [&](const char *msg){
         if(err) *err = msg;
@@ -127,7 +129,7 @@ bool AudioProcessor::init(int captureRate, int renderRate, int channels, const O
     }
 #else
     if(opt.nearendProtection > 0)
-        AUDIO_WARN("echo canceller: echo_canceller3_factory.h not found, near-end protection ignored (see AudioProcessor.cpp)");
+        RAVAVA_WARN("echo canceller: echo_canceller3_factory.h not found, near-end protection ignored (see AudioProcessor.cpp)");
 #endif
     rtc::scoped_refptr<webrtc::AudioProcessing> apm(builder.Create());
     if(!apm)
@@ -184,40 +186,40 @@ bool AudioProcessor::init(int captureRate, int renderRate, int channels, const O
     return true;
 }
 
-bool AudioProcessor::init(int captureRate, int renderRate, int channels, std::string *err)
+bool AudioProcessor::Init(int captureRate, int renderRate, int channels, std::string *err)
 {
-    return init(captureRate, renderRate, channels, Options(), err);
+    return Init(captureRate, renderRate, channels, Options(), err);
 }
 
-bool AudioProcessor::isReady() const
+bool AudioProcessor::IsReady() const
 {
     return d->ready.load();
 }
 
-void AudioProcessor::setStreamDelayMs(int ms)
+void AudioProcessor::SetStreamDelayMs(int ms)
 {
     d->delayMs = ms;
 }
 
 // speaker thread
-void AudioProcessor::render(const int16_t *pcm, uint32_t frames)
+void AudioProcessor::Render(const int16_t *pcm, uint32_t frames)
 {
     Impl &s = *d;
     if(!s.ready.load() || !pcm || !frames)
         return;
 
     // 10 ms blocks are taken straight from `pcm`; only a tail of < 10 ms is copied (no allocation, no big memmove)
-    cutBlocks(s.renFifo, s.renBlock, pcm, size_t(frames) * s.channels, [&s](const int16_t *block){
+    CutBlocks(s.renFifo, s.renBlock, pcm, size_t(frames) * s.channels, [&s](const int16_t *block){
         int rc = s.apm->ProcessReverseStream(block, s.renCfg, s.renCfg, s.renScratch.data());
         if(rc != webrtc::AudioProcessing::kNoError && !s.renErrorLogged){
             s.renErrorLogged = true;
-            AUDIO_WARN("echo canceller: ProcessReverseStream error %d", rc);
+            RAVAVA_WARN("echo canceller: ProcessReverseStream error %d", rc);
         }
     });
 }
 
 // mic thread
-void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
+void AudioProcessor::Capture(const int16_t *pcm, uint32_t frames, Pcm &out)
 {
     Impl &s = *d;
 
@@ -231,7 +233,7 @@ void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
         return;
 
     // `out` is the caller's scratch (cleared each call, so its capacity is reused)
-    cutBlocks(s.capFifo, s.capBlock, pcm, size_t(frames) * s.channels, [&s, &out](const int16_t *block){
+    CutBlocks(s.capFifo, s.capBlock, pcm, size_t(frames) * s.channels, [&s, &out](const int16_t *block){
         const size_t pos = out.size();
         out.resize(pos + s.capBlock);
 
@@ -243,13 +245,13 @@ void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
             std::memcpy(out.data() + pos, block, s.capBlock * sizeof(int16_t));
             if(!s.capErrorLogged){
                 s.capErrorLogged = true;
-                AUDIO_WARN("echo canceller: ProcessStream error %d", rc);
+                RAVAVA_WARN("echo canceller: ProcessStream error %d", rc);
             }
         }
     });
 }
 
-bool AudioProcessor::getStats(Stats &st) const
+bool AudioProcessor::GetStats(Stats &st) const
 {
     if(!d->ready.load())
         return false;
@@ -272,14 +274,18 @@ bool AudioProcessor::getStats(Stats &st) const
     return true;
 }
 
-bool AudioProcessor::available()
+bool AudioProcessor::IsAvailable()
 {
     return true;
 }
 
+} // namespace ravava
+
 #else   // ---------------------------------------------------------------- built without webrtc
 
 #include <cstring>
+
+namespace ravava {
 
 struct AudioProcessor::Impl
 {
@@ -289,33 +295,35 @@ struct AudioProcessor::Impl
 AudioProcessor::AudioProcessor() : d(new Impl) {}
 AudioProcessor::~AudioProcessor() {}
 
-bool AudioProcessor::available()
+bool AudioProcessor::IsAvailable()
 {
     return false;
 }
 
-bool AudioProcessor::init(int, int, int channels, const Options&, std::string *err)
+bool AudioProcessor::Init(int, int, int channels, const Options&, std::string *err)
 {
     d->channels = channels;
     if(err)
-        *err = "built without webrtc-audio-processing (define VOICE_WITH_WEBRTC to enable echo cancellation, noise suppression and AGC)";
+        *err = "built without webrtc-audio-processing (define RAVAVA_WITH_WEBRTC to enable echo cancellation, noise suppression and AGC)";
     return false;
 }
 
-bool AudioProcessor::init(int captureRate, int renderRate, int channels, std::string *err)
+bool AudioProcessor::Init(int captureRate, int renderRate, int channels, std::string *err)
 {
-    return init(captureRate, renderRate, channels, Options(), err);
+    return Init(captureRate, renderRate, channels, Options(), err);
 }
 
-bool AudioProcessor::isReady() const { return false; }
-void AudioProcessor::render(const int16_t*, uint32_t) {}
-void AudioProcessor::setStreamDelayMs(int) {}
-bool AudioProcessor::getStats(Stats&) const { return false; }
+bool AudioProcessor::IsReady() const { return false; }
+void AudioProcessor::Render(const int16_t*, uint32_t) {}
+void AudioProcessor::SetStreamDelayMs(int) {}
+bool AudioProcessor::GetStats(Stats&) const { return false; }
 
-void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
+void AudioProcessor::Capture(const int16_t *pcm, uint32_t frames, Pcm &out)
 {
     if(pcm && frames)
         out.insert(out.end(), pcm, pcm + size_t(frames) * size_t(d->channels));
 }
 
-#endif  // VOICE_WITH_WEBRTC
+} // namespace ravava
+
+#endif  // RAVAVA_WITH_WEBRTC

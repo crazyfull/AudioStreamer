@@ -8,13 +8,15 @@
 //   renderRate  speaker rate, must divide 48000 (default 48000; try 24000 16000)
 //   noref       control run: the far end is NOT given to the canceller, so nothing can be removed.
 //               It must show ~0 dB attenuation, which proves the normal run measures the canceller.
-#include "AudioProcessor.h"
+#include "ravava/AudioProcessor.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
 #include <string>
 #include <vector>
+
+using namespace ravava;
 
 static const int    kCapRate   = 48000;
 static const double kPi        = 3.14159265358979323846;
@@ -78,17 +80,17 @@ int main(int argc, char **argv)
     {
         AudioProcessor dead;
         int16_t in[300]; for(int i = 0; i < 300; ++i) in[i] = int16_t(i);
-        Pcm out; dead.capture(in, 300, out);
+        Pcm out; dead.Capture(in, 300, out);
         if(out.size() != 300 || out[299] != 299){ std::printf("FAIL: uninitialized pass-through\n"); return 1; }
     }
 
     AudioProcessor aec;
     std::string err;
     AudioProcessor::Options opt; opt.streamDelayMs = 50;
-    if(!aec.init(kCapRate, renderRate, 1, opt, &err)){ std::printf("FAIL: init: %s\n", err.c_str()); return 1; }
+    if(!aec.Init(kCapRate, renderRate, 1, opt, &err)){ std::printf("FAIL: init: %s\n", err.c_str()); return 1; }
 
     // bad parameters must be rejected, not crash
-    { AudioProcessor x; if(x.init(44123, 48000, 1) || x.init(48000, 48000, 5)){ std::printf("FAIL: bad params accepted\n"); return 1; } }
+    { AudioProcessor x; if(x.Init(44123, 48000, 1) || x.Init(48000, 48000, 5)){ std::printf("FAIL: bad params accepted\n"); return 1; } }
 
     const double totalSec = 14, phase1End = 8;
     const int ticks = int(totalSec * 100);
@@ -118,7 +120,7 @@ int main(int argc, char **argv)
             while(pos < n){
                 int c = std::min(n - pos, 1 + int(rng() % unsigned(n)));
                 if(!noref)
-                    aec.render(r.data() + pos, uint32_t(c));
+                    aec.Render(r.data() + pos, uint32_t(c));
                 pos += c;
             }
         }
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
         }
         gen += 480;
         if(tick == int(phase1End * 100) - 1)
-            aec.getStats(stEcho);
+            aec.GetStats(stEcho);
 
         micIn.insert(micIn.end(), mic.begin(), mic.end());
         nearOnly.insert(nearOnly.end(), nearBlk.begin(), nearBlk.end());
@@ -147,7 +149,7 @@ int main(int argc, char **argv)
         while(pos < 480){
             int c = std::min(480 - pos, 1 + int(rng() % 479));
             out.clear();
-            aec.capture(mic.data() + pos, uint32_t(c), out);
+            aec.Capture(mic.data() + pos, uint32_t(c), out);
             micOut.insert(micOut.end(), out.begin(), out.end());
             pos += c;
         }
@@ -171,7 +173,7 @@ int main(int argc, char **argv)
     double echoLeft = 10 * std::log10(energy(&micIn[c0], c1 - c0) / std::fmax(1.0, energy(&nearOnly[c0], c1 - c0)));
 
     AudioProcessor::Stats st;
-    aec.getStats(st);
+    aec.GetStats(st);
 
     std::printf("render rate %d Hz, capture %d Hz\n", renderRate, kCapRate);
     std::printf("echo only      : first 1s attenuation %.1f dB, steady state (5-8s) %.1f dB\n", early, erle);

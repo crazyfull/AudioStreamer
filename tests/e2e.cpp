@@ -1,5 +1,5 @@
-#include "clsAudioRecorder.h"
-#include "clsAudioPlayer.h"
+#include "ravava/Recorder.h"
+#include "ravava/Player.h"
 #include <mutex>
 #include <random>
 #include <thread>
@@ -7,9 +7,11 @@
 #include <cstdio>
 #include <deque>
 
+using namespace ravava;
+
 int main(){
     AudioConfig cfg; cfg.frameMs=20; cfg.opusBitrate=16000; cfg.expectedLossPerc=20; cfg.useDtx=false;
-    clsAudioRecorder rec; clsAudioPlayer play;
+    Recorder rec; Player play;
     std::mt19937 rng(1); std::mutex mx; int sent=0, dropped=0, swapped=0;
     std::deque<Bytes> held;
     rec.SetPacketHandler([&](const Bytes &d){

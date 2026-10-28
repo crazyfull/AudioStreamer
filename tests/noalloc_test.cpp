@@ -1,18 +1,20 @@
 // Proves the recorder's AND the player's audio-thread path allocate nothing once they run (global operator new is counted).
 // Uses the fake devices and a pass-through AudioProcessor defined HERE that cuts 10 ms blocks exactly like the real
-// one (src/AudioProcessor.cpp), so the "echo canceller ready" branch of the recorder is exercised too.
+// one (src/ravava/AudioProcessor.cpp), so the "echo canceller ready" branch of the recorder is exercised too.
 // Build (one line):
-//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioRecorder.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o noalloc_test
-#include "clsAudioRecorder.h"
-#include "clsAudioPlayer.h"
+//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
+#include "ravava/Recorder.h"
+#include "ravava/Player.h"
 #include "net/PacketRouter.h"
-#include "blockCutter.h"
+#include "ravava/BlockCutter.h"
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <new>
 #include <thread>
+
+using namespace ravava;
 
 static std::atomic<long> g_allocs{0};
 static std::atomic<bool> g_count{false};
@@ -23,30 +25,32 @@ void operator delete[](void *p) noexcept { std::free(p); }
 void operator delete(void *p, size_t) noexcept { std::free(p); }
 void operator delete[](void *p, size_t) noexcept { std::free(p); }
 
+namespace ravava {
 // ---- a "ready" canceller that passes the signal through in exact 10 ms blocks
 struct AudioProcessor::Impl { std::vector<int16_t> fifo; size_t block = 0; bool ready = false; };
-bool AudioProcessor::available() { return true; }
+bool AudioProcessor::IsAvailable() { return true; }
 AudioProcessor::AudioProcessor() : d(new Impl) {}
 AudioProcessor::~AudioProcessor() {}
-bool AudioProcessor::init(int rate, int, int ch, const Options&, std::string*){
+bool AudioProcessor::Init(int rate, int, int ch, const Options&, std::string*){
     d->block = size_t(rate / 100) * ch; d->fifo.reserve(d->block); d->ready = true; return true; }
-bool AudioProcessor::init(int rate, int rr, int ch, std::string *e){ return init(rate, rr, ch, Options(), e); }
-bool AudioProcessor::isReady() const { return d->ready; }
-void AudioProcessor::render(const int16_t*, uint32_t) {}
-void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out){
-    cutBlocks(d->fifo, d->block, pcm, size_t(frames), [&](const int16_t *b){ out.insert(out.end(), b, b + d->block); }); }
-void AudioProcessor::setStreamDelayMs(int) {}
-bool AudioProcessor::getStats(Stats&) const { return false; }
+bool AudioProcessor::Init(int rate, int rr, int ch, std::string *e){ return Init(rate, rr, ch, Options(), e); }
+bool AudioProcessor::IsReady() const { return d->ready; }
+void AudioProcessor::Render(const int16_t*, uint32_t) {}
+void AudioProcessor::Capture(const int16_t *pcm, uint32_t frames, Pcm &out){
+    CutBlocks(d->fifo, d->block, pcm, size_t(frames), [&](const int16_t *b){ out.insert(out.end(), b, b + d->block); }); }
+void AudioProcessor::SetStreamDelayMs(int) {}
+bool AudioProcessor::GetStats(Stats&) const { return false; }
+} // namespace ravava
 
 static long runCase(bool useAec, int frameMs, bool dtx)
 {
     AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
-    clsAudioRecorder rec;
+    Recorder rec;
     std::atomic<long> packets{0};
     rec.SetPacketHandler([&](const Bytes &d){ if(!d.empty()) packets++; });
     if(useAec){
         auto aec = std::make_shared<AudioProcessor>();
-        aec->init(cfg.inputRate, cfg.inputRate, cfg.channels);
+        aec->Init(cfg.inputRate, cfg.inputRate, cfg.channels);
         rec.SetAudioProcessor(aec);
     }
     rec.SetConfig(&cfg);
@@ -66,7 +70,7 @@ static long runCase(bool useAec, int frameMs, bool dtx)
 static long runPlayerCase(int frameMs, bool dtx)
 {
     AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
-    clsAudioRecorder rec; clsAudioPlayer play;
+    Recorder rec; Player play;
     PacketRouter router;
     const uint16_t streamId = 0x1234;
     unsigned audioPackets = 0, wrongStream = 0, controlSent = 0;
@@ -84,7 +88,7 @@ static long runPlayerCase(int frameMs, bool dtx)
     rec.SetPacketHandler([&](const Bytes &body){
         n++;
         Packet::Header h; h.type = Packet::Audio; h.streamId = streamId;
-        Packet::wrapInto(wire, h, body);
+        Packet::WrapInto(wire, h, body);
         if(n % 7 == 0){ controlSent++; router.Dispatch(control); }
         if(n % 10 == 3) return;                                   // 10% lost
         if(n % 13 == 0 && !haveHeld){ held.assign(wire.begin(), wire.end()); haveHeld = true; return; }   // reordered: after the next one
@@ -101,11 +105,11 @@ static long runPlayerCase(int frameMs, bool dtx)
     JitterBuffer::Stats st; int depth, ms;
     play.GetStats(st, depth, ms);
     std::printf("  player frame=%2dms dtx=%d : received %u, played %u, fec %u, plc %u, lost %u, router: audio %u, other types %u, allocations in steady state: %ld\n",
-                frameMs, dtx, st.received, st.played, st.fec, st.plc, st.lost, router.stats().dispatched, router.stats().unhandled, g_allocs.load());
+                frameMs, dtx, st.received, st.played, st.fec, st.plc, st.lost, router.GetStats().dispatched, router.GetStats().unhandled, g_allocs.load());
     long bad = g_allocs.load();
     if(st.played < 20){ std::printf("  FAIL: nothing was played\n"); bad++; }
     if(wrongStream){ std::printf("  FAIL: wrong stream id at the audio handler\n"); bad++; }
-    if(router.stats().unhandled != controlSent || router.stats().malformed != 0){ std::printf("  FAIL: router counters\n"); bad++; }
+    if(router.GetStats().unhandled != controlSent || router.GetStats().malformed != 0){ std::printf("  FAIL: router counters\n"); bad++; }
     // everything the router called "audio" arrived in the jitter buffer, nothing else did
     if(st.received > audioPackets || audioPackets - st.received > 3){ std::printf("  FAIL: jitter buffer got %u, router sent %u audio packets\n", st.received, audioPackets); bad++; }
     return bad;

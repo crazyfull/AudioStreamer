@@ -2,14 +2,16 @@
 // implementation kept in tests/ref/. Same random network (loss, reordering, duplicates, DTX silence with
 // markers, sender restarts) goes into both; every PopFrame() result and every statistic must be identical.
 // Build:
-//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc -Itests/ref tests/jitter_diff_test.cpp tests/ref/refJitterBuffer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o jitter_diff_test
-#include "jitterBuffer.h"
+//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc -Itests/ref tests/jitter_diff_test.cpp tests/ref/refJitterBuffer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o jitter_diff_test
+#include "ravava/JitterBuffer.h"
 #include "refJitterBuffer.h"
-#include "VoicePacket.h"
+#include "ravava/VoicePacket.h"
 #include <cmath>
 #include <cstdio>
 #include <deque>
 #include <random>
+
+using namespace ravava;
 
 static bool sameStats(const JitterBuffer::Stats &a, const RefJitterBuffer::Stats &b)
 {
@@ -27,8 +29,8 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
 
     // a pool of real Opus packets (the decoder state evolves, so decoding must really agree)
     AudioConfig cfg; cfg.frameMs = c.frameMs; cfg.opusBitrate = 12000; cfg.useDtx = false;
-    opusCodec enc; if(!enc.InitEncoder(cfg)){ std::printf("encoder init failed\n"); return 1; }
-    const int fs = cfg.frameSamples();
+    OpusCodec enc; if(!enc.InitEncoder(cfg)){ std::printf("encoder init failed\n"); return 1; }
+    const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;
     for(int i = 0; i < 64; i++){
         Pcm pcm(static_cast<size_t>(fs), 0);
@@ -36,7 +38,7 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
         Bytes b; enc.Encode(pcm.data(), fs, b); pool.push_back(b);
     }
 
-    opusCodec decA, decB; decA.InitDecoder(48000, 1); decB.InitDecoder(48000, 1);
+    OpusCodec decA, decB; decA.InitDecoder(48000, 1); decB.InitDecoder(48000, 1);
     JitterBuffer a(&decA, 48000, 1, c.frameMs);
     RefJitterBuffer b(&decB, 48000, 1, c.frameMs);
 
@@ -53,10 +55,10 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
         Pcm pa, pb;
         bool ra = a.PopFrame(pa), rb = b.PopFrame(pb);
         pops++;
-        if(ra != rb || pa != pb || !sameStats(a.stats(), b.stats()) || a.targetDepth() != b.targetDepth()){
+        if(ra != rb || pa != pb || !sameStats(a.GetStats(), b.GetStats()) || a.TargetDepth() != b.TargetDepth()){
             std::printf("  MISMATCH seed=%u frameMs=%d step=%d: ret %d/%d size %zu/%zu stats played %u/%u plc %u/%u fec %u/%u lost %u/%u late %u/%u target %d/%d\n",
-                seed, c.frameMs, step, ra, rb, pa.size(), pb.size(), a.stats().played, b.stats().played, a.stats().plc, b.stats().plc,
-                a.stats().fec, b.stats().fec, a.stats().lost, b.stats().lost, a.stats().late, b.stats().late, a.targetDepth(), b.targetDepth());
+                seed, c.frameMs, step, ra, rb, pa.size(), pb.size(), a.GetStats().played, b.GetStats().played, a.GetStats().plc, b.GetStats().plc,
+                a.GetStats().fec, b.GetStats().fec, a.GetStats().lost, b.GetStats().lost, a.GetStats().late, b.GetStats().late, a.TargetDepth(), b.TargetDepth());
             return 1;
         }
         return 0;
@@ -73,7 +75,7 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
         const uint16_t thisSeq = seq++;           // every frame uses a number
         if(c.dtx && !talking){ marker = true; }
         else{
-            Bytes d = VoicePacket::wrap(thisSeq, marker, tx++, pool[size_t(step) % pool.size()]);
+            Bytes d = VoicePacket::Wrap(thisSeq, marker, tx++, pool[size_t(step) % pool.size()]);
             marker = false;
             // network
             if(chance(c.lossPct)){ /* lost */ }

@@ -6,7 +6,7 @@ bool PacketRouter::Dispatch(const uint8_t *datagram, size_t size)
     const uint8_t *payload = nullptr;
     size_t payloadSize = 0;
 
-    if(!Packet::parse(datagram, size, hdr, payload, payloadSize)){
+    if(!Packet::Parse(datagram, size, hdr, payload, payloadSize)){
         m_stats.malformed++;
         return false;
     }

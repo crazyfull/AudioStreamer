@@ -1,8 +1,10 @@
-#ifndef AUDIOCONFIG_H
-#define AUDIOCONFIG_H
+#ifndef RAVAVA_AUDIOCONFIG_H
+#define RAVAVA_AUDIOCONFIG_H
 
 #include <string>
 #include <cstdio>
+
+namespace ravava {
 
 /*
 NB (narrowband)             4 kHz   8 kHz
@@ -28,7 +30,7 @@ struct AudioConfig
     bool playMusic = false;
     std::string musicPath;      // UTF-8
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
-    int MaxBandwith = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
+    int maxBandwidth = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
     // ---- echo cancellation (webrtc-audio-processing, see AudioProcessor.h) ----
     bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
@@ -38,14 +40,14 @@ struct AudioConfig
     int aecDelayMs = 100;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
 
     // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000
-    int renderRate() const {
+    int RenderRate() const {
         return (outputRate == 8000 || outputRate == 12000 || outputRate == 16000 ||
                 outputRate == 24000 || outputRate == 48000) ? outputRate : 48000;
     }
 
     // Rejects values Opus can't use, so a bad form entry fails at start-up with a clear message
     // instead of giving bad quality or odd behaviour later. `err` (optional) gets the reason.
-    bool validate(std::string *err = nullptr) const {
+    bool Validate(std::string *err = nullptr) const {
         auto fail = [&](const char *what, int v){
             if(err){
                 char b[96];
@@ -64,18 +66,20 @@ struct AudioConfig
             return fail("opusBitrate (500..512000 bps)", opusBitrate);
         if(expectedLossPerc < 0 || expectedLossPerc > 100)
             return fail("expectedLossPerc (0..100)", expectedLossPerc);
-        if(MaxBandwith < 1101 || MaxBandwith > 1105)
-            return fail("MaxBandwith (1101..1105)", MaxBandwith);
+        if(maxBandwidth < 1101 || maxBandwidth > 1105)
+            return fail("maxBandwidth (1101..1105)", maxBandwidth);
         return true;
     }
 
-    int frameSamples() const {
+    int FrameSamples() const {
         return inputRate * frameMs / 1000; //per channel
     }
 
-    int frameBytes() const   {
-        return frameSamples() * channels * 2;   //16bit PCM
+    int FrameBytes() const   {
+        return FrameSamples() * channels * 2;   //16bit PCM
     }
 };
 
-#endif // AUDIOCONFIG_H
+} // namespace ravava
+
+#endif // RAVAVA_AUDIOCONFIG_H

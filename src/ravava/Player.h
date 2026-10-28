@@ -1,21 +1,23 @@
-#ifndef CLSAUDIOPLAYER_H
-#define CLSAUDIOPLAYER_H
+#ifndef RAVAVA_PLAYER_H
+#define RAVAVA_PLAYER_H
 
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include "AudioTypes.h"
 #include "AudioConfig.h"
-#include "audioDevice.h"
-#include "jitterBuffer.h"
-#include "levelMeter.h"
+#include "AudioDevice.h"
+#include "JitterBuffer.h"
+#include "LevelMeter.h"
 #include "AudioProcessor.h"
-#include "packetQueue.h"
+#include "PacketQueue.h"
+
+namespace ravava {
 
 // Receive side: datagram -> JitterBuffer (reorder / FEC / PLC) -> opus decode -> speaker.
 //
 // The player needs NO description of the stream: the frame duration comes from the Opus packets themselves
-// (first byte, see opusCodec::Inspect). The sender may use any frame size / bitrate / bandwidth / input rate /
+// (first byte, see OpusCodec::Inspect). The sender may use any frame size / bitrate / bandwidth / input rate /
 // mono or stereo, and may change it while talking; the decoder always outputs the speaker's own rate and channels
 // (AudioConfig::renderRate() / channels), Opus converts. Only the speaker side of the config is used here.
 // No Qt. Play() may be called from any thread; the speaker pulls frames from the audio thread.
@@ -23,7 +25,7 @@
 // Threading: Play() only copies the datagram into a lock-free queue (PacketQueue). The audio thread
 // drains that queue and is the ONLY user of the jitter buffer and the Opus decoder, so it never waits
 // for the network/GUI thread (no lock shared with Play()), and Play() never waits for a decode.
-class clsAudioPlayer
+class Player
 {
     AudioConfig *m_pConfig;
 
@@ -31,7 +33,7 @@ class clsAudioPlayer
     // new duration shows up, handed to the audio thread through m_next, and the audio thread hands the old one
     // back through m_retired: nothing is ever allocated or freed on the audio thread.
     struct Stream {
-        opusCodec codec;
+        OpusCodec codec;
         std::unique_ptr<JitterBuffer> jitter;
         int frameMs = 0;
         Stream *retiredLink = nullptr;      // m_retired list
@@ -45,7 +47,7 @@ class clsAudioPlayer
     int m_netFrameMs;                       // frame duration the audio thread plays / is about to play (0 = none yet)
     int m_candidateMs;                      // a different duration that is currently being seen ...
     int m_candidateCount;                   // ... this many packets in a row
-    std::shared_ptr<AudioProcessor> m_aec;   // shared with clsAudioRecorder (we feed it what the speaker plays)
+    std::shared_ptr<AudioProcessor> m_aec;   // shared with Recorder (we feed it what the speaker plays)
 
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
@@ -73,24 +75,24 @@ class clsAudioPlayer
     void onDeviceData(int16_t *out, uint32_t frames);
     void adoptNextStream();
     void reapRetired();
+    void init();                            // called by SetConfig()
     void publishStats();
     void applyVolume(int16_t *out, uint32_t frames);
 
 public:
-    clsAudioPlayer();
-    ~clsAudioPlayer();
+    Player();
+    ~Player();
     void SetConfig(AudioConfig *pConfig);
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
 
-    void init();
     // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running.
     // The figures are at most ~10 ms old.
     bool GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const;
-    // loudness of the received audio, 0..100 (0 = silence, see levelMeter.h). Any thread, lock-free.
+    // loudness of the received audio, 0..100 (0 = silence, see LevelMeter.h). Any thread, lock-free.
     // It is measured on the decoded PCM that is sent to the speaker, so DTX silence / lost audio read 0.
-    int GetLevel() const { return m_level.level(); }        // smooth, "right now"
-    int TakePeakLevel() { return m_level.takePeak(); }      // loudest since the last call (for slow GUI timers)
+    int GetLevel() const { return m_level.Level(); }        // smooth, "right now"
+    int TakePeakLevel() { return m_level.TakePeak(); }      // loudest since the last call (for slow GUI timers)
     // playback volume of the received audio: 0 = mute .. 100 = unchanged (default). Any thread, takes effect
     // within ~10 ms without clicks. Quadratic curve (50 = -12 dB), which sounds like an even slider. Never amplifies,
     // so it can't clip. GetLevel()/TakePeakLevel() measure BEFORE it (the level that was received).
@@ -101,4 +103,6 @@ public:
     void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }
 };
 
-#endif // CLSAUDIOPLAYER_H
+} // namespace ravava
+
+#endif // RAVAVA_PLAYER_H

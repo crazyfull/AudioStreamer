@@ -1,10 +1,12 @@
-#include "jitterBuffer.h"
+#include "JitterBuffer.h"
 #include "VoicePacket.h"
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
-JitterBuffer::JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
+namespace ravava {
+
+JitterBuffer::JitterBuffer(OpusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_count(0), m_seenTop(0), m_seenAny(false),
       m_pCodec(codec), m_channels(channels), m_frameSamples(0),
       m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
@@ -122,7 +124,7 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
 {
     uint16_t seq; bool marker; uint8_t tx;
     const uint8_t *payload; size_t payloadSize;
-    if(!VoicePacket::parseHeader(datagram, size, seq, marker, tx, payload, payloadSize) || payloadSize > MaxPayload)
+    if(!VoicePacket::ParseHeader(datagram, size, seq, marker, tx, payload, payloadSize) || payloadSize > MaxPayload)
         return;
 
     // extend 16bit sequence to a monotonically growing number
@@ -307,3 +309,5 @@ bool JitterBuffer::PopFrame(Pcm &out)
     m_stats.plc++;
     return m_pCodec->DecodePlc(m_frameSamples, out);
 }
+
+} // namespace ravava

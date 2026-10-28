@@ -9,11 +9,11 @@
 #include <QPair>
 #include <memory>
 
-#include "src/AudioConfig.h"
+#include "src/ravava/AudioConfig.h"
 #include "src/net/PacketRouter.h"
-//#include "src/clsAudioRecorder.h"
+//#include "src/ravava/Recorder.h"
 
-class AudioProcessor;
+namespace ravava { class AudioProcessor; class Recorder; class Player; }
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -23,10 +23,10 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
 private:
-    class clsAudioRecorder *m_pAudioRecorder = nullptr;
-    class clsAudioPlayer *m_pAudioPlayer  = nullptr;
-    std::shared_ptr<AudioProcessor> m_pAec;      // shared by recorder (mic) and player (speaker)
-    AudioConfig m_AudioConfig;
+    ravava::Recorder *m_pAudioRecorder = nullptr;
+    ravava::Player *m_pAudioPlayer  = nullptr;
+    std::shared_ptr<ravava::AudioProcessor> m_pAec;      // shared by recorder (mic) and player (speaker)
+    ravava::AudioConfig m_AudioConfig;
     class QUdpSocket *m_pUDPClient;
     class QTcpSocket *m_pTCPClient;
 
