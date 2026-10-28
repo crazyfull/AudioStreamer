@@ -110,6 +110,7 @@ SOURCES += \
     src/clsAudioPlayer.cpp \
     src/clsAudioRecorder.cpp \
     src/jitterBuffer.cpp \
+    src/net/PacketRouter.cpp \
     src/opusCodec.cpp
 
 HEADERS += \
@@ -118,13 +119,15 @@ HEADERS += \
     src/AudioProcessor.h \
     src/AudioTypes.h \
     src/audioDevice.h \
+    src/blockCutter.h \
     src/clsAudioPlayer.h \
     src/clsAudioRecorder.h \
-    src/blockCutter.h \
-    src/packetQueue.h \
     src/jitterBuffer.h \
-    src/VoicePacket.h \
-    src/opusCodec.h
+    src/net/Packet.h \
+    src/net/PacketRouter.h \
+    src/opusCodec.h \
+    src/packetQueue.h \
+    src/VoicePacket.h
 
 FORMS += \
     mainwindow.ui

@@ -5,7 +5,7 @@
 //   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioRecorder.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o noalloc_test
 #include "clsAudioRecorder.h"
 #include "clsAudioPlayer.h"
-#include "VoicePacket.h"
+#include "net/PacketRouter.h"
 #include "blockCutter.h"
 #include <atomic>
 #include <chrono>
@@ -60,24 +60,35 @@ static long runCase(bool useAec, int frameMs, bool dtx)
     return g_allocs.load();
 }
 
-// recorder -> lossy / reordering "network" -> player: allocations anywhere in the process while it runs
-static long runPlayerCase(int frameMs, bool dtx, int streamId = 0x1234, int playStreamId = -1, bool expectSilence = false)
+// recorder -> UDP envelope -> lossy / reordering "network" -> PacketRouter -> player.
+// Allocations anywhere in the process while it runs; also checks that the router hands only audio to the audio layer.
+static long runPlayerCase(int frameMs, bool dtx)
 {
     AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
-    cfg.streamId = streamId; cfg.playStreamId = playStreamId;
     clsAudioRecorder rec; clsAudioPlayer play;
+    PacketRouter router;
+    const uint16_t streamId = 0x1234;
+    unsigned audioPackets = 0, wrongStream = 0, controlSent = 0;
+    router.SetHandler(Packet::Audio, [&](const Packet::Header &h, const uint8_t *payload, size_t size){
+        audioPackets++;
+        if(h.streamId != streamId) wrongStream++;
+        play.Play(payload, size);
+    });
+
+    const Bytes control = {2, 0x34, 0x12, 1, 2, 3};               // a packet of another type (2): must never reach the audio layer
+    Bytes wire; wire.reserve(2000);
     Bytes held; held.reserve(2000);
     bool haveHeld = false;
     unsigned n = 0;
-    bool headerOk = true;
-    rec.SetPacketHandler([&](const Bytes &d){
+    rec.SetPacketHandler([&](const Bytes &body){
         n++;
-        // every datagram starts with: type, stream id (2 bytes)
-        if(d.size() < size_t(VoicePacket::HeaderSize) || d[0] != VoicePacket::Audio || (d[1] | (d[2] << 8)) != streamId) headerOk = false;
+        Packet::Header h; h.type = Packet::Audio; h.streamId = streamId;
+        Packet::wrapInto(wire, h, body);
+        if(n % 7 == 0){ controlSent++; router.Dispatch(control); }
         if(n % 10 == 3) return;                                   // 10% lost
-        if(n % 13 == 0 && !haveHeld){ held.assign(d.begin(), d.end()); haveHeld = true; return; }   // reordered: after the next one
-        play.Play(d);
-        if(haveHeld){ play.Play(held); haveHeld = false; }
+        if(n % 13 == 0 && !haveHeld){ held.assign(wire.begin(), wire.end()); haveHeld = true; return; }   // reordered: after the next one
+        router.Dispatch(wire);
+        if(haveHeld){ router.Dispatch(held); haveHeld = false; }
     });
     rec.SetConfig(&cfg); play.SetConfig(&cfg);
     rec.Start();
@@ -88,13 +99,14 @@ static long runPlayerCase(int frameMs, bool dtx, int streamId = 0x1234, int play
     rec.Stop();
     JitterBuffer::Stats st; int depth, ms;
     play.GetStats(st, depth, ms);
-    std::printf("  player frame=%2dms dtx=%d : received %u, played %u, fec %u, plc %u, lost %u, allocations in steady state: %ld\n",
-                frameMs, dtx, st.received, st.played, st.fec, st.plc, st.lost, g_allocs.load());
+    std::printf("  player frame=%2dms dtx=%d : received %u, played %u, fec %u, plc %u, lost %u, router: audio %u, other types %u, allocations in steady state: %ld\n",
+                frameMs, dtx, st.received, st.played, st.fec, st.plc, st.lost, router.stats().dispatched, router.stats().unhandled, g_allocs.load());
     long bad = g_allocs.load();
-    if(!headerOk){ std::printf("  FAIL: wrong packet type / stream id in the header\n"); bad++; }
-    if(expectSilence){
-        if(st.received != 0 || st.otherStream < 20){ std::printf("  FAIL: another stream must be ignored (received %u, otherStream %u)\n", st.received, st.otherStream); bad++; }
-    }else if(st.played < 20){ std::printf("  FAIL: nothing was played\n"); bad++; }
+    if(st.played < 20){ std::printf("  FAIL: nothing was played\n"); bad++; }
+    if(wrongStream){ std::printf("  FAIL: wrong stream id at the audio handler\n"); bad++; }
+    if(router.stats().unhandled != controlSent || router.stats().malformed != 0){ std::printf("  FAIL: router counters\n"); bad++; }
+    // everything the router called "audio" arrived in the jitter buffer, nothing else did
+    if(st.received > audioPackets || audioPackets - st.received > 3){ std::printf("  FAIL: jitter buffer got %u, router sent %u audio packets\n", st.received, audioPackets); bad++; }
     return bad;
 }
 
@@ -108,8 +120,6 @@ int main()
     bad += runPlayerCase(20, false);
     bad += runPlayerCase(60, false);
     bad += runPlayerCase(20, true);
-    bad += runPlayerCase(20, false, 0x1234, 0x1234);                 // filter = our own stream: plays
-    bad += runPlayerCase(20, false, 0x1234, 0x4321, true);           // filter = another stream: nothing plays
     std::printf(bad ? "FAIL: the audio thread allocates\n" : "PASS: no allocation on the audio thread\n");
     return bad ? 1 : 0;
 }

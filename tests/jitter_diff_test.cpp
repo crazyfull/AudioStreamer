@@ -73,8 +73,7 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
         const uint16_t thisSeq = seq++;           // every frame uses a number
         if(c.dtx && !talking){ marker = true; }
         else{
-            VoicePacket::Header hdr; hdr.seq = thisSeq; hdr.marker = marker; hdr.tx = tx++;
-            Bytes d = VoicePacket::wrap(hdr, pool[size_t(step) % pool.size()]);
+            Bytes d = VoicePacket::wrap(thisSeq, marker, tx++, pool[size_t(step) % pool.size()]);
             marker = false;
             // network
             if(chance(c.lossPct)){ /* lost */ }

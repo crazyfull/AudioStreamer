@@ -62,13 +62,13 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\e2e_aec.exe" tests\e2e_aec.cpp tests\
 
 echo.
 echo === unit_test.exe  (no webrtc needed)
-cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp src\jitterBuffer.cpp src\opusCodec.cpp ^
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp src\jitterBuffer.cpp src\opusCodec.cpp src\net\PacketRouter.cpp ^
    /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === noalloc_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\noalloc_test.exe" tests\noalloc_test.cpp tests\stub\audioDevice_stub.cpp ^
-   src\clsAudioRecorder.cpp src\clsAudioPlayer.cpp src\jitterBuffer.cpp src\opusCodec.cpp /link "%OPUS_LIB%" || goto fail
+   src\clsAudioRecorder.cpp src\clsAudioPlayer.cpp src\jitterBuffer.cpp src\opusCodec.cpp src\net\PacketRouter.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === jitter_diff_test.exe  (no webrtc needed)
