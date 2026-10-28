@@ -25,6 +25,7 @@ void operator delete[](void *p, size_t) noexcept { std::free(p); }
 
 // ---- a "ready" canceller that passes the signal through in exact 10 ms blocks
 struct AudioProcessor::Impl { std::vector<int16_t> fifo; size_t block = 0; bool ready = false; };
+bool AudioProcessor::available() { return true; }
 AudioProcessor::AudioProcessor() : d(new Impl) {}
 AudioProcessor::~AudioProcessor() {}
 bool AudioProcessor::init(int rate, int, int ch, const Options&, std::string*){

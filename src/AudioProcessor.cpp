@@ -1,5 +1,14 @@
 // the ONLY place that includes webrtc-audio-processing (version 1.x API).
 //
+// webrtc is OPTIONAL. With -DVOICE_WITH_WEBRTC this file is the real echo canceller / noise
+// suppressor / AGC2; without it the bottom of this file builds a pass-through with the same
+// interface (init() fails with a message, isReady() is false, capture() copies the mic as is),
+// so the whole project builds and runs without the library. VoiceStream.pro defines
+// VOICE_WITH_WEBRTC by itself when the library is found.
+#include "AudioProcessor.h"
+
+#ifdef VOICE_WITH_WEBRTC
+//
 // Compiler defines the webrtc headers need (the same ones the library's own pkg-config file hands out).
 // They are set here so the .pro doesn't need them and they can't leak into the Qt / miniaudio sources.
 #ifndef WEBRTC_LIBRARY_IMPL
@@ -41,7 +50,6 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include "AudioProcessor.h"
 #include "blockCutter.h"
 #include <atomic>
 #include <cstring>
@@ -263,3 +271,51 @@ bool AudioProcessor::getStats(Stats &st) const
     }
     return true;
 }
+
+bool AudioProcessor::available()
+{
+    return true;
+}
+
+#else   // ---------------------------------------------------------------- built without webrtc
+
+#include <cstring>
+
+struct AudioProcessor::Impl
+{
+    int channels = 1;
+};
+
+AudioProcessor::AudioProcessor() : d(new Impl) {}
+AudioProcessor::~AudioProcessor() {}
+
+bool AudioProcessor::available()
+{
+    return false;
+}
+
+bool AudioProcessor::init(int, int, int channels, const Options&, std::string *err)
+{
+    d->channels = channels;
+    if(err)
+        *err = "built without webrtc-audio-processing (define VOICE_WITH_WEBRTC to enable echo cancellation, noise suppression and AGC)";
+    return false;
+}
+
+bool AudioProcessor::init(int captureRate, int renderRate, int channels, std::string *err)
+{
+    return init(captureRate, renderRate, channels, Options(), err);
+}
+
+bool AudioProcessor::isReady() const { return false; }
+void AudioProcessor::render(const int16_t*, uint32_t) {}
+void AudioProcessor::setStreamDelayMs(int) {}
+bool AudioProcessor::getStats(Stats&) const { return false; }
+
+void AudioProcessor::capture(const int16_t *pcm, uint32_t frames, Pcm &out)
+{
+    if(pcm && frames)
+        out.insert(out.end(), pcm, pcm + size_t(frames) * size_t(d->channels));
+}
+
+#endif  // VOICE_WITH_WEBRTC

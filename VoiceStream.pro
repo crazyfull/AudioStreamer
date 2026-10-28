@@ -53,17 +53,16 @@ win32 {
 
     #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-coding-1.a
     #LIBS += -L$$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.a
-    LIBS += $$PWD/../webRTC-audio-process/install/lib/libwebrtc-audio-processing-1.lib
-
-    INCLUDEPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
-    DEPENDPATH += $$PWD/../webRTC-audio-process/install/include/webrtc-audio-processing-1
-
-    INCLUDEPATH += $$PWD/../webRTC-audio-process/install/include
-    DEPENDPATH += $$PWD/../webRTC-audio-process/install/include
-
-
-    LIBS += winmm.lib dbghelp.lib advapi32.lib     # used by webrtc / abseil
-
+    # webrtc is optional: found = echo cancellation / noise suppression / AGC are built in,
+    # not found (or CONFIG += no_webrtc) = the project still builds, those features are just off.
+    WEBRTC_ROOT = $$PWD/../webRTC-audio-process/install
+    !no_webrtc:exists($$WEBRTC_ROOT/lib/libwebrtc-audio-processing-1.lib) {
+        DEFINES += VOICE_WITH_WEBRTC
+        LIBS += $$WEBRTC_ROOT/lib/libwebrtc-audio-processing-1.lib
+        INCLUDEPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1 $$WEBRTC_ROOT/include
+        DEPENDPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1 $$WEBRTC_ROOT/include
+        LIBS += winmm.lib dbghelp.lib advapi32.lib     # used by webrtc / abseil
+    }
     QMAKE_CFLAGS_RELEASE += /MT
     QMAKE_CXXFLAGS_RELEASE += /MT
     #QMAKE_CFLAGS_DEBUG += /MTd
@@ -93,8 +92,12 @@ linux {
 
     # Echo cancellation: libwebrtc-audio-processing-1-dev (Ubuntu 24.10+/Debian 13), or build 1.3 with
     # meson and `ninja install` (see libs/webrtc/README.md). Found through pkg-config (shared lib).
+    # Optional: not installed (or CONFIG += no_webrtc) = builds without it, those features are off.
     CONFIG += link_pkgconfig
-    PKGCONFIG += webrtc-audio-processing-1
+    !no_webrtc:packagesExist(webrtc-audio-processing-1) {
+        DEFINES += VOICE_WITH_WEBRTC
+        PKGCONFIG += webrtc-audio-processing-1
+    }
 }
 
 macx {
@@ -131,6 +134,12 @@ HEADERS += \
 
 FORMS += \
     mainwindow.ui
+
+contains(DEFINES, VOICE_WITH_WEBRTC) {
+    message("webrtc-audio-processing: ON (echo cancellation, noise suppression, AGC)")
+} else {
+    message("webrtc-audio-processing: OFF (not found or CONFIG+=no_webrtc), building without it")
+}
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

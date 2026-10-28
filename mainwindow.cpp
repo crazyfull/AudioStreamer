@@ -66,6 +66,18 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->echoLevel_comboBox->addItem("Echo: protect voice 2");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 3");
 
+    // built without webrtc-audio-processing: echo / noise / AGC don't exist in this build
+    if(!AudioProcessor::available()){
+        const QString why = "this build has no webrtc-audio-processing";
+        ui->echoLevel_comboBox->setCurrentIndex(0);
+        ui->noise_comboBox->setCurrentIndex(0);
+        ui->autoGain_checkBox->setChecked(false);
+        for(QWidget *w : {static_cast<QWidget*>(ui->echoLevel_comboBox), static_cast<QWidget*>(ui->noise_comboBox), static_cast<QWidget*>(ui->autoGain_checkBox)}){
+            w->setEnabled(false);
+            w->setToolTip(why);
+        }
+    }
+
     ui->statusbar->showMessage("idle");
 }
 
@@ -185,7 +197,7 @@ void MainWindow::initAudio()
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
     const bool wantAec = m_AudioConfig.useEchoCancel;
-    if((wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
+    if(AudioProcessor::available() && (wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
         auto aec = std::make_shared<AudioProcessor>();
         AudioProcessor::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;

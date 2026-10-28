@@ -1,6 +1,11 @@
 # webrtc-audio-processing 1.3 (echo cancellation)
 
-Used only by `src/echoCanceller.cpp` (AEC3). Source: https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/
+Used only by `src/AudioProcessor.cpp` (AEC3, noise suppression, AGC2).
+
+**Optional.** VoiceStream.pro defines `VOICE_WITH_WEBRTC` and links the library only when it is found
+(pkg-config `webrtc-audio-processing-1` on Linux, `libwebrtc-audio-processing-1.lib` next to the project on Windows).
+Not found, or `CONFIG += no_webrtc` = the program builds without it and the echo / noise / AGC controls are disabled.
+Outside qmake: compile with `-DVOICE_WITH_WEBRTC` to turn it on. Source: https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/
 (version **1.3**; the 2.x releases have a different header layout).
 
 ## Windows (static, MSVC)
