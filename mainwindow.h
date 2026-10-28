@@ -62,6 +62,7 @@ public:
 private slots:
     void on_btnStartRecording_clicked();
     void on_btnStopRecording_clicked();
+    void on_VolumeSlider_valueChanged(int value);
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
     void onReceiveUDPData();
     void OnRateTimer();
