@@ -289,7 +289,21 @@ static void testLevelMeter()
     CHECK(LevelMeter::BlockLevel(full.data(), full.size()) == 100);
     CHECK(LevelMeter::BlockLevel(quiet.data(), quiet.size()) <= 1);
     int m = LevelMeter::BlockLevel(mid.data(), mid.size());
-    CHECK(m >= 49 && m <= 51);                                          // -30 dBFS = half of the scale
+    CHECK(m >= 49 && m <= 51);                                          // -30 dBFS = about half of the scale (-60..-1 dBFS))
+    // PEAK based: what the meter must show for real sound (an RMS meter never got near 100 for these)
+    std::vector<int16_t> sine(480), limited(480), spike(480, 0), loudSpeech(480);
+    for(int i = 0; i < 480; i++){
+        const double ph = 2 * M_PI * 1000 * i / 48000;
+        sine[i] = int16_t(32767 * std::sin(ph));                       // full scale sine: RMS is only -3 dBFS
+        limited[i] = int16_t(29204 * std::sin(ph));                    // a limiter / AGC holds real audio at about -1 dBFS
+        loudSpeech[i] = int16_t(20000 * std::sin(ph));                 // loud but not clipping (-4.3 dBFS peak)
+    }
+    spike[240] = 32000;                                                // one clipped click in a silent block
+    CHECK(LevelMeter::BlockLevel(sine.data(), sine.size()) == 100);
+    CHECK(LevelMeter::BlockLevel(limited.data(), limited.size()) == 100);
+    CHECK(LevelMeter::BlockLevel(spike.data(), spike.size()) >= 99);
+    const int ls = LevelMeter::BlockLevel(loudSpeech.data(), loudSpeech.size());
+    CHECK(ls >= 90 && ls <= 96);                                       // close to the top, but not 100: there is headroom
     CHECK(LevelMeter::BlockLevel(nullptr, 10) == 0 && LevelMeter::BlockLevel(full.data(), 0) == 0);
 
     LevelMeter lm;

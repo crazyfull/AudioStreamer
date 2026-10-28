@@ -8,8 +8,11 @@
 //   TakePeak()  : any thread. Loudest block since the LAST TakePeak() call, so a slow GUI timer
 //                 (e.g. once per second) still sees a short word instead of missing it.
 //
-// Scale: RMS of each block in dBFS, -60 dBFS (and below, silence) = 0, 0 dBFS (full scale) = 100.
-// So normal speech lands around 40..80 and silence is 0.
+// Scale: the PEAK sample of each block in dBFS: -60 dBFS (and below, silence) = 0, CeilingDb (-1 dBFS) and above = 100.
+// So 100 means "at the top / clipping" (a limiter or the AGC keeps real audio just below 0 dBFS, which is why the
+// ceiling is -1 and not 0), normal speech peaks land around 60..90 and silence is 0.
+// Peak, not RMS: the RMS of real sound (speech, noise, even a full-scale sine = -3 dBFS) never gets close to 100,
+// so an RMS meter could not show "this is as loud as it gets".
 
 #include <algorithm>
 #include <atomic>
@@ -23,20 +26,23 @@ class LevelMeter
 {
 public:
     static constexpr float FloorDb = -60.f;
+    static constexpr float CeilingDb = -1.f;
 
     // 0 .. 100 for one block of samples (all channels interleaved)
     static int BlockLevel(const int16_t *pcm, size_t samples)
     {
         if(!pcm || !samples)
             return 0;
-        double sum = 0;
-        for(size_t i = 0; i < samples; i++)
-            sum += double(pcm[i]) * double(pcm[i]);
-        const double rms = std::sqrt(sum / double(samples)) / 32768.0;
-        if(rms <= 0)
+        int peak = 0;
+        for(size_t i = 0; i < samples; i++){
+            const int a = pcm[i] < 0 ? -int(pcm[i]) : int(pcm[i]);      // -32768 -> 32768
+            if(a > peak)
+                peak = a;
+        }
+        if(peak <= 0)
             return 0;
-        const double db = 20.0 * std::log10(rms);
-        const double v = (db - FloorDb) / (0.0 - FloorDb) * 100.0;
+        const double db = 20.0 * std::log10(double(peak) / 32768.0);
+        const double v = (db - FloorDb) / (CeilingDb - FloorDb) * 100.0;
         return int(std::lround(std::min(100.0, std::max(0.0, v))));
     }
 
