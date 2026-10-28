@@ -78,6 +78,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
         }
     }
 
+    on_VolumeSlider_valueChanged(ui->VolumeSlider->value());
     ui->statusbar->showMessage("idle");
 }
 
@@ -174,6 +175,7 @@ void MainWindow::initAudio()
 
     m_pAudioRecorder = new clsAudioRecorder();
     m_pAudioPlayer = new clsAudioPlayer();
+    m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
 
     // The handler runs on the miniaudio capture thread -> hop to the GUI thread
     // (UDP socket and player are used from there).
@@ -217,6 +219,14 @@ void MainWindow::initAudio()
     m_pAudioRecorder->SetConfig(&m_AudioConfig);
     m_pAudioPlayer->SetConfig(&m_AudioConfig);
 
+}
+
+// volume of the received audio (0..100), applied by the player on the audio thread
+void MainWindow::on_VolumeSlider_valueChanged(int value)
+{
+    ui->label_volumeValue->setText(QString::number(value));
+    if(m_pAudioPlayer)
+        m_pAudioPlayer->SetVolume(value);
 }
 
 void MainWindow::on_btnStartRecording_clicked()

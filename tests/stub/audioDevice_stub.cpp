@@ -5,6 +5,9 @@
 #include <thread>
 #include <cmath>
 
+// tests can look at what the fake speaker receives (called on the fake audio thread after every callback)
+void (*g_stubSpeakerTap)(const int16_t *pcm, uint32_t frames, int channels) = nullptr;
+
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
 AudioInput::AudioInput() : d(new Impl) {}
 AudioInput::~AudioInput(){ stop(); }
@@ -30,7 +33,7 @@ bool AudioOutput::start(int rate, int ch, int ms, Callback cb, std::string*){
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch);
         auto next = std::chrono::steady_clock::now();
-        while(d->run){ cb(buf.data(), frames); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
+        while(d->run){ cb(buf.data(), frames); if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
     return true; }
 void AudioOutput::stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
 bool AudioOutput::isRunning() const { return d->running; }

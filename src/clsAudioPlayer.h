@@ -34,6 +34,8 @@ class clsAudioPlayer
     JitterBuffer::Stats m_statsCopy;
     int m_depthCopy;
 
+    std::atomic<int> m_volume;      // 0..100, GUI -> audio thread
+    float m_gain;                   // gain of the previous block (audio thread), for a click-free ramp
     LevelMeter m_level;             // loudness of what goes to the speaker (audio thread writes, anyone reads)
 
     Pcm m_pending;                  // decoded PCM of the current frame, not consumed by the device yet (audio thread)
@@ -45,6 +47,7 @@ class clsAudioPlayer
 
     void onDeviceData(int16_t *out, uint32_t frames);
     void publishStats();
+    void applyVolume(int16_t *out, uint32_t frames);
 
 public:
     clsAudioPlayer();
@@ -61,6 +64,11 @@ public:
     // It is measured on the decoded PCM that is sent to the speaker, so DTX silence / lost audio read 0.
     int GetLevel() const { return m_level.level(); }        // smooth, "right now"
     int TakePeakLevel() { return m_level.takePeak(); }      // loudest since the last call (for slow GUI timers)
+    // playback volume of the received audio: 0 = mute .. 100 = unchanged (default). Any thread, takes effect
+    // within ~10 ms without clicks. Quadratic curve (50 = -12 dB), which sounds like an even slider. Never amplifies,
+    // so it can't clip. GetLevel()/TakePeakLevel() measure BEFORE it (the level that was received).
+    void SetVolume(int percent);
+    int  GetVolume() const { return m_volume.load(std::memory_order_relaxed); }
     // one received datagram (header + opus packet). Never blocks.
     void Play(const uint8_t *datagram, size_t size);
     void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }

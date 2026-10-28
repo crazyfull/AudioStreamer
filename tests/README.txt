@@ -26,3 +26,6 @@ Unit tests without webrtc / sound card (Linux; on Windows build_tests.bat builds
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc -Itests/ref tests/jitter_diff_test.cpp tests/ref/refJitterBuffer.cpp src/jitterBuffer.cpp src/opusCodec.cpp -lopus -o jitter_diff_test
       real (fixed-slot) JitterBuffer vs the old std::map version in tests/ref: random loss / reorder / duplicates / DTX / restarts,
       every output frame and statistic must be identical
+
+Receive volume (player gain, level meter independent of it; no webrtc, no sound card):
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/volume_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp src/AudioProcessor.cpp -lopus -o volume_test
