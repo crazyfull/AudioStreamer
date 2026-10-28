@@ -13,6 +13,11 @@
 #include "packetQueue.h"
 
 // Receive side: datagram -> JitterBuffer (reorder / FEC / PLC) -> opus decode -> speaker.
+//
+// The player needs NO description of the stream: the frame duration comes from the Opus packets themselves
+// (first byte, see opusCodec::Inspect). The sender may use any frame size / bitrate / bandwidth / input rate /
+// mono or stereo, and may change it while talking; the decoder always outputs the speaker's own rate and channels
+// (AudioConfig::renderRate() / channels), Opus converts. Only the speaker side of the config is used here.
 // No Qt. Play() may be called from any thread; the speaker pulls frames from the audio thread.
 //
 // Threading: Play() only copies the datagram into a lock-free queue (PacketQueue). The audio thread
@@ -21,8 +26,25 @@
 class clsAudioPlayer
 {
     AudioConfig *m_pConfig;
-    std::unique_ptr<opusCodec> m_pOpus;                 // audio thread only (after start)
-    std::unique_ptr<JitterBuffer> m_pJitter;            // audio thread only (after start)
+
+    // Decoder + jitter buffer for ONE stream format (= frame duration). Built on the network thread when a packet with a
+    // new duration shows up, handed to the audio thread through m_next, and the audio thread hands the old one
+    // back through m_retired: nothing is ever allocated or freed on the audio thread.
+    struct Stream {
+        opusCodec codec;
+        std::unique_ptr<JitterBuffer> jitter;
+        int frameMs = 0;
+        Stream *retiredLink = nullptr;      // m_retired list
+    };
+    Stream *m_cur;                          // audio thread only: the stream being played (null until the first packet)
+    std::atomic<Stream*> m_next;            // network thread -> audio thread: a new stream to switch to
+    std::atomic<Stream*> m_retired;         // audio thread -> network thread: old streams, freed there
+
+    // network side (Play() callers, serialized by m_netMutex; the audio thread never touches these)
+    std::mutex m_netMutex;
+    int m_netFrameMs;                       // frame duration the audio thread plays / is about to play (0 = none yet)
+    int m_candidateMs;                      // a different duration that is currently being seen ...
+    int m_candidateCount;                   // ... this many packets in a row
     std::shared_ptr<AudioProcessor> m_aec;   // shared with clsAudioRecorder (we feed it what the speaker plays)
 
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
@@ -45,7 +67,12 @@ class clsAudioPlayer
 
     AudioOutput m_output;           // declared last: destroyed first
 
+    int m_frameMsCopy;                      // frame duration of the stream behind m_statsCopy
+    std::atomic<uint32_t> m_formatDropped;  // datagrams that were not valid Opus or did not match the current stream format
+
     void onDeviceData(int16_t *out, uint32_t frames);
+    void adoptNextStream();
+    void reapRetired();
     void publishStats();
     void applyVolume(int16_t *out, uint32_t frames);
 
@@ -69,7 +96,7 @@ public:
     // so it can't clip. GetLevel()/TakePeakLevel() measure BEFORE it (the level that was received).
     void SetVolume(int percent);
     int  GetVolume() const { return m_volume.load(std::memory_order_relaxed); }
-    // one received datagram (header + opus packet). Never blocks.
+    // one received datagram (audio header + opus packet). Never blocks the audio thread.
     void Play(const uint8_t *datagram, size_t size);
     void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }
 };

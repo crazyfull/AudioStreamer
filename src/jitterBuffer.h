@@ -23,6 +23,7 @@ public:
         uint32_t lostEvents = 0;  // every packet ever counted lost, NEVER decreased. For windowed figures use
                                   // delta(lostEvents) - delta(reordered), not delta(lost) (which can go backwards).
         uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (clsAudioPlayer's queue was full)
+        uint32_t formatDropped = 0; // datagrams clsAudioPlayer refused: not valid Opus, or another frame duration than the current stream
     };
 
     JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
