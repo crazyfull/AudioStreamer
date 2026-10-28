@@ -39,7 +39,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
 
     m_AudioConfig.bitRate = 16;
-    m_AudioConfig.channels = 1; //3840 1, 7680 2
+    m_AudioConfig.channels = 2; //3840 1, 7680 2
     m_AudioConfig.inputRate = 48000;
     m_AudioConfig.outputRate = 48000;   //decoder/speaker rate (8000 12000 16000 24000 48000)
 
@@ -50,11 +50,11 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     //ui->BandWith_comboBox->addItem("VOICE", OPUS_SIGNAL_VOICE);
     //ui->BandWith_comboBox->addItem("MUSIC", OPUS_SIGNAL_MUSIC);
-    ui->BandWith_comboBox->addItem("Narrowband - 4 kHz	8 kHz", OPUS_BANDWIDTH_NARROWBAND);
-    ui->BandWith_comboBox->addItem("Medium-band - 6 kHz	12 kHz", OPUS_BANDWIDTH_MEDIUMBAND);
-    ui->BandWith_comboBox->addItem("Wideband - 8 kHz	16 kHz", OPUS_BANDWIDTH_WIDEBAND);
-    ui->BandWith_comboBox->addItem("Supper-wideband - 12 kHz	24 kHz", OPUS_BANDWIDTH_SUPERWIDEBAND);
-    ui->BandWith_comboBox->addItem("fullband - 20 kHz	48 kHz", OPUS_BANDWIDTH_FULLBAND);
+    ui->BandWith_comboBox->addItem("Narrowband - [4kHz 8kHz]", OPUS_BANDWIDTH_NARROWBAND);
+    ui->BandWith_comboBox->addItem("Medium-band - [6kHz 12kHz]", OPUS_BANDWIDTH_MEDIUMBAND);
+    ui->BandWith_comboBox->addItem("Wideband - [8kHz 16kHz]", OPUS_BANDWIDTH_WIDEBAND);
+    ui->BandWith_comboBox->addItem("Supper-wideband - [12kHz 24kHz]", OPUS_BANDWIDTH_SUPERWIDEBAND);
+    ui->BandWith_comboBox->addItem("fullband - [20kHz 48kHz]", OPUS_BANDWIDTH_FULLBAND);
 
     ui->noise_comboBox->addItem("Noise: off");
     ui->noise_comboBox->addItem("Noise: low");
