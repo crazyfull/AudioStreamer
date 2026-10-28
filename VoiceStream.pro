@@ -93,11 +93,35 @@ linux {
     # Echo cancellation: libwebrtc-audio-processing-1-dev (Ubuntu 24.10+/Debian 13), or build 1.3 with
     # meson and `ninja install` (see libs/webrtc/README.md). Found through pkg-config (shared lib).
     # Optional: not installed (or CONFIG += no_webrtc) = builds without it, those features are off.
-    CONFIG += link_pkgconfig
-    !no_webrtc:packagesExist(webrtc-audio-processing-1) {
+
+
+    WEBRTC_ROOT = $$PWD/../webrtc-audio-processing/webrtc-audio-processing-1.3/install
+
+    #CONFIG += link_pkgconfig
+    !no_webrtc:exists($$WEBRTC_ROOT/lib/x86_64-linux-gnu/libwebrtc-audio-processing-1.a) {
         DEFINES += RAVAVA_WITH_WEBRTC
-        PKGCONFIG += webrtc-audio-processing-1
+
+        INCLUDEPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1
+        DEPENDPATH += $$WEBRTC_ROOT/include/webrtc-audio-processing-1
+        #PKGCONFIG += webrtc-audio-processing-1
+        LIBS += $$WEBRTC_ROOT/lib/x86_64-linux-gnu/libwebrtc-audio-processing-1.a
+        #LIBS += $$WEBRTC_ROOT/lib/x86_64-linux-gnu/libwebrtc-audio-coding-1.a
+        #sudo apt install libabsl-dev pkg-config
+        # Abseil dependencies
+        LIBS += -labsl_bad_optional_access
+        LIBS += -labsl_strings
+        #LIBS += -labsl_base
+        LIBS += -labsl_throw_delegate
+        #LIBS += -labsl_raw_logging_internal
+        #LIBS += -labsl_log_severity
+        #LIBS += -labsl_spinlock_wait
+        #LIBS += -labsl_int128
+
+
     }
+    #static build
+    #LIBS += -static -static-libgcc -static-libstdc++
+
 }
 
 macx {
