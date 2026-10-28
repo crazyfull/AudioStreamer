@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "src/AudioConfig.h"
+#include "src/net/PacketRouter.h"
 //#include "src/clsAudioRecorder.h"
 
 class AudioProcessor;
@@ -36,13 +37,21 @@ private:
     struct StatSnapshot { quint32 received, lostEvents, reordered; };
     QList<StatSnapshot> m_statHistory;      // once per second, for the "last 5s" figures
 
-    qint64    m_Rate;
+    qint64    m_Rate;       // bytes sent in the current 5 s window
+    qint64    m_RxRate;     // bytes received in the current 5 s window
     QByteArray m_lostpck;
     QDateTime aTime;
     QDateTime bTime;
     QByteArray m_playbuffpck;
     qint64 lastRecPacketTime;
     QByteArray m_packet;
+
+    // Network layer: the UDP envelope (packet type + stream id, src/net/Packet.h) is handled HERE.
+    // The audio layer only ever gets the payload of Packet::Audio packets.
+    PacketRouter m_router;
+    quint16 m_txStreamId = 0;       // stream id written into the packets we send
+    quint16 m_rxStreamId = 0;       // stream id of the last audio packet received = who is talking
+    qint64  m_rxStreamTime = 0;     // when it arrived (ms since epoch), 0 = nothing yet
 
 
 
@@ -67,6 +76,8 @@ private slots:
 private:
     Ui::MainWindow *ui;
     void initTCP();
+    void setupRouter();
+    void onAudioPacket(const Packet::Header &hdr, const uint8_t *payload, size_t size);
     qint64 SendUDP(const QByteArray &Buff, bool bypasWithDNS = false);
     void CreateTimer();
     QString GetFormatSize(qint64 Size);

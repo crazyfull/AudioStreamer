@@ -13,6 +13,7 @@
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setupRouter();
 
     uint32_t a = -1;
     if(a <= 1){
@@ -119,6 +120,7 @@ void MainWindow::CreateTimer()
     m_RateTimer.setInterval(5*1000);
     m_RateTimer.start();
     m_Rate = 0;
+    m_RxRate = 0;
     ui->statusbar->showMessage("0");
 
     // ---- live receive statistics (packet loss etc.), below the controls
@@ -221,6 +223,7 @@ void MainWindow::on_btnStopRecording_clicked()
     //m_PlayerTimer.stop();
 }
 
+// audio packet body (from the recorder) -> UDP packet (envelope + body) -> network
 void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
 {
     /*
@@ -230,16 +233,24 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
 
 
     /**/
+    // envelope: packet type + stream id in front of the audio body
+    Packet::Header hdr;
+    hdr.type = Packet::Audio;
+    hdr.streamId = m_txStreamId;
+    Bytes wire;
+    Packet::wrapInto(wire, hdr, reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
+    const QByteArray datagram(reinterpret_cast<const char*>(wire.data()), int(wire.size()));
+
     if(ui->LoopBack_checkBox->checkState() == false){
-        SendUDP(encodedBuffer);
+        SendUDP(datagram);              // counts the sent bytes itself (m_Rate): don't count them again here
     }else{
-        // network disabled for now: loopback straight into the player (1 call = 1 opus packet)
-        if(m_pAudioPlayer)
-            m_pAudioPlayer->Play(reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
+        // network disabled for now: the datagram "arrives" right away, through the same path as a real one
+        m_Rate += datagram.size();      // "sent" and "received" at once
+        m_RxRate += datagram.size();
+        m_router.Dispatch(wire);
     }
 
     //qDebug() << "onReadEncodedBuffer: " << encodedBuffer.length();
-    m_Rate += encodedBuffer.size();     //for get transfer rate monitor
 }
 
 void MainWindow::onReceiveUDPData(){
@@ -254,9 +265,32 @@ void MainWindow::onReceiveUDPData(){
         if(encodedBuffer.isEmpty())
             continue;
 
-        if(m_pAudioPlayer)
-            m_pAudioPlayer->Play(reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
+        m_RxRate += encodedBuffer.size();       //for get transfer rate monitor
+
+        // the type and the stream id are read here, after the UDP receive: audio goes on to the audio layer,
+        // other kinds of packets to their own handlers
+        m_router.Dispatch(reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
     }
+}
+
+void MainWindow::setupRouter()
+{
+    m_router.SetHandler(Packet::Audio, [this](const Packet::Header &hdr, const uint8_t *payload, size_t size){
+        onAudioPacket(hdr, payload, size);
+    });
+    // more packet types: m_router.SetHandler(Packet::Xyz, ...)
+}
+
+void MainWindow::onAudioPacket(const Packet::Header &hdr, const uint8_t *payload, size_t size)
+{
+    // who is talking
+    m_rxStreamId = hdr.streamId;
+    m_rxStreamTime = QDateTime::currentMSecsSinceEpoch();
+
+    // NOTE: one player = one jitter buffer = one stream. For several people talking at once (conference) each
+    // stream id needs its own player; this is where packets get routed to them by hdr.streamId.
+    if(m_pAudioPlayer)
+        m_pAudioPlayer->Play(payload, size);
 }
 
 void MainWindow::OnStatsTimer()
@@ -309,6 +343,15 @@ void MainWindow::OnStatsTimer()
     }else{
         t += "\nEcho     : off";
     }
+
+    // network layer: who is talking (stream id of the last audio packet) and packets that are not audio
+    const PacketRouter::Stats &net = m_router.stats();
+    if(m_rxStreamTime){
+        t += QString("\nStream   : talking stream #%1 (%2 ms ago)")
+                 .arg(m_rxStreamId).arg(QDateTime::currentMSecsSinceEpoch() - m_rxStreamTime);
+    }
+    if(net.unhandled || net.malformed)
+        t += QString("\nNetwork  : ignored %1 unknown type, %2 malformed").arg(net.unhandled).arg(net.malformed);
     m_lblStats->setText(t);
 }
 
@@ -316,8 +359,10 @@ void MainWindow::OnRateTimer()
 {
 
     QString  msg;
+    // measured over the 5 s timer interval; counts the app payload (Opus packet + header), without IP/UDP headers
     msg.append("Send Rate: " + GetFormatSize(m_Rate/5) + "/sec    ");
-    msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate/5)*2) + "/sec");
+    msg.append("Receive Rate: " + GetFormatSize(m_RxRate/5) + "/sec    ");
+    msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate + m_RxRate)/5) + "/sec");
 
 
     // ui->txtBuffer->setPlainText( "Send Rate: " + GetFormatSize(m_Rate) + "/sec" );
@@ -327,6 +372,7 @@ void MainWindow::OnRateTimer()
 
 
     m_Rate = 0;
+    m_RxRate = 0;
 }
 
 void MainWindow::OnPlayerTimer()
@@ -432,7 +478,7 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
     if(bypasWithDNS){
         // packet.append(m_DNSpck.data(), m_DNSSize);
     }
-    uint sendSize = 0;
+    qint64 sendSize = 0;        // writeDatagram() returns -1 on error: must stay signed, or the rate counter explodes
     m_packet.append(Buff);
     if(m_packet.length() >= 0){
 
@@ -443,6 +489,9 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
         //if(Buff.length() < 39) return 0;
         //
 
+
+        if(sendSize > 0)
+            m_Rate += sendSize;       //for get transfer rate monitor
 
         m_packet.clear();
     }

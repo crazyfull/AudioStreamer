@@ -24,10 +24,9 @@ RefJitterBuffer::RefJitterBuffer(opusCodec *codec, int decoderRate, int channels
 
 void RefJitterBuffer::Push(const uint8_t *datagram, size_t size)
 {
-    VoicePacket::Header hdr; Bytes payload;
-    if(!VoicePacket::parse(datagram, size, hdr, payload) || hdr.type != VoicePacket::Audio)
+    uint16_t seq; bool marker; uint8_t tx; Bytes payload;
+    if(!VoicePacket::parse(datagram, size, seq, marker, tx, payload))
         return;
-    const uint16_t seq = hdr.seq; const bool marker = hdr.marker; const uint8_t tx = hdr.tx;
 
     // extend 16bit sequence to a monotonically growing number
     int64_t ext;

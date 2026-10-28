@@ -12,7 +12,7 @@
 
 // Capture side: microphone (or a music file) -> opus packets. No Qt.
 // The packet handler is called on the AUDIO THREAD, once per datagram:
-// 6 byte header (type, stream id, flags, seq) + opus packet (see VoicePacket.h). Keep it short; hand the data over to your
+// 3 byte audio header + opus packet (see VoicePacket.h); the network layer puts it into a UDP packet (net/Packet.h). Keep it short; hand the data over to your
 // own thread (the Qt GUI uses a queued invoke).
 class clsAudioRecorder
 {

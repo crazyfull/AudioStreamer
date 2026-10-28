@@ -43,7 +43,6 @@ void clsAudioPlayer::init()
     // the speaker is not running yet, so nothing else touches these
     m_pOpus = std::move(codec);
     m_pJitter = std::make_unique<JitterBuffer>(m_pOpus.get(), m_rate, m_channels, m_pConfig->frameMs);
-    m_pJitter->SetStreamFilter(m_pConfig->playStreamId);
     m_pending.clear();
     m_pending.reserve(size_t(m_rate) * 120 / 1000 * m_channels);   // the biggest Opus frame (120 ms)
     m_pendingPos = 0;
