@@ -10,7 +10,7 @@
 #include <QGridLayout>
 #include <QFontDatabase>
 
-using namespace ravava;       // the audio library (src/ravava); the network layer (src/net) is not in it
+using namespace ravava;       // the audio library (src/ravava), incl. its network layer (ravava::Packet, ravava::PacketRouter)
 
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {

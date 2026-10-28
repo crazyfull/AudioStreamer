@@ -1,5 +1,5 @@
-#ifndef NET_PACKETROUTER_H
-#define NET_PACKETROUTER_H
+#ifndef RAVAVA_NET_PACKETROUTER_H
+#define RAVAVA_NET_PACKETROUTER_H
 
 // Receive side of the network layer: every datagram that comes out of the UDP socket goes through
 // Dispatch(). It reads the envelope (Packet.h) and hands the payload to the handler registered for that
@@ -12,6 +12,8 @@
 #include <array>
 #include <functional>
 #include "Packet.h"
+
+namespace ravava {
 
 class PacketRouter
 {
@@ -36,7 +38,7 @@ public:
 
     // true if a handler got the packet
     bool Dispatch(const uint8_t *datagram, size_t size);
-    bool Dispatch(const Packet::Bytes &datagram) {
+    bool Dispatch(const Bytes &datagram) {
         return Dispatch(datagram.data(), datagram.size());
     }
 
@@ -49,4 +51,6 @@ private:
     Stats m_stats;
 };
 
-#endif // NET_PACKETROUTER_H
+} // namespace ravava
+
+#endif // RAVAVA_NET_PACKETROUTER_H
