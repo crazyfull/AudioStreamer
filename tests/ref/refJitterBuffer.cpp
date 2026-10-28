@@ -1,10 +1,12 @@
 // TEST-ONLY reference implementation, see refJitterBuffer.h
 #include "refJitterBuffer.h"
-#include "VoicePacket.h"
+#include "ravava/VoicePacket.h"
 #include <algorithm>
 #include <cstdlib>
 
-RefJitterBuffer::RefJitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
+using namespace ravava;     // test-only reference code
+
+RefJitterBuffer::RefJitterBuffer(OpusCodec *codec, int decoderRate, int channels, int frameMs, int startMs)
     : m_pCodec(codec), m_channels(channels), m_frameSamples(0),
       m_lastTx(0), m_dtxSeen(false), m_playing(false), m_haveSeq(false), m_next(0), m_highest(0),
       m_target(3), m_plcRun(0), m_goodRun(0), m_underrunPending(false)
@@ -25,7 +27,7 @@ RefJitterBuffer::RefJitterBuffer(opusCodec *codec, int decoderRate, int channels
 void RefJitterBuffer::Push(const uint8_t *datagram, size_t size)
 {
     uint16_t seq; bool marker; uint8_t tx; Bytes payload;
-    if(!VoicePacket::parse(datagram, size, seq, marker, tx, payload))
+    if(!VoicePacket::Parse(datagram, size, seq, marker, tx, payload))
         return;
 
     // extend 16bit sequence to a monotonically growing number

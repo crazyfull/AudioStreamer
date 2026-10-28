@@ -1,4 +1,6 @@
-#include "opusCodec.h"
+#include "OpusCodec.h"
+
+namespace ravava {
 
 namespace {
 // 5760 = 120ms @ 48kHz, the biggest possible Opus packet (samples per channel)
@@ -8,12 +10,12 @@ bool ctlOk(int ret, const char *what)
 {
     if(ret == OPUS_OK)
         return true;
-    AUDIO_WARN("opus_encoder_ctl(%s) failed: %s", what, opus_strerror(ret));
+    RAVAVA_WARN("opus_encoder_ctl(%s) failed: %s", what, opus_strerror(ret));
     return false;
 }
 }
 
-bool opusCodec::Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info)
+bool OpusCodec::Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info)
 {
     if(!opusPacket || size < 1 || size > 1500)
         return false;
@@ -30,7 +32,7 @@ bool opusCodec::Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info
     return info.channels >= 1;
 }
 
-opusCodec::opusCodec()
+OpusCodec::OpusCodec()
 {
     m_pEncoder = nullptr;
     m_pDecoder = nullptr;
@@ -39,7 +41,7 @@ opusCodec::opusCodec()
     m_frameSamples = 0;
 }
 
-opusCodec::~opusCodec()
+OpusCodec::~OpusCodec()
 {
     if(m_pEncoder)
         opus_encoder_destroy(m_pEncoder);
@@ -47,21 +49,21 @@ opusCodec::~opusCodec()
         opus_decoder_destroy(m_pDecoder);
 }
 
-bool opusCodec::InitEncoder(const AudioConfig &cfg)
+bool OpusCodec::InitEncoder(const AudioConfig &cfg)
 {
     if(m_pEncoder)
         return true;
 
     std::string why;
-    if(!cfg.validate(&why)){
-        AUDIO_WARN("%s", why.c_str());
+    if(!cfg.Validate(&why)){
+        RAVAVA_WARN("%s", why.c_str());
         return false;
     }
 
     int err = OPUS_OK;
     OpusEncoder *enc = opus_encoder_create(cfg.inputRate, cfg.channels, OPUS_APPLICATION_VOIP, &err);
     if(err != OPUS_OK || !enc){
-        AUDIO_WARN("opus_encoder_create failed: %s", opus_strerror(err));
+        RAVAVA_WARN("opus_encoder_create failed: %s", opus_strerror(err));
         return false;
     }
 
@@ -71,7 +73,7 @@ bool opusCodec::InitEncoder(const AudioConfig &cfg)
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_BITRATE(cfg.opusBitrate)), "BITRATE") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR(1)), "VBR") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR_CONSTRAINT(0)), "VBR_CONSTRAINT") && ok;
-    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_MAX_BANDWIDTH(cfg.MaxBandwith)), "MAX_BANDWIDTH") && ok;
+    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_MAX_BANDWIDTH(cfg.maxBandwidth)), "MAX_BANDWIDTH") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_COMPLEXITY(10)), "COMPLEXITY") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_LSB_DEPTH(16)), "LSB_DEPTH") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_DTX(cfg.useDtx ? 1 : 0)), "DTX") && ok;
@@ -84,11 +86,11 @@ bool opusCodec::InitEncoder(const AudioConfig &cfg)
 
     m_pEncoder = enc;
     m_encChannels = cfg.channels;
-    m_frameSamples = cfg.frameSamples();
+    m_frameSamples = cfg.FrameSamples();
     return true;
 }
 
-bool opusCodec::InitDecoder(int sampleRate, int channels)
+bool OpusCodec::InitDecoder(int sampleRate, int channels)
 {
     if(m_pDecoder)
         return true;
@@ -96,7 +98,7 @@ bool opusCodec::InitDecoder(int sampleRate, int channels)
     int err = OPUS_OK;
     m_pDecoder = opus_decoder_create(sampleRate, channels, &err);
     if(err != OPUS_OK || !m_pDecoder){
-        AUDIO_WARN("opus_decoder_create failed: %s", opus_strerror(err));
+        RAVAVA_WARN("opus_decoder_create failed: %s", opus_strerror(err));
         m_pDecoder = nullptr;
         return false;
     }
@@ -106,20 +108,20 @@ bool opusCodec::InitDecoder(int sampleRate, int channels)
     return true;
 }
 
-bool opusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
+bool OpusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
 {
     out.clear();
     if(!m_pEncoder || !pcm)
         return false;
 
     if(frameSamples != m_frameSamples){
-        AUDIO_WARN("opus Encode: wrong frame size %d expected %d", frameSamples, m_frameSamples);
+        RAVAVA_WARN("opus Encode: wrong frame size %d expected %d", frameSamples, m_frameSamples);
         return false;
     }
 
     opus_int32 n = opus_encode(m_pEncoder, pcm, frameSamples, m_encBuf, sizeof(m_encBuf));
     if(n < 0){
-        AUDIO_WARN("opus_encode failed: %s", opus_strerror(n));
+        RAVAVA_WARN("opus_encode failed: %s", opus_strerror(n));
         return false;
     }
 
@@ -127,19 +129,19 @@ bool opusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
     return true;
 }
 
-Bytes opusCodec::Encode(const int16_t *pcm, int frameSamples)
+Bytes OpusCodec::Encode(const int16_t *pcm, int frameSamples)
 {
     Bytes out;
     Encode(pcm, frameSamples, out);
     return out;
 }
 
-bool opusCodec::Decode(const Bytes &packet, Pcm &out)
+bool OpusCodec::Decode(const Bytes &packet, Pcm &out)
 {
     return Decode(packet.data(), packet.size(), out);
 }
 
-bool opusCodec::Decode(const uint8_t *packet, size_t size, Pcm &out)
+bool OpusCodec::Decode(const uint8_t *packet, size_t size, Pcm &out)
 {
     out.clear();
     if(!m_pDecoder || !packet || !size)
@@ -147,7 +149,7 @@ bool opusCodec::Decode(const uint8_t *packet, size_t size, Pcm &out)
 
     int samples = opus_decode(m_pDecoder, packet, int(size), m_decScratch.data(), MAX_SAMPLES, 0);
     if(samples < 0){
-        AUDIO_WARN("opus_decode failed: %s", opus_strerror(samples));
+        RAVAVA_WARN("opus_decode failed: %s", opus_strerror(samples));
         return false;
     }
 
@@ -155,19 +157,19 @@ bool opusCodec::Decode(const uint8_t *packet, size_t size, Pcm &out)
     return true;
 }
 
-Pcm opusCodec::Decode(const Bytes &packet)
+Pcm OpusCodec::Decode(const Bytes &packet)
 {
     Pcm out;
     Decode(packet, out);
     return out;
 }
 
-bool opusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples, Pcm &out)
+bool OpusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples, Pcm &out)
 {
     return DecodeFec(nextPacket.data(), nextPacket.size(), frameSamples, out);
 }
 
-bool opusCodec::DecodeFec(const uint8_t *nextPacket, size_t size, int frameSamples, Pcm &out)
+bool OpusCodec::DecodeFec(const uint8_t *nextPacket, size_t size, int frameSamples, Pcm &out)
 {
     out.clear();
     if(!m_pDecoder || !nextPacket || !size || frameSamples <= 0 || frameSamples > MAX_SAMPLES)
@@ -175,7 +177,7 @@ bool opusCodec::DecodeFec(const uint8_t *nextPacket, size_t size, int frameSampl
 
     int samples = opus_decode(m_pDecoder, nextPacket, int(size), m_decScratch.data(), frameSamples, 1);
     if(samples < 0){
-        AUDIO_WARN("opus_decode(fec) failed: %s", opus_strerror(samples));
+        RAVAVA_WARN("opus_decode(fec) failed: %s", opus_strerror(samples));
         return DecodePlc(frameSamples, out);
     }
 
@@ -183,14 +185,14 @@ bool opusCodec::DecodeFec(const uint8_t *nextPacket, size_t size, int frameSampl
     return true;
 }
 
-Pcm opusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples)
+Pcm OpusCodec::DecodeFec(const Bytes &nextPacket, int frameSamples)
 {
     Pcm out;
     DecodeFec(nextPacket, frameSamples, out);
     return out;
 }
 
-bool opusCodec::DecodePlc(int frameSamples, Pcm &out)
+bool OpusCodec::DecodePlc(int frameSamples, Pcm &out)
 {
     out.clear();
     if(!m_pDecoder || frameSamples <= 0 || frameSamples > MAX_SAMPLES)
@@ -198,7 +200,7 @@ bool opusCodec::DecodePlc(int frameSamples, Pcm &out)
 
     int samples = opus_decode(m_pDecoder, nullptr, 0, m_decScratch.data(), frameSamples, 0);
     if(samples < 0){
-        AUDIO_WARN("opus_decode(plc) failed: %s", opus_strerror(samples));
+        RAVAVA_WARN("opus_decode(plc) failed: %s", opus_strerror(samples));
         return false;
     }
 
@@ -206,9 +208,11 @@ bool opusCodec::DecodePlc(int frameSamples, Pcm &out)
     return true;
 }
 
-Pcm opusCodec::DecodePlc(int frameSamples)
+Pcm OpusCodec::DecodePlc(int frameSamples)
 {
     Pcm out;
     DecodePlc(frameSamples, out);
     return out;
 }
+
+} // namespace ravava

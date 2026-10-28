@@ -1,13 +1,15 @@
-#ifndef JITTERBUFFER_H
-#define JITTERBUFFER_H
+#ifndef RAVAVA_JITTERBUFFER_H
+#define RAVAVA_JITTERBUFFER_H
 
 #include <vector>
 #include "AudioTypes.h"
-#include "opusCodec.h"
+#include "OpusCodec.h"
+
+namespace ravava {
 
 // Receiver side: reorders packets, hides loss (Opus FEC, then PLC) and gives the
 // audio device an even stream of frames, no matter how bursty the network is.
-// Pure logic (no Qt, no timers, no audio device, NOT thread safe: one thread uses it, in clsAudioPlayer
+// Pure logic (no Qt, no timers, no audio device, NOT thread safe: one thread uses it, in Player
 // that is the audio thread).
 //
 // No allocation after the constructor: packets live in a fixed ring of slots (copied once, from the
@@ -22,11 +24,11 @@ public:
         uint32_t reordered = 0;   // arrived out of order (first counted as lost, then taken back)
         uint32_t lostEvents = 0;  // every packet ever counted lost, NEVER decreased. For windowed figures use
                                   // delta(lostEvents) - delta(reordered), not delta(lost) (which can go backwards).
-        uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (clsAudioPlayer's queue was full)
-        uint32_t formatDropped = 0; // datagrams clsAudioPlayer refused: not valid Opus, or another frame duration than the current stream
+        uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (Player's queue was full)
+        uint32_t formatDropped = 0; // datagrams Player refused: not valid Opus, or another frame duration than the current stream
     };
 
-    JitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
+    JitterBuffer(OpusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
 
     void Push(const uint8_t *datagram, size_t size);
     // Returns exactly one frame of PCM, or an empty vector when there is nothing to
@@ -37,10 +39,10 @@ public:
     // true if PopFrame() would return real, on-time audio (no concealment needed).
     bool HasFrameReady() const;
 
-    int frameSamples() const { return m_frameSamples; }
-    int frameBytes() const { return m_frameSamples * m_channels * 2; }
-    const Stats &stats() const { return m_stats; }
-    int targetDepth() const { return m_target; }
+    int FrameSamples() const { return m_frameSamples; }
+    int FrameBytes() const { return m_frameSamples * m_channels * 2; }
+    const Stats &GetStats() const { return m_stats; }
+    int TargetDepth() const { return m_target; }
 
 private:
     // Packets waiting to be played. Slot for sequence `s` = s & (Slots-1). Everything in the buffer lies
@@ -74,7 +76,7 @@ private:
     void seenMark(int64_t seq);
     void seenReset();
 
-    opusCodec *m_pCodec;
+    OpusCodec *m_pCodec;
     int m_channels;
     int m_frameSamples;
 
@@ -100,4 +102,6 @@ private:
     bool takeNext(Pcm &out);
 };
 
-#endif // JITTERBUFFER_H
+} // namespace ravava
+
+#endif // RAVAVA_JITTERBUFFER_H

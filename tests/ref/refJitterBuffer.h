@@ -5,8 +5,10 @@
 
 #include <map>
 #include <set>
-#include "AudioTypes.h"
-#include "opusCodec.h"
+#include "ravava/AudioTypes.h"
+#include "ravava/OpusCodec.h"
+
+using namespace ravava;     // test-only reference code
 
 // Receiver side: reorders packets, hides loss (Opus FEC, then PLC) and gives the
 // audio device an even stream of frames, no matter how bursty the network is.
@@ -21,10 +23,10 @@ public:
         uint32_t reordered = 0;   // arrived out of order (first counted as lost, then taken back)
         uint32_t lostEvents = 0;  // every packet ever counted lost, NEVER decreased. For windowed figures use
                                   // delta(lostEvents) - delta(reordered), not delta(lost) (which can go backwards).
-        uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (clsAudioPlayer's queue was full)
+        uint32_t ingestDropped = 0; // datagrams dropped before the jitter buffer (Player's queue was full)
     };
 
-    RefJitterBuffer(opusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
+    RefJitterBuffer(OpusCodec *codec, int decoderRate, int channels, int frameMs, int startMs = 120);
 
     void Push(const uint8_t *datagram, size_t size);
     // Returns exactly one frame of PCM, or an empty vector when there is nothing to
@@ -35,15 +37,15 @@ public:
     // true if PopFrame() would return real, on-time audio (no concealment needed).
     bool HasFrameReady() const;
 
-    int frameSamples() const { return m_frameSamples; }
-    int frameBytes() const { return m_frameSamples * m_channels * 2; }
-    const Stats &stats() const { return m_stats; }
-    int targetDepth() const { return m_target; }
+    int FrameSamples() const { return m_frameSamples; }
+    int FrameBytes() const { return m_frameSamples * m_channels * 2; }
+    const Stats &GetStats() const { return m_stats; }
+    int TargetDepth() const { return m_target; }
 
 private:
     struct Pkt { Bytes payload; bool marker; };
 
-    opusCodec *m_pCodec;
+    OpusCodec *m_pCodec;
     int m_channels;
     int m_frameSamples;
 

@@ -1,8 +1,10 @@
-#include "clsAudioRecorder.h"
+#include "Recorder.h"
 #include "VoicePacket.h"
 #include <algorithm>
 
-clsAudioRecorder::clsAudioRecorder()
+namespace ravava {
+
+Recorder::Recorder()
 {
     m_pConfig = nullptr;
     m_seq = 0;
@@ -11,58 +13,58 @@ clsAudioRecorder::clsAudioRecorder()
     m_musicPos = 0;
 }
 
-clsAudioRecorder::~clsAudioRecorder()
+Recorder::~Recorder()
 {
-    m_input.stop();
+    m_input.Stop();
 }
 
-void clsAudioRecorder::SetConfig(AudioConfig *pConfig)
+void Recorder::SetConfig(AudioConfig *pConfig)
 {
     m_pConfig = pConfig;
     init();
 }
 
-void clsAudioRecorder::init()
+void Recorder::init()
 {
     if(m_pOpus || !m_pConfig)
         return;
 
-    auto codec = std::make_unique<opusCodec>();
+    auto codec = std::make_unique<OpusCodec>();
     if(!codec->InitEncoder(*m_pConfig)){
-        AUDIO_WARN("Opus encoder init failed");
+        RAVAVA_WARN("Opus encoder init failed");
         return;
     }
     m_pOpus = std::move(codec);
 
     if(m_pConfig->playMusic)
-        LoadMusic();
+        loadMusic();
 }
 
 // The whole file is decoded once, up front (the old code also buffered all of it), so the
 // real-time capture callback never touches the disk.
-bool clsAudioRecorder::LoadMusic()
+bool Recorder::loadMusic()
 {
     std::string err;
-    m_music = decodeAudioFile(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels, &err);
+    m_music = DecodeAudioFile(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels, &err);
     m_musicPos = 0;
     if(m_music.empty()){
-        AUDIO_WARN("music: %s", err.c_str());
+        RAVAVA_WARN("music: %s", err.c_str());
         return false;
     }
-    AUDIO_INFO("music loaded: %s (%zu samples)", m_pConfig->musicPath.c_str(), m_music.size());
+    RAVAVA_INFO("music loaded: %s (%zu samples)", m_pConfig->musicPath.c_str(), m_music.size());
     return true;
 }
 
-void clsAudioRecorder::Start()
+void Recorder::Start()
 {
     if(!m_pOpus || !m_pConfig){
-        AUDIO_WARN("Recorder not ready");
+        RAVAVA_WARN("Recorder not ready");
         return;
     }
-    if(m_input.isRunning())
+    if(m_input.IsRunning())
         return;
 
-    const size_t frameChunk = size_t(m_pConfig->frameSamples()) * m_pConfig->channels;
+    const size_t frameChunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
     m_cache.clear();
     m_cache.reserve(frameChunk);                    // holds the < 1 frame tail
     // device chunks are 10 ms; 100 ms of room means even odd driver chunk sizes never reallocate
@@ -75,20 +77,20 @@ void clsAudioRecorder::Start()
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     std::string err;
-    bool ok = m_input.start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
+    bool ok = m_input.Start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
     if(!ok)
-        AUDIO_WARN("Recorder: %s", err.c_str());
+        RAVAVA_WARN("Recorder: %s", err.c_str());
 }
 
-void clsAudioRecorder::Stop()
+void Recorder::Stop()
 {
-    m_input.stop();         // returns when the callback is guaranteed to be finished
+    m_input.Stop();         // returns when the callback is guaranteed to be finished
     m_cache.clear();
     m_scratch.clear();
 }
 
 // audio thread
-void clsAudioRecorder::onCapture(const int16_t *pcm, uint32_t frames)
+void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
 {
     if(!m_pOpus || !m_pConfig)
         return;
@@ -106,25 +108,25 @@ void clsAudioRecorder::onCapture(const int16_t *pcm, uint32_t frames)
         std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // file ended -> silence
         m_musicPos += take;
         src = m_scratch.data();
-    }else if(m_aec && m_aec->isReady()){
+    }else if(m_aec && m_aec->IsReady()){
         // echo-free samples (less than 10 ms can stay inside the canceller)
         m_scratch.clear();
-        m_aec->capture(pcm, frames, m_scratch);
+        m_aec->Capture(pcm, frames, m_scratch);
         src = m_scratch.data();
         n = m_scratch.size();
     }
 
     // opus needs EXACT frames (e.g. 20ms), device chunks have arbitrary sizes -> cut them
-    const size_t chunk = size_t(m_pConfig->frameSamples()) * m_pConfig->channels;
-    cutBlocks(m_cache, chunk, src, n, [this](const int16_t *frame){ onFrame(frame); });
+    const size_t chunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
+    CutBlocks(m_cache, chunk, src, n, [this](const int16_t *frame){ onFrame(frame); });
 }
 
 // audio thread: one frame -> (maybe) one datagram
-void clsAudioRecorder::onFrame(const int16_t *frame)
+void Recorder::onFrame(const int16_t *frame)
 {
     const uint16_t seq = m_seq++;     // every frame consumes a number, even silent ones
 
-    if(!m_pOpus->Encode(frame, m_pConfig->frameSamples(), m_encoded)){
+    if(!m_pOpus->Encode(frame, m_pConfig->FrameSamples(), m_encoded)){
         m_marker = true;
         return;
     }
@@ -136,8 +138,10 @@ void clsAudioRecorder::onFrame(const int16_t *frame)
         return;
     }
 
-    VoicePacket::wrapInto(m_datagram, seq, m_marker, m_tx++, m_encoded);
+    VoicePacket::WrapInto(m_datagram, seq, m_marker, m_tx++, m_encoded);
     m_marker = false;
     if(m_handler)
         m_handler(m_datagram);
 }
+
+} // namespace ravava

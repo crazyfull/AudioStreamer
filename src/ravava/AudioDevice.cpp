@@ -3,8 +3,10 @@
 // duplicate the implementation (link errors) if miniaudio.h is ever swapped for the single-file version.
 #include "miniaudio.h"
 
-#include "audioDevice.h"
+#include "AudioDevice.h"
 #include <cstring>
+
+namespace ravava {
 
 // =============================================================== AudioInput
 struct AudioInput::Impl
@@ -27,12 +29,12 @@ AudioInput::AudioInput() : d(new Impl) {
 }
 
 AudioInput::~AudioInput() {
-    stop();
+    Stop();
 }
 
-bool AudioInput::start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
+bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
 {
-    stop();
+    Stop();
     d->cb = std::move(cb);
 
     ma_device_config cfg = ma_device_config_init(ma_device_type_capture);
@@ -53,14 +55,14 @@ bool AudioInput::start(int sampleRate, int channels, int periodMs, Callback cb, 
     r = ma_device_start(&d->dev);
     if(r != MA_SUCCESS){
         if(err) *err = std::string("capture device start failed: ") + ma_result_description(r);
-        stop();
+        Stop();
         return false;
     }
     d->running = true;
     return true;
 }
 
-void AudioInput::stop()
+void AudioInput::Stop()
 {
     if(d->opened){
         ma_device_uninit(&d->dev);      // stops the device and waits for the callback
@@ -69,7 +71,7 @@ void AudioInput::stop()
     d->running = false;
 }
 
-bool AudioInput::isRunning() const {
+bool AudioInput::IsRunning() const {
     return d->running;
 }
 
@@ -97,12 +99,12 @@ AudioOutput::AudioOutput() : d(new Impl) {
 }
 
 AudioOutput::~AudioOutput() {
-    stop();
+    Stop();
 }
 
-bool AudioOutput::start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
+bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
 {
-    stop();
+    Stop();
     d->cb = std::move(cb);
     d->channels = channels;
 
@@ -124,14 +126,14 @@ bool AudioOutput::start(int sampleRate, int channels, int periodMs, Callback cb,
     r = ma_device_start(&d->dev);
     if(r != MA_SUCCESS){
         if(err) *err = std::string("playback device start failed: ") + ma_result_description(r);
-        stop();
+        Stop();
         return false;
     }
     d->running = true;
     return true;
 }
 
-void AudioOutput::stop()
+void AudioOutput::Stop()
 {
     if(d->opened){
         ma_device_uninit(&d->dev);
@@ -140,10 +142,10 @@ void AudioOutput::stop()
     d->running = false;
 }
 
-bool AudioOutput::isRunning() const { return d->running; }
+bool AudioOutput::IsRunning() const { return d->running; }
 
-// ============================================================ decodeAudioFile
-Pcm decodeAudioFile(const std::string &path, int sampleRate, int channels, std::string *err)
+// ============================================================ DecodeAudioFile
+Pcm DecodeAudioFile(const std::string &path, int sampleRate, int channels, std::string *err)
 {
     ma_decoder_config cfg = ma_decoder_config_init(ma_format_s16, ma_uint32(channels), ma_uint32(sampleRate));
 
@@ -160,3 +162,5 @@ Pcm decodeAudioFile(const std::string &path, int sampleRate, int channels, std::
     ma_free(pFrames, nullptr);
     return out;
 }
+
+} // namespace ravava

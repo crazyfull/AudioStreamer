@@ -1,5 +1,5 @@
 // thread-based fake devices so recorder -> network -> player can run without miniaudio / sound card
-#include "audioDevice.h"
+#include "ravava/AudioDevice.h"
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -8,11 +8,13 @@
 // tests can look at what the fake speaker receives (called on the fake audio thread after every callback)
 void (*g_stubSpeakerTap)(const int16_t *pcm, uint32_t frames, int channels) = nullptr;
 
+namespace ravava {
+
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
 AudioInput::AudioInput() : d(new Impl) {}
-AudioInput::~AudioInput(){ stop(); }
-bool AudioInput::start(int rate, int ch, int ms, Callback cb, std::string*){
-    stop(); d->run = true; d->running = true;
+AudioInput::~AudioInput(){ Stop(); }
+bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*){
+    Stop(); d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch); double ph=0; 
         auto next = std::chrono::steady_clock::now();
@@ -22,19 +24,21 @@ bool AudioInput::start(int rate, int ch, int ms, Callback cb, std::string*){
             next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next);
         }});
     return true; }
-void AudioInput::stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
-bool AudioInput::isRunning() const { return d->running; }
+void AudioInput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+bool AudioInput::IsRunning() const { return d->running; }
 
 struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
 AudioOutput::AudioOutput() : d(new Impl) {}
-AudioOutput::~AudioOutput(){ stop(); }
-bool AudioOutput::start(int rate, int ch, int ms, Callback cb, std::string*){
-    stop(); d->run = true; d->running = true;
+AudioOutput::~AudioOutput(){ Stop(); }
+bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
+    Stop(); d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch);
         auto next = std::chrono::steady_clock::now();
         while(d->run){ cb(buf.data(), frames); if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
     return true; }
-void AudioOutput::stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
-bool AudioOutput::isRunning() const { return d->running; }
-Pcm decodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }
+void AudioOutput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+bool AudioOutput::IsRunning() const { return d->running; }
+Pcm DecodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }
+
+} // namespace ravava

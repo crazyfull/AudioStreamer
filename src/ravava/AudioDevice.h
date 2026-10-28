@@ -1,13 +1,15 @@
-#ifndef AUDIODEVICE_H
-#define AUDIODEVICE_H
+#ifndef RAVAVA_AUDIODEVICE_H
+#define RAVAVA_AUDIODEVICE_H
 
 // Thin Qt-free wrappers around miniaudio (https://github.com/mackron/miniaudio).
-// miniaudio.h is only included by audioDevice.cpp, so nothing else depends on it.
+// miniaudio.h is only included by AudioDevice.cpp, so nothing else depends on it.
 
 #include <functional>
 #include <memory>
 #include <string>
 #include "AudioTypes.h"
+
+namespace ravava {
 
 // ---- microphone -----------------------------------------------------------------
 // The callback runs on the real-time audio thread: don't block, don't wait on the GUI.
@@ -22,9 +24,9 @@ public:
     AudioInput(const AudioInput&) = delete;
     AudioInput& operator=(const AudioInput&) = delete;
 
-    bool start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
-    void stop();            // blocks until the callback is no longer running
-    bool isRunning() const;
+    bool Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
+    void Stop();            // blocks until the callback is no longer running
+    bool IsRunning() const;
 
 private:
     struct Impl;
@@ -44,9 +46,9 @@ public:
     AudioOutput(const AudioOutput&) = delete;
     AudioOutput& operator=(const AudioOutput&) = delete;
 
-    bool start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
-    void stop();            // blocks until the callback is no longer running
-    bool isRunning() const;
+    bool Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
+    void Stop();            // blocks until the callback is no longer running
+    bool IsRunning() const;
 
 private:
     struct Impl;
@@ -56,6 +58,8 @@ private:
 // ---- music file -> PCM ---------------------------------------------------------
 // Decodes a whole file (wav / mp3 / flac, + ogg if stb_vorbis is added) and converts it to
 // the requested rate/channels. Returns interleaved s16 samples; empty on failure.
-Pcm decodeAudioFile(const std::string &path, int sampleRate, int channels, std::string *err = nullptr);
+Pcm DecodeAudioFile(const std::string &path, int sampleRate, int channels, std::string *err = nullptr);
 
-#endif // AUDIODEVICE_H
+} // namespace ravava
+
+#endif // RAVAVA_AUDIODEVICE_H

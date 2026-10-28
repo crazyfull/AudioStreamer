@@ -1,13 +1,15 @@
 // fake devices that share a simulated ROOM: what the speaker plays comes back into the microphone
 // after a delay (and a gain), plus an optional local talker. Real-time threads, 10 ms periods.
 // Used by tests/e2e_aec.cpp. Mono, one rate (48000) only.
-#include "audioDevice.h"
+#include "ravava/AudioDevice.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <mutex>
 #include <random>
 #include <thread>
+
+namespace ravava {
 
 // ---- test control / measurement (declared again with `extern` in tests/e2e_aec.cpp)
 std::atomic<bool>   g_talker{false};         // a person talks into the mic
@@ -35,11 +37,11 @@ void roomReset()
 // ------------------------------------------------------------------ microphone
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running = false; };
 AudioInput::AudioInput() : d(new Impl) {}
-AudioInput::~AudioInput() { stop(); }
+AudioInput::~AudioInput() { Stop(); }
 
-bool AudioInput::start(int rate, int ch, int ms, Callback cb, std::string*)
+bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*)
 {
-    stop();
+    Stop();
     d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = uint32_t(rate * ms / 1000);
@@ -79,17 +81,17 @@ bool AudioInput::start(int rate, int ch, int ms, Callback cb, std::string*)
     });
     return true;
 }
-void AudioInput::stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
-bool AudioInput::isRunning() const { return d->running; }
+void AudioInput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+bool AudioInput::IsRunning() const { return d->running; }
 
 // ------------------------------------------------------------------ speaker
 struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; bool running = false; };
 AudioOutput::AudioOutput() : d(new Impl) {}
-AudioOutput::~AudioOutput() { stop(); }
+AudioOutput::~AudioOutput() { Stop(); }
 
-bool AudioOutput::start(int rate, int ch, int ms, Callback cb, std::string*)
+bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*)
 {
-    stop();
+    Stop();
     d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = uint32_t(rate * ms / 1000);
@@ -112,7 +114,9 @@ bool AudioOutput::start(int rate, int ch, int ms, Callback cb, std::string*)
     });
     return true;
 }
-void AudioOutput::stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
-bool AudioOutput::isRunning() const { return d->running; }
+void AudioOutput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+bool AudioOutput::IsRunning() const { return d->running; }
 
-Pcm decodeAudioFile(const std::string&, int, int, std::string *err) { if(err) *err = "stub"; return Pcm(); }
+Pcm DecodeAudioFile(const std::string&, int, int, std::string *err) { if(err) *err = "stub"; return Pcm(); }
+
+} // namespace ravava

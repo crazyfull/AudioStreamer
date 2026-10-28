@@ -1,13 +1,13 @@
-#ifndef PACKETQUEUE_H
-#define PACKETQUEUE_H
+#ifndef RAVAVA_PACKETQUEUE_H
+#define RAVAVA_PACKETQUEUE_H
 
 // Hands datagrams from the network/GUI thread(s) to the audio thread WITHOUT the audio thread ever
 // taking a lock or allocating: a ring of fixed slots, lock-free on the consumer side.
 //
-//   push()  : any thread(s). Producers share a small mutex among themselves only; the audio thread never touches it.
-//   drain() : the ONE consumer (audio thread). Wait-free.
+//   Push()  : any thread(s). Producers share a small mutex among themselves only; the audio thread never touches it.
+//   Drain() : the ONE consumer (audio thread). Wait-free.
 //
-// When the ring is full (audio thread stalled) push() drops the NEW datagram and returns false.
+// When the ring is full (audio thread stalled) Push() drops the NEW datagram and returns false.
 
 #include <atomic>
 #include <cstddef>
@@ -15,6 +15,8 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+
+namespace ravava {
 
 class PacketQueue
 {
@@ -26,7 +28,7 @@ public:
     PacketQueue(const PacketQueue&) = delete;
     PacketQueue& operator=(const PacketQueue&) = delete;
 
-    bool push(const uint8_t *data, size_t size)
+    bool Push(const uint8_t *data, size_t size)
     {
         if(!data || !size || size > MaxSize)
             return false;
@@ -46,7 +48,7 @@ public:
 
     // calls f(const uint8_t *data, size_t size) for everything queued so far; returns how many
     template<class F>
-    size_t drain(F &&f)
+    size_t Drain(F &&f)
     {
         size_t n = 0;
         size_t tail = m_tail.load(std::memory_order_relaxed);
@@ -62,7 +64,7 @@ public:
     }
 
     // only while nothing pushes and nothing drains (before the audio device starts)
-    void clear()
+    void Clear()
     {
         m_tail.store(m_head.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
@@ -79,4 +81,6 @@ private:
     std::atomic<size_t> m_tail{0};          // next slot to read  (consumer)
 };
 
-#endif // PACKETQUEUE_H
+} // namespace ravava
+
+#endif // RAVAVA_PACKETQUEUE_H

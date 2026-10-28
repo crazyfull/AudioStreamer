@@ -1,16 +1,18 @@
-#ifndef OPUSCODEC_H
-#define OPUSCODEC_H
+#ifndef RAVAVA_OPUSCODEC_H
+#define RAVAVA_OPUSCODEC_H
 
 #include "opus.h"
 #include "AudioTypes.h"
 #include "AudioConfig.h"
+
+namespace ravava {
 
 // One call = one Opus packet. Packets are NOT concatenated, so each one can be
 // sent as its own datagram and decoded independently by the receiver.
 //
 // The "into" overloads (Bytes& / Pcm& out) reuse the capacity of `out`, so after the first call they
 // don't allocate: use those on the audio thread. The value-returning ones are conveniences.
-class opusCodec
+class OpusCodec
 {
 private:
     OpusEncoder *m_pEncoder;
@@ -33,16 +35,16 @@ public:
     // false = not something we can play (empty, corrupt, or a 2.5 ms frame which has no whole ms). No allocation.
     static bool Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info);
 
-    opusCodec();
-    ~opusCodec();
-    opusCodec(const opusCodec&) = delete;
-    opusCodec& operator=(const opusCodec&) = delete;
+    OpusCodec();
+    ~OpusCodec();
+    OpusCodec(const OpusCodec&) = delete;
+    OpusCodec& operator=(const OpusCodec&) = delete;
 
-    // false = invalid config (AudioConfig::validate) or Opus rejected a setting; the reason is logged
+    // false = invalid config (AudioConfig::Validate) or Opus rejected a setting; the reason is logged
     bool InitEncoder(const AudioConfig &cfg);
     bool InitDecoder(int sampleRate, int channels);
 
-    // pcm must hold exactly cfg.frameSamples() * channels samples. false / empty result = error
+    // pcm must hold exactly cfg.FrameSamples() * channels samples. false / empty result = error
     bool Encode(const int16_t *pcm, int frameSamples, Bytes &out);
     Bytes Encode(const int16_t *pcm, int frameSamples);
 
@@ -59,4 +61,6 @@ public:
     Pcm DecodePlc(int frameSamples);
 };
 
-#endif // OPUSCODEC_H
+} // namespace ravava
+
+#endif // RAVAVA_OPUSCODEC_H

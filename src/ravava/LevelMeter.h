@@ -1,11 +1,11 @@
-#ifndef LEVELMETER_H
-#define LEVELMETER_H
+#ifndef RAVAVA_LEVELMETER_H
+#define RAVAVA_LEVELMETER_H
 
 // Loudness meter, 0..100, for the audio thread: no allocation, no lock.
 //
-//   feed()      : the ONE audio thread, with the interleaved s16 samples it just handled.
-//   level()     : any thread. Smooth value (instant attack, slow release) = "what the VU meter shows now".
-//   takePeak()  : any thread. Loudest block since the LAST takePeak() call, so a slow GUI timer
+//   Feed()      : the ONE audio thread, with the interleaved s16 samples it just handled.
+//   Level()     : any thread. Smooth value (instant attack, slow release) = "what the VU meter shows now".
+//   TakePeak()  : any thread. Loudest block since the LAST TakePeak() call, so a slow GUI timer
 //                 (e.g. once per second) still sees a short word instead of missing it.
 //
 // Scale: RMS of each block in dBFS, -60 dBFS (and below, silence) = 0, 0 dBFS (full scale) = 100.
@@ -17,13 +17,15 @@
 #include <cstddef>
 #include <cstdint>
 
+namespace ravava {
+
 class LevelMeter
 {
 public:
     static constexpr float FloorDb = -60.f;
 
     // 0 .. 100 for one block of samples (all channels interleaved)
-    static int blockLevel(const int16_t *pcm, size_t samples)
+    static int BlockLevel(const int16_t *pcm, size_t samples)
     {
         if(!pcm || !samples)
             return 0;
@@ -39,11 +41,11 @@ public:
     }
 
     // audio thread. `rate` = frames per second, `channels` = interleaved channels
-    void feed(const int16_t *pcm, uint32_t frames, int rate, int channels)
+    void Feed(const int16_t *pcm, uint32_t frames, int rate, int channels)
     {
         if(!pcm || !frames || rate <= 0 || channels <= 0)
             return;
-        const float now = float(blockLevel(pcm, size_t(frames) * size_t(channels)));
+        const float now = float(BlockLevel(pcm, size_t(frames) * size_t(channels)));
 
         // instant attack, release 150 %/s (a full-scale burst falls to 0 in ~0.7 s)
         float cur = m_smooth;
@@ -57,8 +59,8 @@ public:
         while(peak > old && !m_peak.compare_exchange_weak(old, peak, std::memory_order_relaxed)) {}
     }
 
-    int level() const { return m_level.load(std::memory_order_relaxed); }
-    int takePeak() { return m_peak.exchange(0, std::memory_order_relaxed); }
+    int Level() const { return m_level.load(std::memory_order_relaxed); }
+    int TakePeak() { return m_peak.exchange(0, std::memory_order_relaxed); }
 
 private:
     float m_smooth = 0;                     // audio thread only
@@ -66,4 +68,6 @@ private:
     std::atomic<int> m_peak{0};
 };
 
-#endif // LEVELMETER_H
+} // namespace ravava
+
+#endif // RAVAVA_LEVELMETER_H

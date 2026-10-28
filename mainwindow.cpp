@@ -1,14 +1,16 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "src/clsAudioRecorder.h"
-#include "src/clsAudioPlayer.h"
-#include "src/AudioProcessor.h"
+#include "src/ravava/Recorder.h"
+#include "src/ravava/Player.h"
+#include "src/ravava/AudioProcessor.h"
 #include <QDebug>
 #include <QUdpSocket>
 #include <QTcpSocket>
 #include <QLabel>
 #include <QGridLayout>
 #include <QFontDatabase>
+
+using namespace ravava;       // the audio library (src/ravava); the network layer (src/net) is not in it
 
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -67,7 +69,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->echoLevel_comboBox->addItem("Echo: protect voice 3");
 
     // built without webrtc-audio-processing: echo / noise / AGC don't exist in this build
-    if(!AudioProcessor::available()){
+    if(!AudioProcessor::IsAvailable()){
         const QString why = "this build has no webrtc-audio-processing";
         ui->echoLevel_comboBox->setCurrentIndex(0);
         ui->noise_comboBox->setCurrentIndex(0);
@@ -173,8 +175,8 @@ void MainWindow::initAudio()
 
     m_pAec.reset();     // the old recorder/player are gone, nothing uses it anymore
 
-    m_pAudioRecorder = new clsAudioRecorder();
-    m_pAudioPlayer = new clsAudioPlayer();
+    m_pAudioRecorder = new Recorder();
+    m_pAudioPlayer = new Player();
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
 
     // The handler runs on the miniaudio capture thread -> hop to the GUI thread
@@ -188,7 +190,7 @@ void MainWindow::initAudio()
     m_AudioConfig.frameMs  = ui->frameMS_comboBox->currentText().toInt();
     m_AudioConfig.useDtx = ui->useDtx_checkBox->checkState();
     m_AudioConfig.expectedLossPerc = ui->LossPrec_comboBox->currentText().toInt();
-    m_AudioConfig.MaxBandwith = ui->BandWith_comboBox->currentData().toInt();
+    m_AudioConfig.maxBandwidth = ui->BandWith_comboBox->currentData().toInt();
     m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
     m_AudioConfig.useEchoCancel = ui->echoLevel_comboBox->currentIndex() == 0 ? false: true;
@@ -199,7 +201,7 @@ void MainWindow::initAudio()
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
     const bool wantAec = m_AudioConfig.useEchoCancel;
-    if(AudioProcessor::available() && (wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
+    if(AudioProcessor::IsAvailable() && (wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
         auto aec = std::make_shared<AudioProcessor>();
         AudioProcessor::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;
@@ -208,10 +210,10 @@ void MainWindow::initAudio()
         opt.noiseSuppression = m_AudioConfig.noiseSuppression;
         opt.autoGain = m_AudioConfig.autoGain;
         std::string err;
-        if(aec->init(m_AudioConfig.inputRate, m_AudioConfig.renderRate(), m_AudioConfig.channels, opt, &err))
+        if(aec->Init(m_AudioConfig.inputRate, m_AudioConfig.RenderRate(), m_AudioConfig.channels, opt, &err))
             m_pAec = aec;
         else
-            AUDIO_WARN("echo canceller disabled: %s", err.c_str());
+            RAVAVA_WARN("echo canceller disabled: %s", err.c_str());
     }
     m_pAudioRecorder->SetAudioProcessor(m_pAec);
     m_pAudioPlayer->SetAudioProcessor(m_pAec);       // before SetConfig: that starts the speaker
@@ -260,7 +262,7 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
     hdr.type = Packet::Audio;
     hdr.streamId = m_txStreamId;
     Bytes wire;
-    Packet::wrapInto(wire, hdr, reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
+    Packet::WrapInto(wire, hdr, reinterpret_cast<const uint8_t*>(encodedBuffer.constData()), size_t(encodedBuffer.size()));
     const QByteArray datagram(reinterpret_cast<const char*>(wire.data()), int(wire.size()));
 
     if(ui->LoopBack_checkBox->checkState() == false){
@@ -364,7 +366,7 @@ void MainWindow::OnStatsTimer()
         t += QString("   not playable / other format %1").arg(st.formatDropped);
 
     AudioProcessor::Stats aec;
-    if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->getStats(aec)){
+    if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->GetStats(aec)){
         t += aec.hasDelay ? QString("\nEcho     : cancelling, estimated echo delay %1 ms").arg(aec.delayMs)
                           : QString("\nEcho     : cancelling (still measuring the delay)");
     }else{
@@ -377,7 +379,7 @@ void MainWindow::OnStatsTimer()
              .arg(QString(lvl / 5, QChar('#'))).arg(QString(20 - lvl / 5, QChar('-'))).arg(lvl);
 
     // network layer: who is talking (stream id of the last audio packet) and packets that are not audio
-    const PacketRouter::Stats &net = m_router.stats();
+    const PacketRouter::Stats &net = m_router.GetStats();
     if(m_rxStreamTime){
         t += QString("\nStream   : talking stream #%1 (%2 ms ago)")
                  .arg(m_rxStreamId).arg(QDateTime::currentMSecsSinceEpoch() - m_rxStreamTime);

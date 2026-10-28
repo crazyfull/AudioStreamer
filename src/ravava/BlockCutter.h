@@ -1,5 +1,5 @@
-#ifndef BLOCKCUTTER_H
-#define BLOCKCUTTER_H
+#ifndef RAVAVA_BLOCKCUTTER_H
+#define RAVAVA_BLOCKCUTTER_H
 
 // Cuts a stream of arbitrarily sized chunks into blocks of EXACTLY `block` samples, for the audio
 // thread: no allocation and no big memmove.
@@ -7,7 +7,7 @@
 //  * whole blocks are handed to `onBlock(const int16_t *block)` straight from the input, nothing is copied;
 //  * only the incomplete tail (always < block samples) is kept in `rest` until the next call.
 //
-// `rest` must have had rest.reserve(block) called once (Start()/init()), then it never reallocates.
+// `rest` must have had rest.reserve(block) called once (Start() / init()), then it never reallocates.
 // The pointer given to onBlock is only valid during that call.
 
 #include <algorithm>
@@ -15,8 +15,10 @@
 #include <cstdint>
 #include <vector>
 
+namespace ravava {
+
 template<class OnBlock>
-inline void cutBlocks(std::vector<int16_t> &rest, size_t block, const int16_t *in, size_t n, OnBlock &&onBlock)
+inline void CutBlocks(std::vector<int16_t> &rest, size_t block, const int16_t *in, size_t n, OnBlock &&onBlock)
 {
     if(!block || !in)
         return;
@@ -45,4 +47,6 @@ inline void cutBlocks(std::vector<int16_t> &rest, size_t block, const int16_t *i
         rest.assign(in, in + n);
 }
 
-#endif // BLOCKCUTTER_H
+} // namespace ravava
+
+#endif // RAVAVA_BLOCKCUTTER_H
