@@ -4,7 +4,7 @@ QT += network
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 # src/* uses std::make_unique (C++14) - don't depend on the Qt kit's default standard
-CONFIG += c++17
+CONFIG += c++11
 
 #QMAKE_LFLAGS += -no-pie # mohem, run kardan barname ba dubl click to linux
 
@@ -23,11 +23,11 @@ win32 {
     contains(QMAKE_TARGET.arch, x86_64) {
         message("win x64 build")
         LIBS += $$PWD/libs/opus/win32/libopus_x64.lib
-        TARGET = ../../AudioStreamer_x64
+        TARGET = ../../RavAva_x64
     } else {
         message("win x86 build")
         LIBS += $$PWD/libs/opus/win32/libopus_x86.lib
-        TARGET = ../../AudioStreamer_x86
+        TARGET = ../../RavAva_x86
     }
 }
 
@@ -80,7 +80,7 @@ win32 {
 linux {
     #GCC
     message("linux x64 build")
-    TARGET = ../../AudioStreamer_x64
+    TARGET = ../../RavAva_x64
 
     unix:!macx: LIBS += -L$$PWD/../VoiceCodec/build/lib/ -lopus
     INCLUDEPATH += $$PWD/../VoiceCodec/build/include/opus
