@@ -23,6 +23,16 @@ private:
     Pcm m_decScratch;               // decoder output scratch (the biggest possible Opus packet)
 
 public:
+    // What an Opus packet says about itself (everything is in its first byte, "TOC"): the receiver needs no
+    // side information, no matter which rate / bitrate / bandwidth / frame size the sender uses.
+    struct PacketInfo {
+        int frameMs = 0;        // audio duration of the whole packet in ms (whole ms only, 5..120)
+        int channels = 0;       // 1 or 2 as encoded (a decoder with other channels up/down-mixes)
+        int bandwidth = 0;      // OPUS_BANDWIDTH_NARROWBAND .. OPUS_BANDWIDTH_FULLBAND
+    };
+    // false = not something we can play (empty, corrupt, or a 2.5 ms frame which has no whole ms). No allocation.
+    static bool Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info);
+
     opusCodec();
     ~opusCodec();
     opusCodec(const opusCodec&) = delete;

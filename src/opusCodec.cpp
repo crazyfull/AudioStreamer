@@ -13,6 +13,23 @@ bool ctlOk(int ret, const char *what)
 }
 }
 
+bool opusCodec::Inspect(const uint8_t *opusPacket, size_t size, PacketInfo &info)
+{
+    if(!opusPacket || size < 1 || size > 1500)
+        return false;
+    const int frames = opus_packet_get_nb_frames(opusPacket, opus_int32(size));
+    const int perFrame = opus_packet_get_samples_per_frame(opusPacket, 48000);      // at 48 kHz: 1 ms = 48 samples
+    if(frames < 1 || perFrame < 1)
+        return false;
+    const int samples = frames * perFrame;
+    if(samples % 48 != 0 || samples / 48 < 5 || samples > MAX_SAMPLES)
+        return false;
+    info.frameMs = samples / 48;
+    info.channels = opus_packet_get_nb_channels(opusPacket);
+    info.bandwidth = opus_packet_get_bandwidth(opusPacket);
+    return info.channels >= 1;
+}
+
 opusCodec::opusCodec()
 {
     m_pEncoder = nullptr;

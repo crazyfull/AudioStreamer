@@ -29,3 +29,7 @@ Unit tests without webrtc / sound card (Linux; on Windows build_tests.bat builds
 
 Receive volume (player gain, level meter independent of it; no webrtc, no sound card):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/volume_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp src/AudioProcessor.cpp -lopus -o volume_test
+
+Stream format from the packets (player takes frame size from the Opus packets; any sender rate / bandwidth / mono-stereo,
+format switch while talking, stray packets, sender restart; no webrtc, no sound card):
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/format_test.cpp tests/stub/audioDevice_stub.cpp src/clsAudioPlayer.cpp src/jitterBuffer.cpp src/opusCodec.cpp src/AudioProcessor.cpp -lopus -o format_test

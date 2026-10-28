@@ -136,7 +136,10 @@ void JitterBuffer::Push(const uint8_t *datagram, size_t size)
     }else{
         int16_t diff = int16_t(uint16_t(seq - uint16_t(m_highest & 0xFFFF)));
         ext = m_highest + diff;
-        if(std::abs(int(diff)) > 3000){      // sender restarted / huge jump: resync
+        // Sender restarted (new talker / app restarted: sequence starts again at 0, always with a marker) or a huge jump:
+        // resync. A marker packet that is further behind than the buffer can ever reorder is a restart too; without this
+        // a restart at seq 0 would be "too late" until the old sequence number is reached again (minutes of silence).
+        if(std::abs(int(diff)) > 3000 || (marker && int(diff) < -(int(m_maxTarget) + 16))){
             clearPackets();
             seenReset();
             m_lastTx = tx;

@@ -324,7 +324,7 @@ void MainWindow::OnStatsTimer()
         return;
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
-        m_lblStats->setText("Receive stats: (press Start)");
+        m_lblStats->setText("Receive stats: (not started, or no audio received yet)");
         return;
     }
 
@@ -336,6 +336,9 @@ void MainWindow::OnStatsTimer()
     // "last 5 seconds": compare with the snapshot taken 5 seconds ago
     // st.lost is a NET number (it goes down again when a packet counted lost arrives late), so its difference
     // is wrong. lostEvents and reordered only ever grow: lost in the window = new losses - new late arrivals.
+    // a new stream format (sender changed frame size) starts a new jitter buffer, its counters start at 0 again
+    if(!m_statHistory.isEmpty() && st.received < m_statHistory.last().received)
+        m_statHistory.clear();
     const StatSnapshot snap = { st.received, st.lostEvents, st.reordered };
     m_statHistory.append(snap);
     while(m_statHistory.size() > 6)
@@ -357,6 +360,8 @@ void MainWindow::OnStatsTimer()
              .arg(depthFrames).arg(depthFrames * frameMs).arg(st.underrun);
     if(st.ingestDropped)
         t += QString("   dropped before buffer %1").arg(st.ingestDropped);
+    if(st.formatDropped)
+        t += QString("   not playable / other format %1").arg(st.formatDropped);
 
     AudioProcessor::Stats aec;
     if(m_AudioConfig.useEchoCancel && m_pAec && m_pAec->getStats(aec)){
