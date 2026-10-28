@@ -8,6 +8,7 @@
 #include "ravava/VoicePacket.h"
 #include "ravava/net/PacketRouter.h"
 #include "ravava/LevelMeter.h"
+#include "ravava/GainRamp.h"
 #include "ravava/OpusCodec.h"
 #include <atomic>
 #include <cstdio>
@@ -305,11 +306,56 @@ static void testLevelMeter()
     CHECK(lm.Level() == 100);
 }
 
+// ---------------------------------------------------------------------------------------------
+static void testGainRamp()
+{
+    std::printf("GainRamp\n");
+    GainRamp g(200);
+    CHECK(g.Get() == 100 && g.Max() == 200);
+    g.Set(250); CHECK(g.Get() == 200);                      // clamped to max
+    g.Set(-3);  CHECK(g.Get() == 0);
+    GainRamp v;                                              // default: 0..100
+    v.Set(150); CHECK(v.Get() == 100);
+
+    // 100 %: untouched, and says it has nothing to do
+    g.Set(100);
+    std::vector<int16_t> a(480, 1000), orig = a;
+    CHECK(!g.Active());
+    g.Process(a.data(), 480, 1);
+    CHECK(a == orig);
+
+    // 50 % = -12 dB (quadratic curve): 1000 -> 250 once the ramp is over
+    g.Set(50); CHECK(g.Active());
+    g.Process(a.data(), 480, 1);                             // this block ramps 1.0 -> 0.25
+    CHECK(a.front() < 1000 && a.back() == 250 && a[0] >= a[100] && a[100] >= a[479]);   // smooth, monotone, no jump
+    std::vector<int16_t> b(480, 1000);
+    g.Process(b.data(), 480, 1);
+    CHECK(b.front() == 250 && b.back() == 250);
+
+    // 200 % = x4: amplifies, and saturates instead of wrapping around
+    g.Set(200);
+    { std::vector<int16_t> settle(480, 0); g.Process(settle.data(), 480, 1); }       // finish the 0.25 -> 4 ramp first
+    std::vector<int16_t> c(960, 0);
+    for(size_t i = 0; i < c.size(); i++) c[i] = (i & 1) ? int16_t(-30000) : int16_t(30000);
+    g.Process(c.data(), 480, 2);
+    CHECK(c[0] == 32767 && c[1] == -32768);                  // clipped at the rails, signs kept
+    std::vector<int16_t> d(480, 2000);
+    g.Process(d.data(), 480, 1);
+    CHECK(d.back() == 8000);                                 // 2000 * 4
+
+    // 0 % = mute, stereo interleaving untouched
+    g.Set(0);
+    std::vector<int16_t> e(960, 7000);
+    g.Process(e.data(), 480, 2); g.Process(e.data(), 480, 2);
+    CHECK(e.back() == 0 && e[958] == 0);
+}
+
 int main()
 {
     testAudioPacketBody();
     testNetLayer();
     testLevelMeter();
+    testGainRamp();
     testCutBlocks();
     testPacketQueue();
     testConfigAndEncoder();

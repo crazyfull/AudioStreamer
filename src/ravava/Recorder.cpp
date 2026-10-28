@@ -4,7 +4,7 @@
 
 namespace ravava {
 
-Recorder::Recorder()
+Recorder::Recorder() : m_inputGain(200)
 {
     m_pConfig = nullptr;
     m_seq = 0;
@@ -70,6 +70,8 @@ void Recorder::Start()
     // device chunks are 10 ms; 100 ms of room means even odd driver chunk sizes never reallocate
     m_scratch.clear();
     m_scratch.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_gained.clear();
+    m_gained.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
@@ -87,6 +89,7 @@ void Recorder::Stop()
     m_input.Stop();         // returns when the callback is guaranteed to be finished
     m_cache.clear();
     m_scratch.clear();
+    m_gained.clear();
 }
 
 // audio thread
@@ -108,12 +111,21 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
         std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // file ended -> silence
         m_musicPos += take;
         src = m_scratch.data();
-    }else if(m_aec && m_aec->IsReady()){
-        // echo-free samples (less than 10 ms can stay inside the canceller)
-        m_scratch.clear();
-        m_aec->Capture(pcm, frames, m_scratch);
-        src = m_scratch.data();
-        n = m_scratch.size();
+    }else{
+        // microphone gain first, on a copy (the device buffer is read-only); at 100 % nothing is copied
+        if(m_inputGain.Active()){
+            m_gained.assign(pcm, pcm + count);
+            m_inputGain.Process(m_gained.data(), frames, m_pConfig->channels);
+            pcm = m_gained.data();
+            src = pcm;
+        }
+        if(m_aec && m_aec->IsReady()){
+            // echo-free samples (less than 10 ms can stay inside the canceller)
+            m_scratch.clear();
+            m_aec->Capture(pcm, frames, m_scratch);
+            src = m_scratch.data();
+            n = m_scratch.size();
+        }
     }
 
     // opus needs EXACT frames (e.g. 20ms), device chunks have arbitrary sizes -> cut them

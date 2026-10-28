@@ -8,6 +8,7 @@
 #include "AudioConfig.h"
 #include "AudioDevice.h"
 #include "JitterBuffer.h"
+#include "GainRamp.h"
 #include "LevelMeter.h"
 #include "AudioProcessor.h"
 #include "PacketQueue.h"
@@ -58,8 +59,7 @@ class Player
     JitterBuffer::Stats m_statsCopy;
     int m_depthCopy;
 
-    std::atomic<int> m_volume;      // 0..100, GUI -> audio thread
-    float m_gain;                   // gain of the previous block (audio thread), for a click-free ramp
+    GainRamp m_volume;              // 0..100 %, GUI -> audio thread (see GainRamp.h)
     LevelMeter m_level;             // loudness of what goes to the speaker (audio thread writes, anyone reads)
 
     Pcm m_pending;                  // decoded PCM of the current frame, not consumed by the device yet (audio thread)
@@ -77,7 +77,6 @@ class Player
     void reapRetired();
     void init();                            // called by SetConfig()
     void publishStats();
-    void applyVolume(int16_t *out, uint32_t frames);
 
 public:
     Player();
@@ -96,8 +95,8 @@ public:
     // playback volume of the received audio: 0 = mute .. 100 = unchanged (default). Any thread, takes effect
     // within ~10 ms without clicks. Quadratic curve (50 = -12 dB), which sounds like an even slider. Never amplifies,
     // so it can't clip. GetLevel()/TakePeakLevel() measure BEFORE it (the level that was received).
-    void SetVolume(int percent);
-    int  GetVolume() const { return m_volume.load(std::memory_order_relaxed); }
+    void SetVolume(int percent) { m_volume.Set(percent); }
+    int  GetVolume() const { return m_volume.Get(); }
     // one received datagram (audio header + opus packet). Never blocks the audio thread.
     void Play(const uint8_t *datagram, size_t size);
     void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }

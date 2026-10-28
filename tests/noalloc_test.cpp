@@ -54,6 +54,7 @@ static long runCase(bool useAec, int frameMs, bool dtx)
         rec.SetAudioProcessor(aec);
     }
     rec.SetConfig(&cfg);
+    rec.SetInputGain(150);                                              // the gain path (copy + ramp) must not allocate either
     rec.Start();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));       // warm-up: first packets may allocate
     g_allocs = 0; g_count = true;

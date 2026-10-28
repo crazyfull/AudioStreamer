@@ -9,6 +9,7 @@
 #include "OpusCodec.h"
 #include "AudioProcessor.h"
 #include "BlockCutter.h"
+#include "GainRamp.h"
 
 namespace ravava {
 
@@ -31,6 +32,8 @@ private:
     // (frames are cut straight out of the device buffer, only the < 1 frame tail is kept).
     Pcm m_cache;                      // tail of mic samples that don't fill a whole opus frame yet (< 1 frame)
     Pcm m_scratch;                    // echo canceller output / music samples for the current device chunk
+    Pcm m_gained;                     // mic chunk after the input gain (only used while the gain is not 100 %)
+    GainRamp m_inputGain;             // microphone gain 0..200 %, GUI -> audio thread (see GainRamp.h)
     Bytes m_encoded;                  // one opus packet
     Bytes m_datagram;                 // header + opus packet, handed to the packet handler
     uint16_t m_seq;                   // +1 per frame (also for frames skipped by DTX)
@@ -54,6 +57,12 @@ public:
     void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
     // optional echo canceller, the SAME instance as the player's. Call before Start(). Ignored while playing music.
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
+    // microphone gain in percent: 0 = mute, 100 = unchanged (default), up to 200 = +12 dB (clips instead of wrapping).
+    // Any thread, takes effect within ~10 ms without clicks. Applied to the raw mic signal BEFORE the echo canceller /
+    // noise suppression / AGC (like an analog mic gain). Not used while playing a music file.
+    void SetInputGain(int percent) { m_inputGain.Set(percent); }
+    int  GetInputGain() const { return m_inputGain.Get(); }
+    static int MaxInputGain() { return 200; }
     void Start();
     void Stop();
 };

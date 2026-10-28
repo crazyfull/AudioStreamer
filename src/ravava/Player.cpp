@@ -19,8 +19,6 @@ Player::Player()
     m_formatDropped = 0;
     m_ready = false;
     m_ingestDropped = 0;
-    m_volume = 100;
-    m_gain = 1.f;
     m_depthCopy = 0;
     m_pendingPos = 0;
     m_rate = 48000;
@@ -155,39 +153,11 @@ void Player::onDeviceData(int16_t *out, uint32_t frames)
         std::memset(out + done, 0, (need - done) * sizeof(int16_t));
 
     m_level.Feed(out, frames, m_rate, m_channels);
-    applyVolume(out, frames);
+    m_volume.Process(out, frames, m_channels);
 
     // the canceller must see EXACTLY what goes to the speaker, silence included.
     if(m_aec)
         m_aec->Render(out, frames);
-}
-
-void Player::SetVolume(int percent)
-{
-    m_volume.store(percent < 0 ? 0 : (percent > 100 ? 100 : percent), std::memory_order_relaxed);
-}
-
-// audio thread: scale what goes to the speaker. The gain moves linearly from the previous block's value to the new one
-// across this block, so a slider move never clicks. Unity (100) is a no-op.
-void Player::applyVolume(int16_t *out, uint32_t frames)
-{
-    const float v = float(m_volume.load(std::memory_order_relaxed)) / 100.f;
-    const float target = v * v;
-    const float start = m_gain;
-    m_gain = target;
-    if(start == 1.f && target == 1.f)
-        return;
-
-    const int ch = m_channels;
-    const float step = (target - start) / float(frames);
-    float g = start;
-    for(uint32_t f = 0; f < frames; f++){
-        g += step;
-        for(int c = 0; c < ch; c++){
-            int16_t &x = out[size_t(f) * ch + c];
-            x = int16_t(float(x) * g);
-        }
-    }
 }
 
 // audio thread: copy the numbers for the GUI. If the GUI is reading right now, skip, the next callback (10 ms) tries again.
