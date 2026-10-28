@@ -81,6 +81,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     }
 
     on_VolumeSlider_valueChanged(ui->VolumeSlider->value());
+    on_MicGainSlider_valueChanged(ui->MicGainSlider->value());
     ui->statusbar->showMessage("idle");
 }
 
@@ -178,6 +179,7 @@ void MainWindow::initAudio()
     m_pAudioRecorder = new Recorder();
     m_pAudioPlayer = new Player();
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
+    m_pAudioRecorder->SetInputGain(ui->MicGainSlider->value());
 
     // The handler runs on the miniaudio capture thread -> hop to the GUI thread
     // (UDP socket and player are used from there).
@@ -229,6 +231,14 @@ void MainWindow::on_VolumeSlider_valueChanged(int value)
     ui->label_volumeValue->setText(QString::number(value));
     if(m_pAudioPlayer)
         m_pAudioPlayer->SetVolume(value);
+}
+
+// microphone gain (0..200 %), applied by the recorder on the audio thread
+void MainWindow::on_MicGainSlider_valueChanged(int value)
+{
+    ui->label_micGainValue->setText(QString::number(value));
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->SetInputGain(value);
 }
 
 void MainWindow::on_btnStartRecording_clicked()

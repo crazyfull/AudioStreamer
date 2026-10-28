@@ -81,6 +81,11 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\format_test.exe" tests\format_test.cp
    src\ravava\Player.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
+echo === mic_gain_test.exe  (no webrtc needed)
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\mic_gain_test.exe" tests\mic_gain_test.cpp tests\stub\audio_device_stub.cpp ^
+   src\ravava\Recorder.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
+
+echo.
 echo === jitter_diff_test.exe  (no webrtc needed)
 cl %CFLAGS% /Itests\ref /Fo"tests\obj\\" /Fe"tests\bin\jitter_diff_test.exe" tests\jitter_diff_test.cpp tests\ref\refJitterBuffer.cpp ^
    src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp /link "%OPUS_LIB%" || goto fail
@@ -93,6 +98,7 @@ echo     tests\bin\unit_test.exe            (must end with ALL PASS)
 echo     tests\bin\noalloc_test.exe         (must end with PASS)
 echo     tests\bin\volume_test.exe          (must end with PASS)
 echo     tests\bin\format_test.exe          (must end with PASS)
+echo     tests\bin\mic_gain_test.exe        (must end with PASS)
 echo     tests\bin\jitter_diff_test.exe     (must end with PASS)
 popd
 exit /b 0
