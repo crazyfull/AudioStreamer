@@ -60,8 +60,8 @@ struct AudioConfig
             return fail("inputRate (Opus: 8000/12000/16000/24000/48000)", inputRate);
         if(channels < 1 || channels > 2)
             return fail("channels (1 or 2)", channels);
-        if(!(frameMs == 5 || frameMs == 10 || frameMs == 20 || frameMs == 40 || frameMs == 60))
-            return fail("frameMs (5/10/20/40/60)", frameMs);
+        if(!(frameMs == 5 || frameMs == 10 || frameMs == 20 || frameMs == 40 || frameMs == 60 || frameMs == 80 || frameMs == 100 || frameMs == 120))
+            return fail("frameMs (5/10/20/40/60/80/100/120)", frameMs);
         if(opusBitrate < 500 || opusBitrate > 512000)
             return fail("opusBitrate (500..512000 bps)", opusBitrate);
         if(expectedLossPerc < 0 || expectedLossPerc > 100)
