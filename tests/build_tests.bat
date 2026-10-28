@@ -48,7 +48,7 @@ echo.
 if not exist tests\bin mkdir tests\bin
 if not exist tests\obj mkdir tests\obj
 
-set CFLAGS=/nologo /std:c++17 /EHsc /O2 %CRT% /utf-8 /W3 /D_USE_MATH_DEFINES /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /Isrc /I"%WEBRTC_INC%" /I"%WEBRTC_INC2%" /I"%OPUS_INC%"
+set CFLAGS=/nologo /std:c++17 /EHsc /O2 %CRT% /utf-8 /W3 /D_USE_MATH_DEFINES /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /DVOICE_WITH_WEBRTC /Isrc /I"%WEBRTC_INC%" /I"%WEBRTC_INC2%" /I"%OPUS_INC%"
 set "SYSLIBS=winmm.lib dbghelp.lib advapi32.lib ws2_32.lib"
 
 echo === aec_test.exe

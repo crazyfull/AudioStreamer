@@ -5,6 +5,9 @@
 // and automatic gain (AGC2) on the same mic stream, Qt-free.
 // The webrtc headers are only included by AudioProcessor.cpp, nothing else depends on them.
 //
+// webrtc is OPTIONAL: built without -DVOICE_WITH_WEBRTC the class still exists and links, but
+// available() is false, init() fails and capture() is a plain copy. Callers need no #ifdef.
+//
 // How it works: the AEC must know what the speaker plays (far end / "render") to remove it from
 // what the microphone records (near end / "capture"). So ONE instance is shared:
 //
@@ -53,6 +56,9 @@ public:
         bool   hasDelay = false;
         int    delayMs = 0;             // delay estimated by AEC3
     };
+
+    // true if this build contains webrtc (processing can work), false = pass-through only
+    static bool available();
 
     AudioProcessor();
     ~AudioProcessor();
