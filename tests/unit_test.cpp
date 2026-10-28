@@ -7,6 +7,7 @@
 #include "jitterBuffer.h"
 #include "VoicePacket.h"
 #include "net/PacketRouter.h"
+#include "levelMeter.h"
 #include "opusCodec.h"
 #include <atomic>
 #include <cstdio>
@@ -271,10 +272,42 @@ static void testNetLayer()
     CHECK(jb.stats().received == 5 && jb.stats().lost == 0);
 }
 
+// ---------------------------------------------------------------------------------------------
+static void testLevelMeter()
+{
+    std::printf("LevelMeter\n");
+    std::vector<int16_t> zero(480, 0), full(480), quiet(480), mid(480);
+    for(int i = 0; i < 480; i++){
+        full[i] = (i & 1) ? 32767 : -32768;                             // full scale square wave
+        quiet[i] = (i & 1) ? 33 : -33;                                  // ~ -60 dBFS
+        mid[i] = (i & 1) ? 1038 : -1038;                                // ~ -30 dBFS
+    }
+    CHECK(LevelMeter::blockLevel(zero.data(), zero.size()) == 0);
+    CHECK(LevelMeter::blockLevel(full.data(), full.size()) == 100);
+    CHECK(LevelMeter::blockLevel(quiet.data(), quiet.size()) <= 1);
+    int m = LevelMeter::blockLevel(mid.data(), mid.size());
+    CHECK(m >= 49 && m <= 51);                                          // -30 dBFS = half of the scale
+    CHECK(LevelMeter::blockLevel(nullptr, 10) == 0 && LevelMeter::blockLevel(full.data(), 0) == 0);
+
+    LevelMeter lm;
+    CHECK(lm.level() == 0 && lm.takePeak() == 0);
+    lm.feed(mid.data(), 480, 48000, 1);
+    CHECK(lm.level() == m);                                             // instant attack
+    for(int i = 0; i < 5; i++) lm.feed(zero.data(), 480, 48000, 1);     // 50 ms of silence: slow release
+    CHECK(lm.level() > 0 && lm.level() < m);
+    CHECK(lm.takePeak() == m);                                          // the short word is not lost
+    CHECK(lm.takePeak() == 0);                                          // ... and the peak restarts
+    for(int i = 0; i < 100; i++) lm.feed(zero.data(), 480, 48000, 1);   // 1 s of silence
+    CHECK(lm.level() == 0);
+    lm.feed(full.data(), 240, 48000, 2);                                // stereo: 240 frames = 480 samples
+    CHECK(lm.level() == 100);
+}
+
 int main()
 {
     testAudioPacketBody();
     testNetLayer();
+    testLevelMeter();
     testCutBlocks();
     testPacketQueue();
     testConfigAndEncoder();

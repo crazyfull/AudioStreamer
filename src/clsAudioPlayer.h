@@ -8,6 +8,7 @@
 #include "AudioConfig.h"
 #include "audioDevice.h"
 #include "jitterBuffer.h"
+#include "levelMeter.h"
 #include "AudioProcessor.h"
 #include "packetQueue.h"
 
@@ -33,6 +34,8 @@ class clsAudioPlayer
     JitterBuffer::Stats m_statsCopy;
     int m_depthCopy;
 
+    LevelMeter m_level;             // loudness of what goes to the speaker (audio thread writes, anyone reads)
+
     Pcm m_pending;                  // decoded PCM of the current frame, not consumed by the device yet (audio thread)
     size_t m_pendingPos;
     int m_rate;
@@ -54,6 +57,10 @@ public:
     // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running.
     // The figures are at most ~10 ms old.
     bool GetStats(JitterBuffer::Stats &stats, int &bufferFrames, int &frameMs) const;
+    // loudness of the received audio, 0..100 (0 = silence, see levelMeter.h). Any thread, lock-free.
+    // It is measured on the decoded PCM that is sent to the speaker, so DTX silence / lost audio read 0.
+    int GetLevel() const { return m_level.level(); }        // smooth, "right now"
+    int TakePeakLevel() { return m_level.takePeak(); }      // loudest since the last call (for slow GUI timers)
     // one received datagram (header + opus packet). Never blocks.
     void Play(const uint8_t *datagram, size_t size);
     void Play(const Bytes &datagram) { Play(datagram.data(), datagram.size()); }

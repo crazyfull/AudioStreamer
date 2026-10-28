@@ -94,6 +94,8 @@ void clsAudioPlayer::onDeviceData(int16_t *out, uint32_t frames)
     if(done < need)
         std::memset(out + done, 0, (need - done) * sizeof(int16_t));
 
+    m_level.feed(out, frames, m_rate, m_channels);
+
     // the canceller must see EXACTLY what goes to the speaker, silence included.
     if(m_aec)
         m_aec->render(out, frames);

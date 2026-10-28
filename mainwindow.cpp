@@ -356,6 +356,11 @@ void MainWindow::OnStatsTimer()
         t += "\nEcho     : off";
     }
 
+    // loudness of the received audio (0..100, loudest since the last refresh) as a text bar
+    const int lvl = m_pAudioPlayer->TakePeakLevel();
+    t += QString("\nVolume   : [%1%2] %3%")
+             .arg(QString(lvl / 5, QChar('#'))).arg(QString(20 - lvl / 5, QChar('-'))).arg(lvl);
+
     // network layer: who is talking (stream id of the last audio packet) and packets that are not audio
     const PacketRouter::Stats &net = m_router.stats();
     if(m_rxStreamTime){
