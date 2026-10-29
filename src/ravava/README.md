@@ -53,7 +53,7 @@ Bluetooth handsfree headset is connected. On Android `AudioDevice.cpp` therefore
   headset (API 31+: `setCommunicationDevice`, older: `startBluetoothSco`) and opens the stream with the voice-communication
   usage / input preset; the route is undone when the stream is closed.
 - Needs the permissions in `android/AndroidManifest.xml`; on Android 12+ `BLUETOOTH_CONNECT` (Settings > Apps > Permissions >
-  "Nearby devices") must be granted or the headset is not listed.
+  "Nearby devices") must be granted or the headset is not listed (the app asks for it at start: `androidpermissions.cpp`, Qt 6).
 - Logs go to logcat: `adb logcat -s ravava`.
 
 On other platforms none of this is compiled (`RAVAVA_ANDROID` is only defined for `__ANDROID__`).
