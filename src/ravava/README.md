@@ -41,3 +41,19 @@ Boolean queries start with `Is` / `Has`; getters are `GetX()` (a method named li
 next to `struct Stats`, is not allowed in C++).
 
 Real-time rule for everything the audio thread calls: no allocation, no lock shared with another thread, no I/O.
+
+## Android: device list and Bluetooth handsfree (`platform/AndroidAudioRoute.*`)
+
+miniaudio's AAudio / OpenSL ES backends cannot list devices, and Android uses the phone's own microphone even while a
+Bluetooth handsfree headset is connected. On Android `AudioDevice.cpp` therefore asks `AudioManager` (plain JNI, Qt-free):
+
+- `ListInputDevices()` / `ListOutputDevices()` list the built-in, wired, USB and Bluetooth devices. Ids: `aaudio:<n>`
+  (the AAudio device id) and `btsco:<n>` (a Bluetooth handsfree headset).
+- `aaudio:<n>` is passed to AAudio as the device id. `btsco:<n>` puts the phone in `MODE_IN_COMMUNICATION`, selects the
+  headset (API 31+: `setCommunicationDevice`, older: `startBluetoothSco`) and opens the stream with the voice-communication
+  usage / input preset; the route is undone when the stream is closed.
+- Needs the permissions in `android/AndroidManifest.xml`; on Android 12+ `BLUETOOTH_CONNECT` (Settings > Apps > Permissions >
+  "Nearby devices") must be granted or the headset is not listed.
+- Logs go to logcat: `adb logcat -s ravava`.
+
+On other platforms none of this is compiled (`RAVAVA_ANDROID` is only defined for `__ANDROID__`).
