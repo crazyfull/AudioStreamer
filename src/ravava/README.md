@@ -54,6 +54,10 @@ Bluetooth handsfree headset is connected. On Android `AudioDevice.cpp` therefore
   usage / input preset; the route is undone when the stream is closed.
 - Needs the permissions in `android/AndroidManifest.xml`; on Android 12+ `BLUETOOTH_CONNECT` (Settings > Apps > Permissions >
   "Nearby devices") must be granted or the headset is not listed (the app asks for it at start: `androidpermissions.cpp`, Qt 6).
+- The headset's microphone / speaker only exist after the SCO link is up (a few seconds): the stream is opened only then
+  and is pinned to them by device id, otherwise Android silently uses the phone's microphone. While a Bluetooth route is
+  active, "System default" follows it.
+- `AudioInput/AudioOutput::ActiveDevice()` tells what is REALLY in use (shown as "Mic / Speaker" in the stats label).
 - Logs go to logcat: `adb logcat -s ravava`.
 
 On other platforms none of this is compiled (`RAVAVA_ANDROID` is only defined for `__ANDROID__`).

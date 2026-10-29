@@ -31,6 +31,7 @@ bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*){
         }});
     return true; }
 void AudioInput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+std::string AudioInput::ActiveDevice() const { return "Stub mic"; }
 bool AudioInput::IsRunning() const { return d->running; }
 
 struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
@@ -45,6 +46,7 @@ bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
         while(d->run){ cb(buf.data(), frames); if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
     return true; }
 void AudioOutput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 Pcm DecodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }
 

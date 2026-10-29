@@ -88,6 +88,8 @@ public:
     // If the new device can't be opened the default one is used; false = no device could be opened (player silent).
     // GUI thread only (not from the audio thread, not concurrently with itself).
     bool SetOutputDevice(const std::string &deviceId);
+    // the speaker that is REALLY in use (see AudioOutput::ActiveDevice), "" = unknown. GUI thread.
+    std::string ActiveOutputDevice() const { return m_output.ActiveDevice(); }
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
 
