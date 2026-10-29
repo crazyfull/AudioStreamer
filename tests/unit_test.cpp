@@ -152,6 +152,41 @@ struct JB {
     }
 };
 
+// musicMode: Opus application/signal switch, channels untouched
+static void testMusicMode()
+{
+    for(int ch = 1; ch <= 2; ++ch){
+        AudioConfig c; c.channels = ch;
+        OpusCodec voice;
+        CHECK(voice.InitEncoder(c));
+        int app = 0, sig = 0;
+        CHECK(voice.GetEncoderMode(app, sig));
+        CHECK(app == OPUS_APPLICATION_VOIP);
+        CHECK(sig == OPUS_SIGNAL_VOICE);
+
+        c.musicMode = true;
+        OpusCodec music;
+        CHECK(music.InitEncoder(c));
+        CHECK(music.GetEncoderMode(app, sig));
+        CHECK(app == OPUS_APPLICATION_AUDIO);
+        CHECK(sig == OPUS_SIGNAL_MUSIC);
+
+        c.opusBitrate = 96000;      // low bitrates may legitimately code stereo as mono; 96k keeps real stereo
+        OpusCodec music2; CHECK(music2.InitEncoder(c));
+        // the channel count still comes from the config: encoded packets carry exactly cfg.channels
+        std::vector<int16_t> pcm(size_t(c.FrameSamples()) * ch, 0);
+        for(size_t i = 0; i < pcm.size(); ++i)     // different content per channel, so Opus really codes stereo
+            pcm[i] = int16_t(((i * 2654435761u) >> 16) % 8000) - 4000 + int16_t((i % ch) * 3000);
+        Bytes out;
+        CHECK(music2.Encode(pcm.data(), c.FrameSamples(), out));
+        OpusCodec::PacketInfo pi;
+        CHECK(OpusCodec::Inspect(out.data(), out.size(), pi));
+        CHECK(pi.channels == ch);
+    }
+    OpusCodec none; int a, s2;
+    CHECK(!none.GetEncoderMode(a, s2));
+}
+
 static void testJitterLoss()
 {
     std::printf("JitterBuffer loss counters\n");
@@ -373,6 +408,7 @@ int main()
     testCutBlocks();
     testPacketQueue();
     testConfigAndEncoder();
+    testMusicMode();
     testJitterLoss();
     std::printf(g_fail ? "FAILED (%d)\n" : "ALL PASS\n", g_fail);
     return g_fail ? 1 : 0;

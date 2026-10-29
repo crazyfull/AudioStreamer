@@ -191,6 +191,7 @@ void MainWindow::initAudio()
     m_AudioConfig.opusBitrate = ui->BitRate_comboBox->currentText().toInt();    //ui->BitRate_comboBox(ui->BitRate_comboBox->currentIndex());
     m_AudioConfig.frameMs  = ui->frameMS_comboBox->currentText().toInt();
     m_AudioConfig.useDtx = ui->useDtx_checkBox->checkState();
+    m_AudioConfig.musicMode = ui->musicMode_checkBox->isChecked();
     m_AudioConfig.expectedLossPerc = ui->LossPrec_comboBox->currentText().toInt();
     m_AudioConfig.maxBandwidth = ui->BandWith_comboBox->currentData().toInt();
     m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
