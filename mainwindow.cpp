@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "src/ravava/AudioDevice.h"
 #include "src/ravava/Recorder.h"
 #include "src/ravava/Player.h"
 #include "src/ravava/AudioProcessor.h"
@@ -7,6 +8,7 @@
 #include <QUdpSocket>
 #include <QTcpSocket>
 #include <QLabel>
+#include <QComboBox>
 #include <QGridLayout>
 #include <QFontDatabase>
 
@@ -55,6 +57,8 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->BandWith_comboBox->addItem("Wideband - [8kHz 16kHz]", OPUS_BANDWIDTH_WIDEBAND);
     ui->BandWith_comboBox->addItem("Supper-wideband - [12kHz 24kHz]", OPUS_BANDWIDTH_SUPERWIDEBAND);
     ui->BandWith_comboBox->addItem("fullband - [20kHz 48kHz]", OPUS_BANDWIDTH_FULLBAND);
+
+    refreshAudioDevices();
 
     ui->noise_comboBox->addItem("Noise: off");
     ui->noise_comboBox->addItem("Noise: low");
@@ -161,6 +165,23 @@ void MainWindow::CreateTimer()
 
 }
 
+// Lists the sound devices. The first entry is always "System default" (empty id). The selection is
+// remembered by device id, so a refresh (new USB headset...) keeps what the user picked.
+void MainWindow::refreshAudioDevices()
+{
+    auto fill = [](QComboBox *box, const std::vector<AudioDeviceInfo> &devices){
+        const QString keep = box->currentData().toString();
+        box->clear();
+        box->addItem("System default", QString());
+        for(const AudioDeviceInfo &d : devices)
+            box->addItem(QString::fromUtf8(d.name.c_str()) + (d.isDefault ? " (default)" : ""), QString::fromStdString(d.id));
+        int idx = box->findData(keep);
+        box->setCurrentIndex(idx >= 0 ? idx : 0);
+    };
+    fill(ui->inputDevice_comboBox, ListInputDevices());
+    fill(ui->outputDevice_comboBox, ListOutputDevices());
+}
+
 void MainWindow::initAudio()
 {
     if(m_pAudioRecorder){
@@ -200,6 +221,8 @@ void MainWindow::initAudio()
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
     m_AudioConfig.noiseSuppression = ui->noise_comboBox->currentIndex();
     m_AudioConfig.autoGain = ui->autoGain_checkBox->isChecked();
+    m_AudioConfig.inputDeviceId = ui->inputDevice_comboBox->currentData().toString().toStdString();     // "" = default
+    m_AudioConfig.outputDeviceId = ui->outputDevice_comboBox->currentData().toString().toStdString();
 
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
@@ -244,6 +267,7 @@ void MainWindow::on_MicGainSlider_valueChanged(int value)
 
 void MainWindow::on_btnStartRecording_clicked()
 {
+    refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
     m_statHistory.clear();      // new player = new counters
     m_pAudioRecorder->Start();

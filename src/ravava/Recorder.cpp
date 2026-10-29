@@ -78,6 +78,7 @@ void Recorder::Start()
     m_musicPos = 0;
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
+    m_input.SetDevice(m_pConfig->inputDeviceId);
     std::string err;
     bool ok = m_input.Start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
     if(!ok)

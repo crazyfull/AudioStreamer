@@ -28,6 +28,8 @@ static double takeRms(int *maxStep = nullptr)
     return r;
 }
 
+extern std::string g_stubInputDevice;      // from tests/stub/audio_device_stub.cpp
+
 int main()
 {
     AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 64000; cfg.useDtx = false;
@@ -43,7 +45,9 @@ int main()
     });
     rec.SetConfig(&cfg);
     CHECK(rec.GetInputGain() == 100 && Recorder::MaxInputGain() == 200);
+    cfg.inputDeviceId = "bb";                                           // the config choice must reach the device layer
     rec.Start();
+    CHECK(g_stubInputDevice == "bb");
 
     int lastStep = 0;                                                   // biggest sample step while a gain was steady
     auto measure = [&](int gain){

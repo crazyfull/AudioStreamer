@@ -84,6 +84,7 @@ private:
     void CreateTimer();
     QString GetFormatSize(qint64 Size);
     void initAudio();
+    void refreshAudioDevices();     // fills the microphone / speaker combo boxes (keeps the selection)
 
 };
 

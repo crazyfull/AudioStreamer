@@ -42,13 +42,17 @@ static double rms()                      // of what arrived since the last call
 static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
+extern std::string g_stubOutputDevice;     // from tests/stub/audio_device_stub.cpp
+
 int main()
 {
     g_stubSpeakerTap = tap;
     AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 32000; cfg.useDtx = false;
     OpusCodec enc; enc.InitEncoder(cfg);
     Player play;
+    cfg.outputDeviceId = "dd";                              // the config choice must reach the device layer
     play.SetConfig(&cfg);
+    CHECK(g_stubOutputDevice == "dd");
 
     // 1 kHz tone at about -12 dBFS, sent as real 20 ms packets in real time
     const int N = cfg.inputRate * cfg.frameMs / 1000;

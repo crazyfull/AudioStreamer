@@ -97,6 +97,7 @@ void Player::init()
     m_formatDropped = 0;
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
+    m_output.SetDevice(m_pConfig->outputDeviceId);
     std::string err;
     bool ok = m_output.Start(m_rate, m_channels, 10, [this](int16_t *out, uint32_t frames){ onDeviceData(out, frames); }, &err);
     if(!ok)
