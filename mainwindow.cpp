@@ -225,6 +225,7 @@ void MainWindow::initAudio()
     m_AudioConfig.autoGain = ui->autoGain_checkBox->isChecked();
     m_AudioConfig.inputDeviceId = ui->inputDevice_comboBox->currentData().toString().toStdString();     // "" = default
     m_AudioConfig.outputDeviceId = ui->outputDevice_comboBox->currentData().toString().toStdString();
+    m_AudioConfig.channels = ui->radioButton_mono->isChecked() ? 1: 2;
 
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
