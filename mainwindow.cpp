@@ -39,7 +39,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
 
     m_AudioConfig.bitRate = 16;
-    m_AudioConfig.channels = 2; //3840 1, 7680 2
+    m_AudioConfig.channels = 1; //3840 1, 7680 2
     m_AudioConfig.inputRate = 48000;
     m_AudioConfig.outputRate = 48000;   //decoder/speaker rate (8000 12000 16000 24000 48000)
 
