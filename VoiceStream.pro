@@ -77,7 +77,7 @@ win32 {
     #LIBS += bcrypt.lib libcmt.lib Shell32.lib Shlwapi.lib User32.lib kernel32.lib Ws2_32.lib advapi32.lib crypt32.lib iphlpapi.lib psapi.lib gdi32.lib
 }
 
-linux {
+linux:!android  {
     #GCC
     message("linux x64 build")
     TARGET = ../../RavAva_x64
@@ -122,6 +122,26 @@ linux {
     #static build
     #LIBS += -static -static-libgcc -static-libstdc++
 
+}
+
+android {
+    message("Android ARM64 build")
+
+    TARGET = RavAva
+    ANDROID_ABIS = arm64-v8a
+
+    # INCLUDEPATH += $$PWD/../VoiceCodec/build/include/opus
+    # DEPENDPATH += $$PWD/../VoiceCodec/build/include/opus
+    # unix:!macx: PRE_TARGETDEPS += $$PWD/../VoiceCodec/build/lib/libopus_arm64-v8a.a
+
+    OPUS_ROOT = $$PWD/../VoiceCodec/build
+    INCLUDEPATH += $$OPUS_ROOT/include/opus
+    DEPENDPATH += $$OPUS_ROOT/include/opus
+    LIBS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
+    PRE_TARGETDEPS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
+
+    # miniaudio
+    LIBS += -ldl -lm
 }
 
 macx {
