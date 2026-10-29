@@ -328,6 +328,11 @@
        </item>
        <item>
         <property name="text">
+         <string>32000</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>48000</string>
         </property>
        </item>
@@ -457,7 +462,7 @@
        <item>
         <widget class="QLineEdit" name="txtMusicPath">
          <property name="text">
-          <string>G:/desktop2/sdcard/Download/Music/Shad-Ghadimi/martik.ahooye por kereshmeh.mp3</string>
+          <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
          </property>
         </widget>
        </item>
