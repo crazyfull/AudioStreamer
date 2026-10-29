@@ -30,6 +30,9 @@ struct AudioConfig
     bool musicMode = false;     //true: Opus is tuned for music (OPUS_APPLICATION_AUDIO + OPUS_SIGNAL_MUSIC) instead of speech
                                 //(OPUS_APPLICATION_VOIP + OPUS_SIGNAL_VOICE). Keeps the full bandwidth at low bitrates and the fine
                                 //structure of treble. Does NOT change channels / bitrate / frame size: those stay as configured.
+    // ---- devices: opaque ids from ListInputDevices() / ListOutputDevices(); empty = system default ----
+    std::string inputDeviceId;      //microphone
+    std::string outputDeviceId;     //speaker
     bool playMusic = false;
     std::string musicPath;      // UTF-8
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
