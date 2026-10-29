@@ -316,7 +316,7 @@ static void testLevelMeter()
     std::printf("LevelMeter\n");
     std::vector<int16_t> zero(480, 0), full(480), quiet(480), mid(480);
     for(int i = 0; i < 480; i++){
-        full[i] = (i & 1) ? 32767 : -32768;                             // full scale square wave
+        full[i] = (i & 1) ? 32767 : -32768;                             // full scale square wave: RMS 0 dBFS
         quiet[i] = (i & 1) ? 33 : -33;                                  // ~ -60 dBFS
         mid[i] = (i & 1) ? 1038 : -1038;                                // ~ -30 dBFS
     }
@@ -324,34 +324,48 @@ static void testLevelMeter()
     CHECK(LevelMeter::BlockLevel(full.data(), full.size()) == 100);
     CHECK(LevelMeter::BlockLevel(quiet.data(), quiet.size()) <= 1);
     int m = LevelMeter::BlockLevel(mid.data(), mid.size());
-    CHECK(m >= 49 && m <= 51);                                          // -30 dBFS = about half of the scale (-60..-1 dBFS))
-    // PEAK based: what the meter must show for real sound (an RMS meter never got near 100 for these)
-    std::vector<int16_t> sine(480), limited(480), spike(480, 0), loudSpeech(480);
+    CHECK(m >= 51 && m <= 54);                                          // -30 dBFS RMS on a -60..-3 scale = 52.6
+    // RMS based: what the meter must show for real sound
+    std::vector<int16_t> sine(480), loud(480), music(480), speech(480), spike(480, 0);
     for(int i = 0; i < 480; i++){
         const double ph = 2 * M_PI * 1000 * i / 48000;
-        sine[i] = int16_t(32767 * std::sin(ph));                       // full scale sine: RMS is only -3 dBFS
-        limited[i] = int16_t(29204 * std::sin(ph));                    // a limiter / AGC holds real audio at about -1 dBFS
-        loudSpeech[i] = int16_t(20000 * std::sin(ph));                 // loud but not clipping (-4.3 dBFS peak)
+        sine[i] = int16_t(32767 * std::sin(ph));                       // full scale sine: RMS -3 dBFS = the top
+        loud[i] = int16_t(20000 * std::sin(ph));                       // RMS -7.3 dBFS
+        music[i] = int16_t(8000 * std::sin(ph));                       // RMS -15.8 dBFS: normal music level
+        speech[i] = int16_t(2000 * std::sin(ph));                      // RMS -27.8 dBFS: quiet speech
     }
     spike[240] = 32000;                                                // one clipped click in a silent block
     CHECK(LevelMeter::BlockLevel(sine.data(), sine.size()) == 100);
-    CHECK(LevelMeter::BlockLevel(limited.data(), limited.size()) == 100);
-    CHECK(LevelMeter::BlockLevel(spike.data(), spike.size()) >= 99);
-    const int ls = LevelMeter::BlockLevel(loudSpeech.data(), loudSpeech.size());
-    CHECK(ls >= 90 && ls <= 96);                                       // close to the top, but not 100: there is headroom
+    const int ld = LevelMeter::BlockLevel(loud.data(), loud.size());
+    CHECK(ld >= 90 && ld <= 95);
+    const int mu = LevelMeter::BlockLevel(music.data(), music.size());
+    CHECK(mu >= 75 && mu <= 80);                                       // music is NOT at 100 (a peak meter said 100 here)
+    const int sp = LevelMeter::BlockLevel(speech.data(), speech.size());
+    CHECK(sp >= 55 && sp <= 60);
+    CHECK(LevelMeter::BlockLevel(spike.data(), spike.size()) < 65);    // a lone click (1 sample) is far from "full"
     CHECK(LevelMeter::BlockLevel(nullptr, 10) == 0 && LevelMeter::BlockLevel(full.data(), 0) == 0);
+
+    // a signal with peaks at 0 dBFS but a normal RMS (like real music) must not read 100
+    {
+        LevelMeter lmu;
+        std::vector<int16_t> peaky(480);
+        for(int i = 0; i < 480; i++)                                   // sine at -16 dBFS RMS plus a full-scale pulse each 5 ms
+            peaky[i] = (i % 240 == 0) ? 32767 : int16_t(8000 * std::sin(2 * M_PI * 1000 * i / 48000));
+        for(int i = 0; i < 100; i++) lmu.Feed(peaky.data(), 480, 48000, 1);
+        CHECK(lmu.Level() < 85 && lmu.TakePeak() < 85);
+    }
 
     LevelMeter lm;
     CHECK(lm.Level() == 0 && lm.TakePeak() == 0);
-    lm.Feed(mid.data(), 480, 48000, 1);
-    CHECK(lm.Level() == m);                                             // instant attack
+    for(int i = 0; i < 50; i++) lm.Feed(mid.data(), 480, 48000, 1);     // 0.5 s: the window has settled
+    CHECK(lm.Level() == m);
     for(int i = 0; i < 5; i++) lm.Feed(zero.data(), 480, 48000, 1);     // 50 ms of silence: slow release
     CHECK(lm.Level() > 0 && lm.Level() < m);
     CHECK(lm.TakePeak() == m);                                          // the short word is not lost
     CHECK(lm.TakePeak() == 0);                                          // ... and the peak restarts
     for(int i = 0; i < 100; i++) lm.Feed(zero.data(), 480, 48000, 1);   // 1 s of silence
     CHECK(lm.Level() == 0);
-    lm.Feed(full.data(), 240, 48000, 2);                                // stereo: 240 frames = 480 samples
+    for(int i = 0; i < 50; i++) lm.Feed(full.data(), 240, 48000, 2);    // stereo: 240 frames = 480 samples
     CHECK(lm.Level() == 100);
 }
 
