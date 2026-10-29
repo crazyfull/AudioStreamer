@@ -193,6 +193,19 @@
        </item>
       </layout>
      </item>
+     <item row="7" column="2">
+      <widget class="QCheckBox" name="musicMode_checkBox">
+       <property name="toolTip">
+        <string>Music mode: Opus is tuned for music (full bandwidth, fine treble) instead of speech. Channels, bitrate and frame size stay as set.</string>
+       </property>
+       <property name="text">
+        <string>musicMode</string>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
      <item row="7" column="1">
       <widget class="QCheckBox" name="useDtx_checkBox">
        <property name="text">

@@ -61,15 +61,15 @@ bool OpusCodec::InitEncoder(const AudioConfig &cfg)
     }
 
     int err = OPUS_OK;
-    OpusEncoder *enc = opus_encoder_create(cfg.inputRate, cfg.channels, OPUS_APPLICATION_VOIP, &err);
+    OpusEncoder *enc = opus_encoder_create(cfg.inputRate, cfg.channels, cfg.musicMode ? OPUS_APPLICATION_AUDIO : OPUS_APPLICATION_VOIP, &err);
     if(err != OPUS_OK || !enc){
         RAVAVA_WARN("opus_encoder_create failed: %s", opus_strerror(err));
         return false;
     }
 
-    // ---- most compressed voice profile ---- every setting is checked: a rejected one means a wrong config
+    // ---- most compressed profile (speech, or music with cfg.musicMode) ---- every setting is checked: a rejected one means a wrong config
     bool ok = true;
-    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE)), "SIGNAL") && ok;
+    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_SIGNAL(cfg.musicMode ? OPUS_SIGNAL_MUSIC : OPUS_SIGNAL_VOICE)), "SIGNAL") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_BITRATE(cfg.opusBitrate)), "BITRATE") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR(1)), "VBR") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR_CONSTRAINT(0)), "VBR_CONSTRAINT") && ok;
@@ -105,6 +105,19 @@ bool OpusCodec::InitDecoder(int sampleRate, int channels)
 
     m_decChannels = channels;
     m_decScratch.assign(size_t(MAX_SAMPLES) * channels, 0);     // allocated once, here
+    return true;
+}
+
+bool OpusCodec::GetEncoderMode(int &application, int &signal) const
+{
+    if(!m_pEncoder)
+        return false;
+    opus_int32 app = 0, sig = 0;
+    if(opus_encoder_ctl(m_pEncoder, OPUS_GET_APPLICATION(&app)) != OPUS_OK ||
+       opus_encoder_ctl(m_pEncoder, OPUS_GET_SIGNAL(&sig)) != OPUS_OK)
+        return false;
+    application = int(app);
+    signal = int(sig);
     return true;
 }
 

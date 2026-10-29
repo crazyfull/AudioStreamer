@@ -43,6 +43,8 @@ public:
     // false = invalid config (AudioConfig::Validate) or Opus rejected a setting; the reason is logged
     bool InitEncoder(const AudioConfig &cfg);
     bool InitDecoder(int sampleRate, int channels);
+    // what the encoder is tuned for (OPUS_APPLICATION_* / OPUS_SIGNAL_*), for tests and diagnostics. false if there is no encoder
+    bool GetEncoderMode(int &application, int &signal) const;
 
     // pcm must hold exactly cfg.FrameSamples() * channels samples. false / empty result = error
     bool Encode(const int16_t *pcm, int frameSamples, Bytes &out);
