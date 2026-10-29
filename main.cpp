@@ -9,6 +9,9 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+#ifdef Q_OS_ANDROID
+    InitAndroidAudio();         // before MainWindow: its constructor lists the sound devices
+#endif
     MainWindow w;
     w.show();
 #ifdef Q_OS_ANDROID

@@ -1,4 +1,5 @@
 #include "androidpermissions.h"
+#include "src/ravava/platform/AndroidAudioRoute.h"
 
 #include <QCoreApplication>
 #include <QJniEnvironment>
@@ -37,4 +38,14 @@ void RequestAndroidAudioPermissions()
     activity.callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", array, jint(1));
     env->DeleteLocalRef(array);
     env->DeleteLocalRef(stringClass);
+}
+
+void InitAndroidAudio()
+{
+    QJniObject activity(QNativeInterface::QAndroidApplication::context());
+    if(!activity.isValid())
+        return;
+    // the application Context lives as long as the process (the activity can be recreated, e.g. on rotation)
+    QJniObject app = activity.callObjectMethod("getApplicationContext", "()Landroid/content/Context;");
+    ravava::android::Init(QJniEnvironment::javaVM(), app.isValid() ? app.object() : activity.object());
 }

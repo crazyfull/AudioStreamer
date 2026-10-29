@@ -15,16 +15,26 @@ namespace android {
 // ============================================================ JNI plumbing
 // No JNI_OnLoad needed (the Qt platform plugin has its own): the VM is found through JNI_GetCreatedJavaVMs, the
 // application Context through ActivityThread.currentApplication().
+static JavaVM *g_vm = nullptr;          // given by Init()
+static jobject g_context = nullptr;     // global ref, given by Init()
+
 static JavaVM *findVm()
 {
+    if(g_vm)
+        return g_vm;
     using GetVms = jint (*)(JavaVM **, jsize, jsize *);
     static GetVms fn = reinterpret_cast<GetVms>(dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
-    if(!fn)
+    if(!fn){
+        RAVAVA_WARN("android: no Java VM (Init() was not called and JNI_GetCreatedJavaVMs is not reachable)");
         return nullptr;
+    }
     JavaVM *vm = nullptr;
     jsize n = 0;
-    if(fn(&vm, 1, &n) != JNI_OK || n < 1)
+    if(fn(&vm, 1, &n) != JNI_OK || n < 1){
+        RAVAVA_WARN("android: JNI_GetCreatedJavaVMs found no VM");
         return nullptr;
+    }
+    g_vm = vm;
     return vm;
 }
 
@@ -114,20 +124,26 @@ static int sdkInt(Env &env)
 // the AudioManager of the application (null if anything fails)
 static Ref audioManager(Env &env)
 {
-    Ref at(env.get(), env->FindClass("android/app/ActivityThread"));
-    if(!at || env.failed()) return Ref();
-    jmethodID cur = env->GetStaticMethodID(static_cast<jclass>(at.get()), "currentApplication", "()Landroid/app/Application;");
-    if(!cur || env.failed()) return Ref();
-    Ref app(env.get(), env->CallStaticObjectMethod(static_cast<jclass>(at.get()), cur));
-    if(!app || env.failed()) return Ref();
+    jobject app = g_context;
+    Ref appRef;
+    if(!app){
+        // fallback: the hidden ActivityThread.currentApplication() (not allowed on every phone)
+        Ref at(env.get(), env->FindClass("android/app/ActivityThread"));
+        if(env.failed() || !at){ RAVAVA_WARN("android: ActivityThread not found, no Context (call Init())"); return Ref(); }
+        jmethodID cur = env->GetStaticMethodID(static_cast<jclass>(at.get()), "currentApplication", "()Landroid/app/Application;");
+        if(env.failed() || !cur){ RAVAVA_WARN("android: ActivityThread.currentApplication not available (call Init())"); return Ref(); }
+        appRef = Ref(env.get(), env->CallStaticObjectMethod(static_cast<jclass>(at.get()), cur));
+        if(env.failed() || !appRef){ RAVAVA_WARN("android: no application Context (call Init())"); return Ref(); }
+        app = appRef.get();
+    }
 
     Ref ctxCls(env.get(), env->FindClass("android/content/Context"));
-    if(!ctxCls || env.failed()) return Ref();
+    if(env.failed() || !ctxCls){ RAVAVA_WARN("android: Context class not found"); return Ref(); }
     jmethodID gss = env->GetMethodID(static_cast<jclass>(ctxCls.get()), "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
-    if(!gss || env.failed()) return Ref();
+    if(env.failed() || !gss){ RAVAVA_WARN("android: getSystemService not found"); return Ref(); }
     Ref name(env.get(), env->NewStringUTF("audio"));
-    Ref am(env.get(), env->CallObjectMethod(app.get(), gss, name.get()));
-    if(!am || env.failed()) return Ref();
+    Ref am(env.get(), env->CallObjectMethod(app, gss, name.get()));
+    if(env.failed() || !am){ RAVAVA_WARN("android: no AudioManager"); return Ref(); }
     return am;
 }
 
@@ -244,6 +260,20 @@ static std::vector<Dev> communicationDevices(Env &env, jobject am)
     return out;
 }
 
+void Init(JavaVM *vm, jobject context)
+{
+    g_vm = vm;
+    if(!vm || !context)
+        return;
+    Env env;
+    if(!env)
+        return;
+    if(g_context)
+        env->DeleteGlobalRef(g_context);
+    g_context = env->NewGlobalRef(context);
+    RAVAVA_INFO("android: audio routing initialised (Java VM and Context from the GUI)");
+}
+
 static std::string idString(const char *prefix, int id) { return std::string(prefix) + std::to_string(id); }
 
 std::vector<AudioDeviceInfo> ListDevices(bool capture)
@@ -283,6 +313,9 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture)
         info.id = idString("aaudio:", d.id);
         out.push_back(info);
     }
+    RAVAVA_INFO("android: %d %s device(s) listed", int(out.size()), capture ? "input" : "output");
+    for(const AudioDeviceInfo &i : out)
+        RAVAVA_INFO("android:   %s = %s", i.id.c_str(), i.name.c_str());
     return out;
 }
 
@@ -362,6 +395,7 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     *aaudioId = 0;
     *voicePreset = false;
     *routeHeld = false;
+    RAVAVA_INFO("android: opening the %s on device '%s'", capture ? "microphone" : "speaker", deviceId.empty() ? "(system default)" : deviceId.c_str());
 
     // a normal device chosen by id (phone mic, wired, USB...)
     if(hasPrefix(deviceId, "aaudio:")){

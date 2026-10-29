@@ -20,6 +20,7 @@
 // Needed in AndroidManifest.xml: RECORD_AUDIO (already there), MODIFY_AUDIO_SETTINGS, and for Bluetooth BLUETOOTH_CONNECT
 // (API 31+, runtime permission) / BLUETOOTH + BLUETOOTH_ADMIN (up to API 30).
 
+#include <jni.h>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -27,6 +28,12 @@
 
 namespace ravava {
 namespace android {
+
+// Give the library the Java VM and the application / activity Context. Call it once at start-up from the GUI layer
+// (Qt: QJniEnvironment::javaVM() and QNativeInterface::QAndroidApplication::context()), BEFORE the first device list.
+// Without it the library tries to find them itself (JNI_GetCreatedJavaVMs, ActivityThread.currentApplication), which
+// some phones don't allow: then no device is listed at all (everything is logged to logcat, tag "ravava").
+void Init(JavaVM *vm, jobject context);
 
 std::vector<AudioDeviceInfo> ListDevices(bool capture);
 
