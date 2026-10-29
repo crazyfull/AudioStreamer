@@ -10,6 +10,7 @@
 #include "JitterBuffer.h"
 #include "GainRamp.h"
 #include "LevelMeter.h"
+#include "DeviceSwitcher.h"
 #include "AudioProcessor.h"
 #include "PacketQueue.h"
 
@@ -67,7 +68,9 @@ class Player
     int m_rate;
     int m_channels;
 
-    AudioOutput m_output;           // declared last: destroyed first
+    std::atomic<bool> m_deviceWanted;       // the speaker should be running (SetOutputDevice() then re-opens it)
+    DeviceSwitcher m_switcher;              // moves the speaker to another device off the GUI thread
+    AudioOutput m_output;                   // declared last: destroyed first
 
     int m_frameMsCopy;                      // frame duration of the stream behind m_statsCopy
     std::atomic<uint32_t> m_formatDropped;  // datagrams that were not valid Opus or did not match the current stream format
@@ -84,9 +87,11 @@ public:
     ~Player();
     void SetConfig(AudioConfig *pConfig);
     // Switch the speaker while running (no Stop / Start needed): only the device is re-opened, the received stream,
-    // jitter buffer and statistics are untouched; a short gap (tens of ms) is audible. "" = system default.
-    // If the new device can't be opened the default one is used; false = no device could be opened (player silent).
-    // GUI thread only (not from the audio thread, not concurrently with itself).
+    // jitter buffer and statistics are untouched; a short gap (tens of ms, longer for Bluetooth) is audible. "" = system
+    // default. The switch runs on a worker thread, so this returns at once and never freezes the GUI; several quick calls
+    // are merged (the last one wins). If the new device can't be opened the default one is used, if that fails too the
+    // player stays silent (logged). Not running yet: just remembered for the first start. Returns false only if the
+    // player has no config. GUI thread.
     bool SetOutputDevice(const std::string &deviceId);
     // the speaker that is REALLY in use (see AudioOutput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveOutputDevice() const { return m_output.ActiveDevice(); }

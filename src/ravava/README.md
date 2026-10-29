@@ -61,3 +61,12 @@ Bluetooth handsfree headset is connected. On Android `AudioDevice.cpp` therefore
 - Logs go to logcat: `adb logcat -s ravava`.
 
 On other platforms none of this is compiled (`RAVAVA_ANDROID` is only defined for `__ANDROID__`).
+
+### Switching devices while running
+
+`Recorder::SetInputDevice()` / `Player::SetOutputDevice()` re-open only the sound device, on a worker thread
+(`DeviceSwitcher.h`): closing / opening a device (Bluetooth, USB) can take seconds and used to freeze the GUI (on Android
+an app that blocks its UI thread for ~5 s is killed). Quick successive calls are merged, the last one wins; `Stop()` / the
+destructor wait for a switch in progress. On Android `ActiveDevice()` reports the device the stream is REALLY on
+(`AAudioStream_getDeviceId`), which can differ from the choice when the system re-routes (e.g. "System default" follows
+a newly connected Bluetooth / USB device; pick a device explicitly to keep it).

@@ -1,6 +1,7 @@
 #ifndef RAVAVA_RECORDER_H
 #define RAVAVA_RECORDER_H
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include "AudioTypes.h"
@@ -10,6 +11,7 @@
 #include "AudioProcessor.h"
 #include "BlockCutter.h"
 #include "GainRamp.h"
+#include "DeviceSwitcher.h"
 
 namespace ravava {
 
@@ -43,6 +45,8 @@ private:
     Pcm m_music;                      // whole music file, already at inputRate / channels
     size_t m_musicPos;
 
+    std::atomic<bool> m_deviceWanted{false};  // recording is on (set by Start, cleared by Stop): SetInputDevice() re-opens the mic
+    DeviceSwitcher m_switcher;        // moves the microphone to another device off the GUI thread
     AudioInput m_input;               // declared last: destroyed first
 
     void init();
@@ -65,10 +69,11 @@ public:
     static int MaxInputGain() { return 200; }
     void Start();
     void Stop();
-    // Switch the microphone while recording (no Stop / Start needed). "" = system default. The change is a short gap in
-    // the stream (the next packet carries the "marker" flag). If the device can't be opened the default one is used;
-    // false = no device could be opened (recording stopped). Not recording: just remembered, Start() uses the config.
-    // GUI thread only (not from the audio thread, not concurrently with Start / Stop / itself).
+    // Switch the microphone while recording (no Stop / Start needed). "" = system default. The switch runs on a worker
+    // thread, so this returns at once and never freezes the GUI; several quick calls are merged (the last one wins). It is
+    // a short gap in the stream (longer for Bluetooth); the next packet carries the "marker" flag. If the device can't be
+    // opened the default one is used, if that fails too recording stays silent (logged). Not recording: just remembered,
+    // Start() uses the config. GUI thread only. Returns false only if there is no config.
     bool SetInputDevice(const std::string &deviceId);
     // the microphone that is REALLY in use (see AudioInput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveInputDevice() const { return m_input.ActiveDevice(); }

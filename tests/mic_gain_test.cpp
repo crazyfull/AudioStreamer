@@ -29,7 +29,7 @@ static double takeRms(int *maxStep = nullptr)
     return r;
 }
 
-extern std::string g_stubInputDevice;      // from tests/stub/audio_device_stub.cpp
+std::string StubInputDevice();      // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
 int main()
 {
@@ -49,7 +49,7 @@ int main()
     CHECK(rec.GetInputGain() == 100 && Recorder::MaxInputGain() == 200);
     cfg.inputDeviceId = "bb";                                           // the config choice must reach the device layer
     rec.Start();
-    CHECK(g_stubInputDevice == "bb");
+    CHECK(StubInputDevice() == "bb");
 
     int lastStep = 0;                                                   // biggest sample step while a gain was steady
     auto measure = [&](int gain){
@@ -67,9 +67,12 @@ int main()
     {
         const int before = g_markers;
         takeRms();
+        const auto t0 = std::chrono::steady_clock::now();
         CHECK(rec.SetInputDevice("aa"));
-        CHECK(g_stubInputDevice == "aa");
+        const auto callMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(callMs < 50);                                             // the GUI thread is not blocked by the switch
         std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        CHECK(StubInputDevice() == "aa");                               // done by the worker thread
         const double after = takeRms();
         std::printf("  live device switch: level %.0f -> %.0f, markers %d -> %d\n", unity, after, before, int(g_markers));
         CHECK(after > unity * 0.7 && after < unity * 1.3);
