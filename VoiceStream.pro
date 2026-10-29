@@ -146,6 +146,10 @@ android {
     SOURCES += src/ravava/platform/AndroidAudioRoute.cpp
     HEADERS += src/ravava/platform/AndroidAudioRoute.h
 
+    # run-time permissions (microphone, Bluetooth) - Qt 6
+    SOURCES += androidpermissions.cpp
+    HEADERS += androidpermissions.h
+
 
 }
 
