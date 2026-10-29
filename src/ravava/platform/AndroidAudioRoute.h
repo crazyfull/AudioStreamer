@@ -31,11 +31,20 @@ namespace android {
 std::vector<AudioDeviceInfo> ListDevices(bool capture);
 
 // Prepares the phone for a stream on `deviceId` ("" = system default) and tells how to open it.
-//   *aaudioId       : value for AAudioStreamBuilder_setDeviceId (0 = let the system choose)
-//   *voiceCall      : true -> open the stream with the voice-communication usage / input preset (Bluetooth route)
-// Must be paired with ReleaseStream() when that stream is closed. Never blocks for long, not for the audio thread.
-void PrepareStream(const std::string &deviceId, int32_t *aaudioId, bool *voiceCall);
-void ReleaseStream(bool voiceCall);
+//   capture         : true for the microphone, false for the speaker
+//   *aaudioId       : value for AAudioStreamBuilder_setDeviceId (0 = let the system choose). For a Bluetooth handsfree
+//                     headset this is the id of ITS microphone / speaker (found after the SCO link is up, waits up to
+//                     ~3 s), so the stream is pinned to the headset and can't fall back to the phone's mic.
+//   *voicePreset    : true -> open the stream with the voice-communication usage / input preset
+//   *routeHeld      : true -> this stream holds the Bluetooth route: call ReleaseStream(true) when it is closed
+// While a Bluetooth route is active, "System default" follows it (so mic and speaker never end up on different devices).
+void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld);
+void ReleaseStream(bool routeHeld);
+
+// What Android really uses right now, e.g. "Bluetooth headset (Bluetooth handsfree)" or "Phone microphone"; "" if unknown.
+// Microphone: the recording configuration of this app (API 28+). Speaker: the communication device while a Bluetooth
+// route is active (API 31+). Any thread except the audio thread (JNI calls).
+std::string DescribeActiveDevice(bool capture);
 
 } // namespace android
 } // namespace ravava

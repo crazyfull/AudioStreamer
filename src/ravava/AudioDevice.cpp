@@ -93,7 +93,8 @@ struct AudioInput::Impl
     ma_device dev;
     bool opened = false;
     bool running = false;
-    bool voiceRoute = false;        // Android: a Bluetooth handsfree route was requested for this stream
+    bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
+    std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
     std::string deviceId;
     Callback cb;
 
@@ -134,9 +135,9 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     bool haveChosen = false;
 #ifdef RAVAVA_ANDROID
     {
-        int32_t aid = 0; bool voice = false;
-        android::PrepareStream(d->deviceId, &aid, &voice);
-        d->voiceRoute = voice;
+        int32_t aid = 0; bool voice = false, held = false;
+        android::PrepareStream(d->deviceId, true, &aid, &voice, &held);
+        d->voiceRoute = held;
         if(voice){
             cfg.aaudio.inputPreset = ma_aaudio_input_preset_voice_communication;    // lets Android use the headset's mic
             cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
@@ -167,6 +168,10 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
         return false;
     }
     d->opened = true;
+    {
+        char nm[256] = {0};
+        d->activeName = ma_device_get_name(&d->dev, ma_device_type_capture, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
+    }
 
     r = ma_device_start(&d->dev);
     if(r != MA_SUCCESS){
@@ -193,6 +198,15 @@ void AudioInput::Stop()
 #endif
 }
 
+std::string AudioInput::ActiveDevice() const
+{
+#ifdef RAVAVA_ANDROID
+    return d->running ? android::DescribeActiveDevice(true) : std::string();
+#else
+    return d->running ? d->activeName : std::string();
+#endif
+}
+
 bool AudioInput::IsRunning() const {
     return d->running;
 }
@@ -204,7 +218,8 @@ struct AudioOutput::Impl
     bool opened = false;
     bool running = false;
     int channels = 1;
-    bool voiceRoute = false;        // Android: a Bluetooth handsfree route was requested for this stream
+    bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
+    std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
     std::string deviceId;
     Callback cb;
 
@@ -248,9 +263,9 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     bool haveChosen = false;
 #ifdef RAVAVA_ANDROID
     {
-        int32_t aid = 0; bool voice = false;
-        android::PrepareStream(d->deviceId, &aid, &voice);
-        d->voiceRoute = voice;
+        int32_t aid = 0; bool voice = false, held = false;
+        android::PrepareStream(d->deviceId, false, &aid, &voice, &held);
+        d->voiceRoute = held;
         if(voice)
             cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
         if(aid != 0){ chosen.aaudio = aid; haveChosen = true; }
@@ -279,6 +294,10 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
         return false;
     }
     d->opened = true;
+    {
+        char nm[256] = {0};
+        d->activeName = ma_device_get_name(&d->dev, ma_device_type_playback, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
+    }
 
     r = ma_device_start(&d->dev);
     if(r != MA_SUCCESS){
@@ -302,6 +321,15 @@ void AudioOutput::Stop()
         android::ReleaseStream(true);
         d->voiceRoute = false;
     }
+#endif
+}
+
+std::string AudioOutput::ActiveDevice() const
+{
+#ifdef RAVAVA_ANDROID
+    return d->running ? android::DescribeActiveDevice(false) : std::string();
+#else
+    return d->running ? d->activeName : std::string();
 #endif
 }
 

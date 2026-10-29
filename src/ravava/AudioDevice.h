@@ -43,6 +43,10 @@ public:
     bool Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
     void Stop();            // blocks until the callback is no longer running
     bool IsRunning() const;
+    // name of the device that is REALLY in use ("" = unknown / not running). On a PC the one miniaudio opened; on Android
+    // what AudioManager reports (it can differ from the choice, e.g. when the phone's microphone is used although a
+    // Bluetooth headset was selected). May call into Java: GUI thread, not the audio thread.
+    std::string ActiveDevice() const;
 
 private:
     struct Impl;
@@ -68,6 +72,10 @@ public:
     bool Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err = nullptr);
     void Stop();            // blocks until the callback is no longer running
     bool IsRunning() const;
+    // name of the device that is REALLY in use ("" = unknown / not running). On a PC the one miniaudio opened; on Android
+    // what AudioManager reports (it can differ from the choice, e.g. when the phone's microphone is used although a
+    // Bluetooth headset was selected). May call into Java: GUI thread, not the audio thread.
+    std::string ActiveDevice() const;
 
 private:
     struct Impl;

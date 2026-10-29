@@ -378,8 +378,18 @@ void MainWindow::OnStatsTimer()
     if(!m_lblStats)
         return;
 
+    // the devices that are REALLY in use (on Android they can differ from the choice, e.g. the phone's mic although a
+    // Bluetooth headset was selected)
+    QString devices;
+    if(m_pAudioRecorder || m_pAudioPlayer){
+        const QString mic = m_pAudioRecorder ? QString::fromStdString(m_pAudioRecorder->ActiveInputDevice()) : QString();
+        const QString spk = m_pAudioPlayer ? QString::fromStdString(m_pAudioPlayer->ActiveOutputDevice()) : QString();
+        devices = QString("Mic      : %1\nSpeaker  : %2\n").arg(mic.isEmpty() ? "(not running / unknown)" : mic)
+                                                        .arg(spk.isEmpty() ? "(not running / unknown)" : spk);
+    }
+
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
-        m_lblStats->setText("Receive stats: (not started, or no audio received yet)");
+        m_lblStats->setText(devices + "Receive stats: (not started, or no audio received yet)");
         return;
     }
 
@@ -404,7 +414,7 @@ void MainWindow::OnStatsTimer()
     const quint32 newLate = st.reordered - old.reordered;
     const quint32 lost5 = newLost > newLate ? newLost - newLate : 0;   // a late one can belong to an earlier window
 
-    QString t;
+    QString t = devices;
     t += QString("Received : %1 packets\n").arg(st.received);
     t += QString("Lost     : %1 packets (%2%)   last 5s: %3 (%4%)\n")
              .arg(st.lost).arg(pct(st.lost, st.received), 0, 'f', 1)

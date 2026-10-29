@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <time.h>
 #include <mutex>
 
 namespace ravava {
@@ -287,45 +288,48 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture)
 
 // ============================================================ routing
 static std::mutex g_routeMutex;
-static int g_voiceStreams = 0;          // open streams that rely on the communication route
+static int g_heldStreams = 0;           // open streams that hold the communication route
+static int g_btSource = 0;              // ids of the headset's microphone / speaker (0 = unknown), valid while the route is held
+static int g_btSink = 0;
 
 static bool hasPrefix(const std::string &s, const char *p) { return s.compare(0, std::strlen(p), p) == 0; }
 
-void PrepareStream(const std::string &deviceId, int32_t *aaudioId, bool *voiceCall)
+static std::string describe(const Dev &d)
 {
-    *aaudioId = 0;
-    *voiceCall = false;
-    if(deviceId.empty())
-        return;
+    const std::string label = typeLabel(d.type);
+    if(d.name.empty())
+        return label.empty() ? std::string("Audio device ") + std::to_string(d.id) : label;
+    if(label.empty() || d.name == label)
+        return d.name;
+    return d.name + " (" + label + ")";
+}
 
-    if(hasPrefix(deviceId, "aaudio:")){
-        *aaudioId = int32_t(std::atoi(deviceId.c_str() + 7));
-        return;
+// ids of the Bluetooth headset's own microphone and speaker (they only exist while the SCO link is up)
+static void findHandsfreeIds(Env &env, jobject am, int *source, int *sink)
+{
+    for(const Dev &d : getDevices(env, am, 3)){
+        if(!isHandsfree(d.type))
+            continue;
+        if(d.source && !*source) *source = d.id;
+        if(d.sink && !*sink) *sink = d.id;
     }
-    if(!hasPrefix(deviceId, "btsco:"))
-        return;
+}
 
-    const int wantId = std::atoi(deviceId.c_str() + 6);
-    Env env;
-    if(!env){ RAVAVA_WARN("android: no JNI, Bluetooth route not set"); return; }
-    Ref am = audioManager(env);
-    if(!am){ RAVAVA_WARN("android: no AudioManager, Bluetooth route not set"); return; }
-
-    std::lock_guard<std::mutex> lk(g_routeMutex);
-
+static void requestBluetoothRoute(Env &env, jobject am, int wantId)
+{
     // 1) the phone must be "in a call" for Android to use the headset's microphone
-    if(jmethodID setMode = methodOf(env, am.get(), "setMode", "(I)V"))
-        env->CallVoidMethod(am.get(), setMode, jint(3));        // MODE_IN_COMMUNICATION
+    if(jmethodID setMode = methodOf(env, am, "setMode", "(I)V"))
+        env->CallVoidMethod(am, setMode, jint(3));              // MODE_IN_COMMUNICATION
     env.failed();
 
     // 2) pick the headset
     bool routed = false;
     if(sdkInt(env) >= 31){
         // setCommunicationDevice needs the AudioDeviceInfo object itself: find it again in the list
-        jmethodID m = methodOf(env, am.get(), "getAvailableCommunicationDevices", "()Ljava/util/List;");
-        jmethodID set = methodOf(env, am.get(), "setCommunicationDevice", "(Landroid/media/AudioDeviceInfo;)Z");
+        jmethodID m = methodOf(env, am, "getAvailableCommunicationDevices", "()Ljava/util/List;");
+        jmethodID set = methodOf(env, am, "setCommunicationDevice", "(Landroid/media/AudioDeviceInfo;)Z");
         if(m && set){
-            Ref list(env.get(), env->CallObjectMethod(am.get(), m));
+            Ref list(env.get(), env->CallObjectMethod(am, m));
             if(list && !env.failed()){
                 jmethodID size = methodOf(env, list.get(), "size", "()I");
                 jmethodID get = methodOf(env, list.get(), "get", "(I)Ljava/lang/Object;");
@@ -334,7 +338,7 @@ void PrepareStream(const std::string &deviceId, int32_t *aaudioId, bool *voiceCa
                     Ref o(env.get(), env->CallObjectMethod(list.get(), get, jint(i)));
                     Dev d;
                     if(o && !env.failed() && readDevice(env, o.get(), d) && isHandsfree(d.type) && (wantId == 0 || d.id == wantId)){
-                        routed = env->CallBooleanMethod(am.get(), set, o.get()) != JNI_FALSE;
+                        routed = env->CallBooleanMethod(am, set, o.get()) != JNI_FALSE;
                         env.failed();
                     }
                 }
@@ -343,26 +347,74 @@ void PrepareStream(const std::string &deviceId, int32_t *aaudioId, bool *voiceCa
     }
     if(!routed){
         // API < 31 (or the call above was refused): the classic Bluetooth SCO link
-        if(jmethodID start = methodOf(env, am.get(), "startBluetoothSco", "()V"))
-            env->CallVoidMethod(am.get(), start);
+        if(jmethodID start = methodOf(env, am, "startBluetoothSco", "()V"))
+            env->CallVoidMethod(am, start);
         env.failed();
-        if(jmethodID on = methodOf(env, am.get(), "setBluetoothScoOn", "(Z)V"))
-            env->CallVoidMethod(am.get(), on, JNI_TRUE);
+        if(jmethodID on = methodOf(env, am, "setBluetoothScoOn", "(Z)V"))
+            env->CallVoidMethod(am, on, JNI_TRUE);
         env.failed();
     }
-    ++g_voiceStreams;
-    *voiceCall = true;
     RAVAVA_INFO("android: Bluetooth handsfree route requested (%s)", routed ? "communication device" : "SCO");
 }
 
-void ReleaseStream(bool voiceCall)
+void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld)
 {
-    if(!voiceCall)
+    *aaudioId = 0;
+    *voicePreset = false;
+    *routeHeld = false;
+
+    // a normal device chosen by id (phone mic, wired, USB...)
+    if(hasPrefix(deviceId, "aaudio:")){
+        *aaudioId = int32_t(std::atoi(deviceId.c_str() + 7));
+        return;
+    }
+
+    std::lock_guard<std::mutex> lk(g_routeMutex);
+    const bool wantsBt = hasPrefix(deviceId, "btsco:");
+    // "System default" follows an active Bluetooth route: mic and speaker must not end up on different devices
+    if(!wantsBt && !(deviceId.empty() && g_heldStreams > 0))
+        return;
+
+    Env env;
+    if(!env){ RAVAVA_WARN("android: no JNI, Bluetooth route not set"); return; }
+    Ref am = audioManager(env);
+    if(!am){ RAVAVA_WARN("android: no AudioManager, Bluetooth route not set"); return; }
+
+    if(wantsBt){
+        if(g_heldStreams == 0){
+            g_btSource = g_btSink = 0;
+            requestBluetoothRoute(env, am.get(), std::atoi(deviceId.c_str() + 6));
+        }
+        ++g_heldStreams;
+        *routeHeld = true;
+    }
+
+    // The headset's microphone / speaker only appear once the SCO link is up (takes up to a few seconds). A stream opened
+    // before that would silently use the phone's microphone, so wait for them and pin the stream to them.
+    for(int i = 0; i < 60 && !(capture ? g_btSource : g_btSink); ++i){
+        findHandsfreeIds(env, am.get(), &g_btSource, &g_btSink);
+        if(capture ? g_btSource : g_btSink)
+            break;
+        struct timespec ts = {0, 50 * 1000 * 1000};
+        nanosleep(&ts, nullptr);
+    }
+    *aaudioId = capture ? g_btSource : g_btSink;
+    *voicePreset = true;
+    if(*aaudioId)
+        RAVAVA_INFO("android: %s pinned to the Bluetooth headset (device id %d)", capture ? "microphone" : "speaker", int(*aaudioId));
+    else
+        RAVAVA_WARN("android: the Bluetooth headset's %s did not appear (SCO link not up?), the system chooses", capture ? "microphone" : "speaker");
+}
+
+void ReleaseStream(bool routeHeld)
+{
+    if(!routeHeld)
         return;
     std::lock_guard<std::mutex> lk(g_routeMutex);
-    if(g_voiceStreams > 0 && --g_voiceStreams > 0)
+    if(g_heldStreams > 0 && --g_heldStreams > 0)
         return;                         // the other direction (mic / speaker) still uses the route
-    g_voiceStreams = 0;
+    g_heldStreams = 0;
+    g_btSource = g_btSink = 0;
 
     Env env;
     if(!env) return;
@@ -381,6 +433,47 @@ void ReleaseStream(bool voiceCall)
     if(jmethodID setMode = methodOf(env, am.get(), "setMode", "(I)V"))
         env->CallVoidMethod(am.get(), setMode, jint(0));        // MODE_NORMAL
     env.failed();
+}
+
+std::string DescribeActiveDevice(bool capture)
+{
+    Env env;
+    if(!env) return std::string();
+    Ref am = audioManager(env);
+    if(!am) return std::string();
+    const int sdk = sdkInt(env);
+
+    if(capture){
+        if(sdk < 28) return std::string();
+        jmethodID m = methodOf(env, am.get(), "getActiveRecordingConfigurations", "()Ljava/util/List;");
+        if(!m) return std::string();
+        Ref list(env.get(), env->CallObjectMethod(am.get(), m));
+        if(!list || env.failed()) return std::string();
+        jmethodID size = methodOf(env, list.get(), "size", "()I");
+        jmethodID get = methodOf(env, list.get(), "get", "(I)Ljava/lang/Object;");
+        if(!size || !get) return std::string();
+        const int n = env->CallIntMethod(list.get(), size);
+        for(int i = 0; i < n; ++i){
+            Ref cfg(env.get(), env->CallObjectMethod(list.get(), get, jint(i)));
+            if(!cfg || env.failed()) continue;
+            jmethodID gd = methodOf(env, cfg.get(), "getAudioDevice", "()Landroid/media/AudioDeviceInfo;");
+            if(!gd) continue;
+            Ref info(env.get(), env->CallObjectMethod(cfg.get(), gd));
+            Dev d;
+            if(info && !env.failed() && readDevice(env, info.get(), d))
+                return describe(d);
+        }
+        return std::string();
+    }
+
+    if(sdk < 31) return std::string();
+    jmethodID m = methodOf(env, am.get(), "getCommunicationDevice", "()Landroid/media/AudioDeviceInfo;");
+    if(!m) return std::string();
+    Ref info(env.get(), env->CallObjectMethod(am.get(), m));
+    Dev d;
+    if(info && !env.failed() && readDevice(env, info.get(), d))
+        return describe(d);
+    return std::string();
 }
 
 } // namespace android

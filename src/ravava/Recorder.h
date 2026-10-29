@@ -70,6 +70,8 @@ public:
     // false = no device could be opened (recording stopped). Not recording: just remembered, Start() uses the config.
     // GUI thread only (not from the audio thread, not concurrently with Start / Stop / itself).
     bool SetInputDevice(const std::string &deviceId);
+    // the microphone that is REALLY in use (see AudioInput::ActiveDevice), "" = unknown. GUI thread.
+    std::string ActiveInputDevice() const { return m_input.ActiveDevice(); }
 private:
     bool startDevice();
 };

@@ -89,6 +89,7 @@ bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*)
     return true;
 }
 void AudioInput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+std::string AudioInput::ActiveDevice() const { return "Stub mic"; }
 bool AudioInput::IsRunning() const { return d->running; }
 
 // ------------------------------------------------------------------ speaker
@@ -123,6 +124,7 @@ bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*)
     return true;
 }
 void AudioOutput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 
 Pcm DecodeAudioFile(const std::string&, int, int, std::string *err) { if(err) *err = "stub"; return Pcm(); }
