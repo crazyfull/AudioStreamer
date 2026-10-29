@@ -65,6 +65,13 @@ public:
     static int MaxInputGain() { return 200; }
     void Start();
     void Stop();
+    // Switch the microphone while recording (no Stop / Start needed). "" = system default. The change is a short gap in
+    // the stream (the next packet carries the "marker" flag). If the device can't be opened the default one is used;
+    // false = no device could be opened (recording stopped). Not recording: just remembered, Start() uses the config.
+    // GUI thread only (not from the audio thread, not concurrently with Start / Stop / itself).
+    bool SetInputDevice(const std::string &deviceId);
+private:
+    bool startDevice();
 };
 
 } // namespace ravava

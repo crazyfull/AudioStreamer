@@ -17,6 +17,7 @@ static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
 static std::mutex g_mx;
+static std::atomic<int> g_markers{0};
 static double g_sumSq = 0; static long g_n = 0; static int g_maxStep = 0; static int g_last = 0;
 
 static double takeRms(int *maxStep = nullptr)
@@ -38,6 +39,7 @@ int main()
     rec.SetPacketHandler([&](const Bytes &body){
         uint16_t seq; bool marker; uint8_t tx; Bytes opus; Pcm pcm;
         if(!VoicePacket::Parse(body.data(), body.size(), seq, marker, tx, opus)) return;
+        if(marker) g_markers++;
         if(!dec.Decode(opus, pcm)) return;
         std::lock_guard<std::mutex> lk(g_mx);
         for(int16_t v : pcm){ g_sumSq += double(v) * v; g_maxStep = std::max(g_maxStep, std::abs(int(v) - g_last)); g_last = v; }
@@ -60,6 +62,19 @@ int main()
 
     std::printf("microphone gain\n");
     const double unity = measure(100);
+
+    // switching the microphone while recording: no Stop / Start, the stream goes on, the next packet is marked
+    {
+        const int before = g_markers;
+        takeRms();
+        CHECK(rec.SetInputDevice("aa"));
+        CHECK(g_stubInputDevice == "aa");
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        const double after = takeRms();
+        std::printf("  live device switch: level %.0f -> %.0f, markers %d -> %d\n", unity, after, before, int(g_markers));
+        CHECK(after > unity * 0.7 && after < unity * 1.3);
+        CHECK(g_markers == before + 1);
+    }
     std::printf("  100 -> rms %.0f (tone amplitude 8000 -> %.0f expected)\n", unity, 8000 / std::sqrt(2.0));
     CHECK(unity > 5000 && unity < 6300);
 

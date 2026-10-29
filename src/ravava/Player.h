@@ -76,12 +76,18 @@ class Player
     void adoptNextStream();
     void reapRetired();
     void init();                            // called by SetConfig()
+    bool startDevice();                     // opens the speaker with the current m_output device choice
     void publishStats();
 
 public:
     Player();
     ~Player();
     void SetConfig(AudioConfig *pConfig);
+    // Switch the speaker while running (no Stop / Start needed): only the device is re-opened, the received stream,
+    // jitter buffer and statistics are untouched; a short gap (tens of ms) is audible. "" = system default.
+    // If the new device can't be opened the default one is used; false = no device could be opened (player silent).
+    // GUI thread only (not from the audio thread, not concurrently with itself).
+    bool SetOutputDevice(const std::string &deviceId);
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
 

@@ -9,6 +9,7 @@
 #include <QTcpSocket>
 #include <QLabel>
 #include <QComboBox>
+#include <QSignalBlocker>
 #include <QGridLayout>
 #include <QFontDatabase>
 
@@ -170,6 +171,7 @@ void MainWindow::CreateTimer()
 void MainWindow::refreshAudioDevices()
 {
     auto fill = [](QComboBox *box, const std::vector<AudioDeviceInfo> &devices){
+        const QSignalBlocker block(box);        // refilling is not a user choice: no device switch
         const QString keep = box->currentData().toString();
         box->clear();
         box->addItem("System default", QString());
@@ -263,6 +265,21 @@ void MainWindow::on_MicGainSlider_valueChanged(int value)
     ui->label_micGainValue->setText(QString::number(value));
     if(m_pAudioRecorder)
         m_pAudioRecorder->SetInputGain(value);
+}
+
+// The device is switched right away while running; when nothing runs yet, Start picks the choice up (initAudio).
+void MainWindow::on_inputDevice_comboBox_currentIndexChanged(int)
+{
+    m_AudioConfig.inputDeviceId = ui->inputDevice_comboBox->currentData().toString().toStdString();
+    if(m_pAudioRecorder && !m_pAudioRecorder->SetInputDevice(m_AudioConfig.inputDeviceId))
+        qWarning("microphone: the selected device could not be opened");
+}
+
+void MainWindow::on_outputDevice_comboBox_currentIndexChanged(int)
+{
+    m_AudioConfig.outputDeviceId = ui->outputDevice_comboBox->currentData().toString().toStdString();
+    if(m_pAudioPlayer && !m_pAudioPlayer->SetOutputDevice(m_AudioConfig.outputDeviceId))
+        qWarning("speaker: the selected device could not be opened");
 }
 
 void MainWindow::on_btnStartRecording_clicked()

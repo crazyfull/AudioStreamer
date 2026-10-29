@@ -98,14 +98,30 @@ void Player::init()
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
     m_output.SetDevice(m_pConfig->outputDeviceId);
-    std::string err;
-    bool ok = m_output.Start(m_rate, m_channels, 10, [this](int16_t *out, uint32_t frames){ onDeviceData(out, frames); }, &err);
-    if(!ok)
-        RAVAVA_WARN("player: %s", err.c_str());
-    else{
+    if(startDevice()){
         m_ready = true;
         RAVAVA_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
     }
+}
+
+bool Player::startDevice()
+{
+    std::string err;
+    const bool ok = m_output.Start(m_rate, m_channels, 10, [this](int16_t *out, uint32_t frames){ onDeviceData(out, frames); }, &err);
+    if(!ok)
+        RAVAVA_WARN("player: %s", err.c_str());
+    return ok;
+}
+
+// GUI thread. Only the sound device is replaced; the streams, jitter buffer and counters stay as they are.
+bool Player::SetOutputDevice(const std::string &deviceId)
+{
+    m_output.SetDevice(deviceId);
+    if(!m_output.IsRunning())
+        return true;                    // not started yet: the next init() / Start() opens it
+    m_output.Stop();                    // returns when the audio callback is guaranteed to be finished
+    m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
+    return startDevice();               // packets that arrive meanwhile wait in the queue
 }
 
 // Runs on the audio thread, exactly when the device needs data.

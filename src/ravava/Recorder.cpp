@@ -79,10 +79,28 @@ void Recorder::Start()
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     m_input.SetDevice(m_pConfig->inputDeviceId);
+    startDevice();
+}
+
+bool Recorder::startDevice()
+{
     std::string err;
-    bool ok = m_input.Start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
+    const bool ok = m_input.Start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
     if(!ok)
         RAVAVA_WARN("Recorder: %s", err.c_str());
+    return ok;
+}
+
+// GUI thread. Only the microphone device is replaced: sequence numbers, the encoder and the echo canceller continue.
+bool Recorder::SetInputDevice(const std::string &deviceId)
+{
+    m_input.SetDevice(deviceId);
+    if(!m_input.IsRunning())
+        return true;                    // not recording: Start() opens it
+    m_input.Stop();                     // returns when the capture callback is guaranteed to be finished
+    m_cache.clear();                    // the part of a frame captured from the old device is dropped
+    m_marker = true;                    // the next packet follows a gap: the receiver re-syncs its buffer
+    return startDevice();
 }
 
 void Recorder::Stop()
