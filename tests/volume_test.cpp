@@ -75,6 +75,20 @@ int main()
     const int lvFull = play.TakePeakLevel();
     CHECK(full > 3000);
 
+    // switching the speaker while playing: no Stop / Start, the received stream and its counters go on
+    {
+        JitterBuffer::Stats st0, st1; int d0, d1, f0, f1;
+        CHECK(play.GetStats(st0, d0, f0));
+        CHECK(play.SetOutputDevice("cc"));
+        CHECK(g_stubOutputDevice == "cc");
+        sendMs(300); rms();
+        sendMs(600); const double after = rms();
+        CHECK(play.GetStats(st1, d1, f1));
+        std::printf("  live device switch: rms %.0f -> %.0f, played frames %u -> %u\n", full, after, unsigned(st0.played), unsigned(st1.played));
+        CHECK(after > full * 0.7 && after < full * 1.2);       // a short gap at the switch is allowed
+        CHECK(st1.played > st0.played);                  // counters were not reset
+    }
+
     play.SetVolume(50); sendMs(300); rms();             // let the ramp finish
     sendMs(600); const double half = rms();
     const int lvHalf = play.TakePeakLevel();

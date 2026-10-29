@@ -64,6 +64,8 @@ private slots:
     void on_btnStopRecording_clicked();
     void on_VolumeSlider_valueChanged(int value);
     void on_MicGainSlider_valueChanged(int value);
+    void on_inputDevice_comboBox_currentIndexChanged(int index);     // switches the microphone while running
+    void on_outputDevice_comboBox_currentIndexChanged(int index);    // switches the speaker while running
     void onReadEncodedBuffer(const QByteArray &encodedBuffer);
     void onReceiveUDPData();
     void OnRateTimer();
