@@ -15,6 +15,7 @@ Recorder::Recorder() : m_inputGain(200)
 
 Recorder::~Recorder()
 {
+    m_switcher.Cancel();    // no device switch may run any more
     m_input.Stop();
 }
 
@@ -61,7 +62,7 @@ void Recorder::Start()
         RAVAVA_WARN("Recorder not ready");
         return;
     }
-    if(m_input.IsRunning())
+    if(m_deviceWanted || m_input.IsRunning())
         return;
 
     const size_t frameChunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
@@ -79,6 +80,7 @@ void Recorder::Start()
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     m_input.SetDevice(m_pConfig->inputDeviceId);
+    m_deviceWanted = true;
     startDevice();
 }
 
@@ -94,17 +96,24 @@ bool Recorder::startDevice()
 // GUI thread. Only the microphone device is replaced: sequence numbers, the encoder and the echo canceller continue.
 bool Recorder::SetInputDevice(const std::string &deviceId)
 {
-    m_input.SetDevice(deviceId);
-    if(!m_input.IsRunning())
-        return true;                    // not recording: Start() opens it
-    m_input.Stop();                     // returns when the capture callback is guaranteed to be finished
-    m_cache.clear();                    // the part of a frame captured from the old device is dropped
-    m_marker = true;                    // the next packet follows a gap: the receiver re-syncs its buffer
-    return startDevice();
+    if(!m_deviceWanted){
+        m_input.SetDevice(deviceId);    // not recording: Start() opens it
+        return true;
+    }
+    m_switcher.Request(deviceId, [this](const std::string &id){
+        m_input.Stop();                 // returns when the capture callback is guaranteed to be finished
+        m_cache.clear();                // the part of a frame captured from the old device is dropped
+        m_marker = true;                // the next packet follows a gap: the receiver re-syncs its buffer
+        m_input.SetDevice(id);
+        startDevice();                  // failure is logged
+    });
+    return true;
 }
 
 void Recorder::Stop()
 {
+    m_deviceWanted = false;
+    m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
     m_input.Stop();         // returns when the callback is guaranteed to be finished
     m_cache.clear();
     m_scratch.clear();

@@ -36,12 +36,15 @@ void roomReset()
 // ------------------------------------------------------------------ microphone
 // the device id the last Start() was asked for (tests check that the config reaches the device layer)
 std::string g_stubInputDevice, g_stubOutputDevice;
+static std::mutex g_stubDeviceMutex;        // SetDevice() runs on the device-switch worker thread, the test reads from its own
+std::string StubInputDevice()  { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubInputDevice; }
+std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubOutputDevice; }
 
 namespace ravava {
 
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running = false; };
 AudioInput::AudioInput() : d(new Impl) {}
-void AudioInput::SetDevice(const std::string &id) { g_stubInputDevice = id; }
+void AudioInput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubInputDevice = id; }
 std::vector<AudioDeviceInfo> ListInputDevices()  { return { {"Stub mic", "aa", true}, {"Stub mic 2", "bb", false} }; }
 std::vector<AudioDeviceInfo> ListOutputDevices() { return { {"Stub speaker", "cc", true}, {"Stub speaker 2", "dd", false} }; }
 AudioInput::~AudioInput() { Stop(); }
@@ -95,7 +98,7 @@ bool AudioInput::IsRunning() const { return d->running; }
 // ------------------------------------------------------------------ speaker
 struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; bool running = false; };
 AudioOutput::AudioOutput() : d(new Impl) {}
-void AudioOutput::SetDevice(const std::string &id) { g_stubOutputDevice = id; }
+void AudioOutput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubOutputDevice = id; }
 AudioOutput::~AudioOutput() { Stop(); }
 
 bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*)

@@ -18,6 +18,7 @@ Player::Player()
     m_frameMsCopy = 0;
     m_formatDropped = 0;
     m_ready = false;
+    m_deviceWanted = false;
     m_ingestDropped = 0;
     m_depthCopy = 0;
     m_pendingPos = 0;
@@ -28,6 +29,7 @@ Player::Player()
 Player::~Player()
 {
     m_ready = false;
+    m_switcher.Cancel();    // no device switch may run any more
     m_output.Stop();        // after this the audio callback can no longer touch the streams
     delete m_cur;
     delete m_next.exchange(nullptr);
@@ -98,6 +100,7 @@ void Player::init()
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
     m_output.SetDevice(m_pConfig->outputDeviceId);
+    m_deviceWanted = true;
     if(startDevice()){
         m_ready = true;
         RAVAVA_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
@@ -116,12 +119,17 @@ bool Player::startDevice()
 // GUI thread. Only the sound device is replaced; the streams, jitter buffer and counters stay as they are.
 bool Player::SetOutputDevice(const std::string &deviceId)
 {
-    m_output.SetDevice(deviceId);
-    if(!m_output.IsRunning())
-        return true;                    // not started yet: the next init() / Start() opens it
-    m_output.Stop();                    // returns when the audio callback is guaranteed to be finished
-    m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
-    return startDevice();               // packets that arrive meanwhile wait in the queue
+    if(!m_deviceWanted){
+        m_output.SetDevice(deviceId);   // not started yet: the next init() opens it
+        return true;
+    }
+    m_switcher.Request(deviceId, [this](const std::string &id){
+        m_output.Stop();                // returns when the audio callback is guaranteed to be finished
+        m_output.SetDevice(id);
+        m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
+        startDevice();                  // packets that arrive meanwhile wait in the queue; failure is logged
+    });
+    return true;
 }
 
 // Runs on the audio thread, exactly when the device needs data.

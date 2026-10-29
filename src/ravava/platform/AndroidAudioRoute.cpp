@@ -425,7 +425,7 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
 
     // The headset's microphone / speaker only appear once the SCO link is up (takes up to a few seconds). A stream opened
     // before that would silently use the phone's microphone, so wait for them and pin the stream to them.
-    for(int i = 0; i < 60 && !(capture ? g_btSource : g_btSink); ++i){
+    for(int i = 0; i < 40 && !(capture ? g_btSource : g_btSink); ++i){
         findHandsfreeIds(env, am.get(), &g_btSource, &g_btSink);
         if(capture ? g_btSource : g_btSink)
             break;
@@ -467,6 +467,32 @@ void ReleaseStream(bool routeHeld)
     if(jmethodID setMode = methodOf(env, am.get(), "setMode", "(I)V"))
         env->CallVoidMethod(am.get(), setMode, jint(0));        // MODE_NORMAL
     env.failed();
+}
+
+int StreamDeviceId(void *aaudioStream)
+{
+    using GetDeviceId = int32_t (*)(void *);
+    static GetDeviceId fn = []() -> GetDeviceId {
+        void *lib = dlopen("libaaudio.so", RTLD_NOW);
+        return lib ? reinterpret_cast<GetDeviceId>(dlsym(lib, "AAudioStream_getDeviceId")) : nullptr;    // API 28+
+    }();
+    if(!fn || !aaudioStream)
+        return -1;
+    return int(fn(aaudioStream));
+}
+
+std::string DescribeDeviceId(int deviceId, bool capture)
+{
+    if(deviceId <= 0)
+        return std::string();
+    Env env;
+    if(!env) return std::string();
+    Ref am = audioManager(env);
+    if(!am) return std::string();
+    for(const Dev &d : getDevices(env, am.get(), capture ? 1 : 2))
+        if(d.id == deviceId)
+            return describe(d);
+    return std::string("device #") + std::to_string(deviceId);
 }
 
 std::string DescribeActiveDevice(bool capture)

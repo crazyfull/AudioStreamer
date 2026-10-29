@@ -42,7 +42,7 @@ static double rms()                      // of what arrived since the last call
 static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
-extern std::string g_stubOutputDevice;     // from tests/stub/audio_device_stub.cpp
+std::string StubOutputDevice();     // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
 int main()
 {
@@ -52,7 +52,7 @@ int main()
     Player play;
     cfg.outputDeviceId = "dd";                              // the config choice must reach the device layer
     play.SetConfig(&cfg);
-    CHECK(g_stubOutputDevice == "dd");
+    CHECK(StubOutputDevice() == "dd");
 
     // 1 kHz tone at about -12 dBFS, sent as real 20 ms packets in real time
     const int N = cfg.inputRate * cfg.frameMs / 1000;
@@ -79,9 +79,12 @@ int main()
     {
         JitterBuffer::Stats st0, st1; int d0, d1, f0, f1;
         CHECK(play.GetStats(st0, d0, f0));
+        const auto t0 = std::chrono::steady_clock::now();
         CHECK(play.SetOutputDevice("cc"));
-        CHECK(g_stubOutputDevice == "cc");
+        const auto callMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(callMs < 50);                                 // the GUI thread is not blocked by the switch
         sendMs(300); rms();
+        CHECK(StubOutputDevice() == "cc");                  // done by the worker thread
         sendMs(600); const double after = rms();
         CHECK(play.GetStats(st1, d1, f1));
         std::printf("  live device switch: rms %.0f -> %.0f, played frames %u -> %u\n", full, after, unsigned(st0.played), unsigned(st1.played));

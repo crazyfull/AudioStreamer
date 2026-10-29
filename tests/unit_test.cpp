@@ -9,8 +9,11 @@
 #include "ravava/net/PacketRouter.h"
 #include "ravava/LevelMeter.h"
 #include "ravava/GainRamp.h"
+#include "ravava/DeviceSwitcher.h"
 #include "ravava/OpusCodec.h"
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <cstdio>
 #include <random>
 #include <thread>
@@ -185,6 +188,49 @@ static void testMusicMode()
     }
     OpusCodec none; int a, s2;
     CHECK(!none.GetEncoderMode(a, s2));
+}
+
+// DeviceSwitcher: off-thread, merged requests, Cancel waits
+static void testDeviceSwitcher()
+{
+    std::printf("DeviceSwitcher\n");
+    {
+        DeviceSwitcher sw;
+        std::mutex m; std::vector<std::string> applied;
+        std::atomic<bool> release{false};
+        auto fn = [&](const std::string &id){
+            while(!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));   // a slow device: blocks the worker
+            std::lock_guard<std::mutex> lk(m); applied.push_back(id);
+        };
+        const auto t0 = std::chrono::steady_clock::now();
+        sw.Request("a", fn); sw.Request("b", fn); sw.Request("c", fn); sw.Request("d", fn);
+        CHECK(std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(100));    // Request never waits for the device
+        release = true;
+        for(int i = 0; i < 1000; i++){                                                     // let the worker finish its queue
+            { std::lock_guard<std::mutex> lk(m); if(!applied.empty() && applied.back() == "d") break; }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        sw.Cancel();
+        std::lock_guard<std::mutex> lk(m);
+        CHECK(!applied.empty() && applied.back() == "d");                                  // the last request wins
+        CHECK(applied.size() <= 2);                                                        // "b" and "c" were merged away
+    }
+    {
+        DeviceSwitcher sw;                                                                 // Cancel drops what has not started
+        std::atomic<int> n{0};
+        std::atomic<bool> release{false};
+        auto fn = [&](const std::string &){ while(!release) std::this_thread::sleep_for(std::chrono::milliseconds(1)); n++; };
+        sw.Request("x", fn);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));                        // worker is inside fn("x")
+        sw.Request("y", fn);
+        release = true;
+        sw.Cancel();
+        CHECK(n == 1);
+        sw.Request("z", fn);                                                               // usable again after Cancel
+        for(int i = 0; i < 1000 && n < 2; i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        sw.Cancel();
+        CHECK(n == 2);
+    }
 }
 
 static void testJitterLoss()
@@ -423,6 +469,7 @@ int main()
     testPacketQueue();
     testConfigAndEncoder();
     testMusicMode();
+    testDeviceSwitcher();
     testJitterLoss();
     std::printf(g_fail ? "FAILED (%d)\n" : "ALL PASS\n", g_fail);
     return g_fail ? 1 : 0;

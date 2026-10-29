@@ -48,6 +48,12 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture);
 void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld);
 void ReleaseStream(bool routeHeld);
 
+// Real device id (AudioDeviceInfo id) an open AAudio stream is on, -1 if unknown (API < 28). Cheap getter: may be called from
+// the audio callback with the stream that is calling it.
+int StreamDeviceId(void *aaudioStream);
+// Name of the device with that AudioDeviceInfo id (microphone or speaker side), "" if it is gone. JNI: not the audio thread.
+std::string DescribeDeviceId(int deviceId, bool capture);
+
 // What Android really uses right now, e.g. "Bluetooth headset (Bluetooth handsfree)" or "Phone microphone"; "" if unknown.
 // Microphone: the recording configuration of this app (API 28+). Speaker: the communication device while a Bluetooth
 // route is active (API 31+). Any thread except the audio thread (JNI calls).

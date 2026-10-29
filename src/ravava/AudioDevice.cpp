@@ -10,12 +10,25 @@
 // platform/AndroidAudioRoute.cpp fixes both through AudioManager. RAVAVA_FORCE_ANDROID_ROUTE: syntax check on a PC.
 #if defined(__ANDROID__) || defined(RAVAVA_FORCE_ANDROID_ROUTE)
 #define RAVAVA_ANDROID 1
+#ifdef __ANDROID__
+#define RAVAVA_AAUDIO_STREAMS 1     // ma_device::aaudio.pStreamCapture / pStreamPlayback exist (not in the PC syntax check)
+#endif
 #include "platform/AndroidAudioRoute.h"
 #endif
+#include <atomic>
 #include <cstring>
 #include <cstdio>
 
 namespace ravava {
+
+// what miniaudio tells about a device (started / stopped / rerouted...), for the log. Not called from the audio callback.
+static void onNotification(const ma_device_notification *n)
+{
+    static const char *names[] = {"started", "stopped", "rerouted", "interruption began", "interruption ended", "unlocked"};
+    const int t = int(n->type);
+    RAVAVA_INFO("%s device %s", n->pDevice->type == ma_device_type_capture ? "capture" : "playback",
+                (t >= 0 && t < 6) ? names[t] : "notification");
+}
 
 // ============================================================ device ids
 // ma_device_id is a plain union of bytes: the id string is just its hex dump.
@@ -95,12 +108,18 @@ struct AudioInput::Impl
     bool running = false;
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
+    std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
+    unsigned cbCount = 0;           // audio thread only
     std::string deviceId;
     Callback cb;
 
     static void onData(ma_device *pDevice, void *, const void *pInput, ma_uint32 frameCount)
     {
         Impl *s = static_cast<Impl*>(pDevice->pUserData);
+#ifdef RAVAVA_AAUDIO_STREAMS
+        if((s->cbCount++ & 63) == 0)    // about every 0.6 s: which device is the stream really on (the system may re-route it)
+            s->activeId.store(android::StreamDeviceId(pDevice->aaudio.pStreamCapture), std::memory_order_relaxed);
+#endif
         if(s->cb && pInput)
             s->cb(static_cast<const int16_t*>(pInput), frameCount);
     }
@@ -127,6 +146,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     cfg.sampleRate       = ma_uint32(sampleRate);
     cfg.periodSizeInMilliseconds = ma_uint32(periodMs);
     cfg.dataCallback     = Impl::onData;
+    cfg.notificationCallback = onNotification;
     cfg.pUserData        = d.get();
 
     ma_device_id chosen;
@@ -168,6 +188,8 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
         return false;
     }
     d->opened = true;
+    d->activeId = -1;
+    d->cbCount = 0;
     {
         char nm[256] = {0};
         d->activeName = ma_device_get_name(&d->dev, ma_device_type_capture, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
@@ -201,7 +223,11 @@ void AudioInput::Stop()
 std::string AudioInput::ActiveDevice() const
 {
 #ifdef RAVAVA_ANDROID
-    return d->running ? android::DescribeActiveDevice(true) : std::string();
+    if(!d->running)
+        return std::string();
+    const int id = d->activeId.load(std::memory_order_relaxed);
+    std::string name = id > 0 ? android::DescribeDeviceId(id, true) : std::string();
+    return name.empty() ? android::DescribeActiveDevice(true) : name;
 #else
     return d->running ? d->activeName : std::string();
 #endif
@@ -220,12 +246,18 @@ struct AudioOutput::Impl
     int channels = 1;
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
+    std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
+    unsigned cbCount = 0;           // audio thread only
     std::string deviceId;
     Callback cb;
 
     static void onData(ma_device *pDevice, void *pOutput, const void *, ma_uint32 frameCount)
     {
         Impl *s = static_cast<Impl*>(pDevice->pUserData);
+#ifdef RAVAVA_AAUDIO_STREAMS
+        if((s->cbCount++ & 63) == 0)
+            s->activeId.store(android::StreamDeviceId(pDevice->aaudio.pStreamPlayback), std::memory_order_relaxed);
+#endif
         if(s->cb)
             s->cb(static_cast<int16_t*>(pOutput), frameCount);
         else
@@ -255,6 +287,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     cfg.sampleRate        = ma_uint32(sampleRate);
     cfg.periodSizeInMilliseconds = ma_uint32(periodMs);
     cfg.dataCallback      = Impl::onData;
+    cfg.notificationCallback = onNotification;
     cfg.pUserData         = d.get();
 
     ma_device_id chosen;
@@ -294,6 +327,8 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
         return false;
     }
     d->opened = true;
+    d->activeId = -1;
+    d->cbCount = 0;
     {
         char nm[256] = {0};
         d->activeName = ma_device_get_name(&d->dev, ma_device_type_playback, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
@@ -327,7 +362,11 @@ void AudioOutput::Stop()
 std::string AudioOutput::ActiveDevice() const
 {
 #ifdef RAVAVA_ANDROID
-    return d->running ? android::DescribeActiveDevice(false) : std::string();
+    if(!d->running)
+        return std::string();
+    const int id = d->activeId.load(std::memory_order_relaxed);
+    std::string name = id > 0 ? android::DescribeDeviceId(id, false) : std::string();
+    return name.empty() ? android::DescribeActiveDevice(false) : name;
 #else
     return d->running ? d->activeName : std::string();
 #endif
