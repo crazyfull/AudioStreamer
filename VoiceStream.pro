@@ -140,7 +140,11 @@ android {
     PRE_TARGETDEPS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
 
     # miniaudio
-    LIBS += -ldl -lm
+    LIBS += -ldl -lm -llog
+
+    # device list + Bluetooth handsfree route (AudioManager through JNI), see src/ravava/platform
+    SOURCES += src/ravava/platform/AndroidAudioRoute.cpp
+    HEADERS += src/ravava/platform/AndroidAudioRoute.h
 
 
 }

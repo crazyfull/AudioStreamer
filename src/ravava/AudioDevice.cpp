@@ -5,6 +5,13 @@
 
 #include "AudioDevice.h"
 #include "AudioTypes.h"
+
+// Android: miniaudio can't list devices there and the phone's mic is used even with a Bluetooth headset connected,
+// platform/AndroidAudioRoute.cpp fixes both through AudioManager. RAVAVA_FORCE_ANDROID_ROUTE: syntax check on a PC.
+#if defined(__ANDROID__) || defined(RAVAVA_FORCE_ANDROID_ROUTE)
+#define RAVAVA_ANDROID 1
+#include "platform/AndroidAudioRoute.h"
+#endif
 #include <cstring>
 #include <cstdio>
 
@@ -66,8 +73,19 @@ static std::vector<AudioDeviceInfo> listDevices(bool capture)
     return out;
 }
 
+#ifdef RAVAVA_ANDROID
+// AAudio / OpenSL ES only know "the default device": the list comes from AudioManager (empty = fall back to miniaudio)
+static std::vector<AudioDeviceInfo> listAny(bool capture)
+{
+    std::vector<AudioDeviceInfo> l = android::ListDevices(capture);
+    return l.empty() ? listDevices(capture) : l;
+}
+std::vector<AudioDeviceInfo> ListInputDevices()  { return listAny(true); }
+std::vector<AudioDeviceInfo> ListOutputDevices() { return listAny(false); }
+#else
 std::vector<AudioDeviceInfo> ListInputDevices()  { return listDevices(true); }
 std::vector<AudioDeviceInfo> ListOutputDevices() { return listDevices(false); }
+#endif
 
 // =============================================================== AudioInput
 struct AudioInput::Impl
@@ -75,6 +93,7 @@ struct AudioInput::Impl
     ma_device dev;
     bool opened = false;
     bool running = false;
+    bool voiceRoute = false;        // Android: a Bluetooth handsfree route was requested for this stream
     std::string deviceId;
     Callback cb;
 
@@ -110,8 +129,24 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     cfg.pUserData        = d.get();
 
     ma_device_id chosen;
+    std::memset(&chosen, 0, sizeof(chosen));
     ma_result r = MA_ERROR;
-    if(!d->deviceId.empty() && stringToId(d->deviceId, chosen)){
+    bool haveChosen = false;
+#ifdef RAVAVA_ANDROID
+    {
+        int32_t aid = 0; bool voice = false;
+        android::PrepareStream(d->deviceId, &aid, &voice);
+        d->voiceRoute = voice;
+        if(voice){
+            cfg.aaudio.inputPreset = ma_aaudio_input_preset_voice_communication;    // lets Android use the headset's mic
+            cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
+        }
+        if(aid != 0){ chosen.aaudio = aid; haveChosen = true; }
+    }
+#else
+    haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
+#endif
+    if(haveChosen){
         cfg.capture.pDeviceID = &chosen;
         r = ma_device_init(nullptr, &cfg, &d->dev);
         if(r != MA_SUCCESS)
@@ -123,6 +158,12 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     }
     if(r != MA_SUCCESS){
         if(err) *err = std::string("capture device init failed: ") + ma_result_description(r);
+#ifdef RAVAVA_ANDROID
+    if(d->voiceRoute){
+        android::ReleaseStream(true);
+        d->voiceRoute = false;
+    }
+#endif
         return false;
     }
     d->opened = true;
@@ -144,6 +185,12 @@ void AudioInput::Stop()
         d->opened = false;
     }
     d->running = false;
+#ifdef RAVAVA_ANDROID
+    if(d->voiceRoute){
+        android::ReleaseStream(true);
+        d->voiceRoute = false;
+    }
+#endif
 }
 
 bool AudioInput::IsRunning() const {
@@ -157,6 +204,7 @@ struct AudioOutput::Impl
     bool opened = false;
     bool running = false;
     int channels = 1;
+    bool voiceRoute = false;        // Android: a Bluetooth handsfree route was requested for this stream
     std::string deviceId;
     Callback cb;
 
@@ -195,8 +243,22 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     cfg.pUserData         = d.get();
 
     ma_device_id chosen;
+    std::memset(&chosen, 0, sizeof(chosen));
     ma_result r = MA_ERROR;
-    if(!d->deviceId.empty() && stringToId(d->deviceId, chosen)){
+    bool haveChosen = false;
+#ifdef RAVAVA_ANDROID
+    {
+        int32_t aid = 0; bool voice = false;
+        android::PrepareStream(d->deviceId, &aid, &voice);
+        d->voiceRoute = voice;
+        if(voice)
+            cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
+        if(aid != 0){ chosen.aaudio = aid; haveChosen = true; }
+    }
+#else
+    haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
+#endif
+    if(haveChosen){
         cfg.playback.pDeviceID = &chosen;
         r = ma_device_init(nullptr, &cfg, &d->dev);
         if(r != MA_SUCCESS)
@@ -208,6 +270,12 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     }
     if(r != MA_SUCCESS){
         if(err) *err = std::string("playback device init failed: ") + ma_result_description(r);
+#ifdef RAVAVA_ANDROID
+    if(d->voiceRoute){
+        android::ReleaseStream(true);
+        d->voiceRoute = false;
+    }
+#endif
         return false;
     }
     d->opened = true;
@@ -229,6 +297,12 @@ void AudioOutput::Stop()
         d->opened = false;
     }
     d->running = false;
+#ifdef RAVAVA_ANDROID
+    if(d->voiceRoute){
+        android::ReleaseStream(true);
+        d->voiceRoute = false;
+    }
+#endif
 }
 
 bool AudioOutput::IsRunning() const { return d->running; }
