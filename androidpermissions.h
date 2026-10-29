@@ -9,4 +9,8 @@
 // device lists are refreshed on every Start, so the headset shows up on the next Start.
 void RequestAndroidAudioPermissions();
 
+// Hands the Java VM and the Activity to the audio library (ravava::android::Init). Call it right after QApplication is
+// created, BEFORE the first MainWindow: the constructor already lists the sound devices.
+void InitAndroidAudio();
+
 #endif // ANDROIDPERMISSIONS_H

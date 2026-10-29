@@ -9,6 +9,7 @@
 #include <QTcpSocket>
 #include <QLabel>
 #include <QComboBox>
+#include <QEvent>
 #include <QSignalBlocker>
 #include <QGridLayout>
 #include <QFontDatabase>
@@ -60,6 +61,8 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->BandWith_comboBox->addItem("fullband - [20kHz 48kHz]", OPUS_BANDWIDTH_FULLBAND);
 
     refreshAudioDevices();
+    ui->inputDevice_comboBox->installEventFilter(this);       // list is refreshed when the user opens it
+    ui->outputDevice_comboBox->installEventFilter(this);
 
     ui->noise_comboBox->addItem("Noise: off");
     ui->noise_comboBox->addItem("Noise: low");
@@ -266,6 +269,15 @@ void MainWindow::on_MicGainSlider_valueChanged(int value)
     ui->label_micGainValue->setText(QString::number(value));
     if(m_pAudioRecorder)
         m_pAudioRecorder->SetInputGain(value);
+}
+
+// A newly connected headset (or a permission that was just granted) shows up without Stop / Start: the list is refreshed
+// right before the drop-down opens. The selection is kept by device id.
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    if((obj == ui->inputDevice_comboBox || obj == ui->outputDevice_comboBox) && event->type() == QEvent::MouseButtonPress)
+        refreshAudioDevices();
+    return QMainWindow::eventFilter(obj, event);
 }
 
 // The device is switched right away while running; when nothing runs yet, Start picks the choice up (initAudio).

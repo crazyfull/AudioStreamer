@@ -87,6 +87,7 @@ private:
     QString GetFormatSize(qint64 Size);
     void initAudio();
     void refreshAudioDevices();     // fills the microphone / speaker combo boxes (keeps the selection)
+    bool eventFilter(QObject *obj, QEvent *event) override;    // re-lists the devices when a device combo box is clicked
 
 };
 
