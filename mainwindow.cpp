@@ -24,6 +24,9 @@ using namespace ravava;       // the audio library (src/ravava), incl. its netwo
 #include <QJniEnvironment>
 #include <QCoreApplication>
 
+#endif
+
+#ifdef Q_OS_ANDROID
 void startForegroundService()
 {
     QJniObject context = QNativeInterface::QAndroidApplication::context();
@@ -32,20 +35,12 @@ void startForegroundService()
         return;
     }
 
-    QJniObject serviceClass = QJniObject::getStaticObjectField(
-        "org/qtproject/example/AudioForegroundService",
-        "class",
-        "Ljava/lang/Class;");
-
-    if (!serviceClass.isValid()) {
-        qDebug() << "ERROR: service class not found";
-        return;
-    }
-
-    QJniObject intent("android/content/Intent",
-                      "(Landroid/content/Context;Ljava/lang/Class;)V",
-                      context.object(),
-                      serviceClass.object());
+    // روش درست ساخت Intent برای سرویس
+    QJniObject intent("android/content/Intent");
+    intent.callObjectMethod("setClassName",
+                            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                            QJniObject::fromString("org.qtproject.example").object<jstring>(),
+                            QJniObject::fromString("org.qtproject.example.AudioForegroundService").object<jstring>());
 
     if (!intent.isValid()) {
         qDebug() << "ERROR: Intent invalid";
@@ -53,27 +48,70 @@ void startForegroundService()
     }
 
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 26) {
-        context.callObjectMethod("startForegroundService",
-                                 "(Landroid/content/Intent;)Landroid/content/ComponentName;",
-                                 intent.object());
-        qDebug() << "startForegroundService called";
+        QJniObject result = context.callObjectMethod(
+            "startForegroundService",
+            "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+            intent.object());
+        qDebug() << "startForegroundService called, result valid:" << result.isValid();
     } else {
-        context.callObjectMethod("startService",
-                                 "(Landroid/content/Intent;)Landroid/content/ComponentName;",
-                                 intent.object());
+        context.callObjectMethod(
+            "startService",
+            "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+            intent.object());
         qDebug() << "startService called";
     }
 }
 
-void stopForegroundService() {
-    QJniObject activity = QNativeInterface::QAndroidApplication::context();
-    if (!activity.isValid()) return;
+void stopForegroundService()
+{
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) return;
 
-    QJniObject intent("android/content/Intent", "(Landroid/content/Context;Ljava/lang/Class;)V",
-                      activity.object(),
-                      QJniObject::getStaticObjectField("org/qtproject/example/AudioForegroundService",
-                                                       "class", "Ljava/lang/Class;").object());
-    activity.callMethod<jboolean>("stopService", "(Landroid/content/Intent;)Z", intent.object());
+    QJniObject intent("android/content/Intent");
+    intent.callObjectMethod("setClassName",
+                            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                            QJniObject::fromString("org.qtproject.example").object<jstring>(),
+                            QJniObject::fromString("org.qtproject.example.AudioForegroundService").object<jstring>());
+
+    context.callMethod<jboolean>("stopService", "(Landroid/content/Intent;)Z", intent.object());
+}
+#endif
+
+#ifdef Q_OS_ANDROID
+QJniObject g_wakeLock;   // global
+
+void acquireWakeLock()
+{
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) return;
+
+    QJniObject powerManager = context.callObjectMethod(
+        "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;",
+        QJniObject::fromString("power").object<jstring>());
+
+    if (!powerManager.isValid()) return;
+
+    // PARTIAL_WAKE_LOCK = 1
+    g_wakeLock = powerManager.callObjectMethod(
+        "newWakeLock",
+        "(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock;",
+        1,
+        QJniObject::fromString("AudioStreamer::WakeLock").object<jstring>());
+
+    if (g_wakeLock.isValid()) {
+        g_wakeLock.callMethod<void>("acquire", "()V");
+        qDebug() << "WakeLock acquired";
+    }
+}
+
+void releaseWakeLock()
+{
+    if (g_wakeLock.isValid()) {
+        g_wakeLock.callMethod<void>("release", "()V");
+        g_wakeLock = QJniObject();
+        qDebug() << "WakeLock released";
+    }
 }
 #endif
 
@@ -351,6 +389,7 @@ void MainWindow::on_outputDevice_comboBox_currentIndexChanged(int)
 void MainWindow::on_btnStartRecording_clicked()
 {
     startForegroundService();
+    acquireWakeLock();
 
     refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
@@ -362,7 +401,9 @@ void MainWindow::on_btnStartRecording_clicked()
 
 void MainWindow::on_btnStopRecording_clicked()
 {
+    releaseWakeLock();
     stopForegroundService();
+
 
     if(m_pAudioRecorder)
         m_pAudioRecorder->Stop();

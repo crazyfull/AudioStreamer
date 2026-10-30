@@ -35,7 +35,7 @@ public class AudioForegroundService extends Service {
                 .build();
 
         startForeground(NOTIFICATION_ID, notification);
-        return START_STICKY;
+        return START_STICKY | START_FLAG_REDELIVERY;
     }
 
     @Override
