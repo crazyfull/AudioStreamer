@@ -33,7 +33,6 @@ private:
     QTimer m_RateTimer;
     QTimer m_PlayerTimer;
     QTimer m_StatsTimer;                  // refreshes the live loss statistics (1s)
-    class QLabel *m_lblStats = nullptr;
     struct StatSnapshot { quint32 received, lostEvents, reordered; };
     QList<StatSnapshot> m_statHistory;      // once per second, for the "last 5s" figures
 
@@ -76,6 +75,8 @@ private slots:
     void OnTCPClosed();
     void OnTCPReceiveData();
     void OnTCPError(QAbstractSocket::SocketError error);
+
+    void on_btnCopyLog_clicked();
 
 private:
     Ui::MainWindow *ui;

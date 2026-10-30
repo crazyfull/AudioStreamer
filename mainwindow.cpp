@@ -13,6 +13,8 @@
 #include <QSignalBlocker>
 #include <QGridLayout>
 #include <QFontDatabase>
+#include <QClipboard>
+#include <QGuiApplication>
 
 using namespace ravava;       // the audio library (src/ravava), incl. its network layer (ravava::Packet, ravava::PacketRouter)
 
@@ -146,14 +148,6 @@ void MainWindow::CreateTimer()
     m_Rate = 0;
     m_RxRate = 0;
     ui->statusbar->showMessage("0");
-
-    // ---- live receive statistics (packet loss etc.), below the controls
-    m_lblStats = new QLabel(this);
-    m_lblStats->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    m_lblStats->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_lblStats->setContentsMargins(10, 0, 10, 10);
-    //ui->gridLayout->addWidget(m_lblStats, 9, 0, 1, 3);
-    ui->horizontalLayout_logs->addWidget(m_lblStats);
 
     OnStatsTimer();
 
@@ -387,9 +381,6 @@ void MainWindow::OnStatsTimer()
     JitterBuffer::Stats st;
     int depthFrames = 0, frameMs = 0;
 
-    if(!m_lblStats)
-        return;
-
     // the devices that are REALLY in use (on Android they can differ from the choice, e.g. the phone's mic although a
     // Bluetooth headset was selected)
     QString devices;
@@ -401,7 +392,7 @@ void MainWindow::OnStatsTimer()
     }
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
-        m_lblStats->setText(devices + "Receive stats: (not started, or no audio received yet)");
+        ui->txtLog->setPlainText(devices + "Receive stats: (not started, or no audio received yet)");
         return;
     }
 
@@ -461,7 +452,7 @@ void MainWindow::OnStatsTimer()
     }
     if(net.unhandled || net.malformed)
         t += QString("\nNetwork  : ignored %1 unknown type, %2 malformed").arg(net.unhandled).arg(net.malformed);
-    m_lblStats->setText(t);
+    ui->txtLog->setPlainText(t);
 }
 
 void MainWindow::OnRateTimer()
@@ -618,3 +609,11 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
     return 1;
     */
 }
+
+
+void MainWindow::on_btnCopyLog_clicked()
+{
+    //
+    QGuiApplication::clipboard()->setText(ui->txtLog->toPlainText());
+}
+
