@@ -506,6 +506,34 @@ static std::string applyRoute(Env &env, jobject am, int wantId)
     return describe(outs[size_t(best)]);
 }
 
+// id of the current communication device (API 31+), 0 when unknown
+static int currentCommId(Env &env, jobject am)
+{
+    int id = 0;
+    if(jmethodID m = methodOf(env, am, "getCommunicationDevice", "()Landroid/media/AudioDeviceInfo;")){
+        Ref info(env.get(), env->CallObjectMethod(am, m));
+        Dev d;
+        if(info && !env.failed() && readDevice(env, info.get(), d))
+            id = d.id;
+        env.failed();
+    }
+    return id;
+}
+
+// the system keeps refusing our route (e.g. the headset's SCO link cannot come up): stop fighting after a few tries, or the
+// route is re-set every 2 s forever (audible as a loop of glitches). Reset by a new stream / a changed device list.
+static int g_failStreak = 0;
+static bool g_giveUp = false;
+static std::string g_deviceSignature;
+
+static std::string deviceSignature(Env &env, jobject am)
+{
+    std::string sig;
+    for(const CommItem &it : commItems(env, am))
+        sig += std::to_string(it.d.id) + ",";
+    return sig;
+}
+
 static void sleepMs(int ms)
 {
     struct timespec ts = {ms / 1000, long(ms % 1000) * 1000 * 1000};
@@ -535,6 +563,9 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
         callVoid(env, am.get(), "setMode", "(I)V", 3);              // MODE_IN_COMMUNICATION
     }
     ++g_heldStreams;
+    g_failStreak = 0;
+    g_giveUp = false;
+    g_deviceSignature.clear();
     *routeHeld = true;
     *voicePreset = true;                // voice-communication usage / input preset: the system routes them with the call
 
@@ -625,26 +656,45 @@ void ReassertRoute()
     if(mode == 1 || mode == 2 || mode == 4)
         return;                         // ringing / a real call / call screening: the phone app owns the audio, don't fight it
 
+    // a connected / removed device changes the situation: try again
+    if(sdkInt(env) >= 31){
+        const std::string sig = deviceSignature(env, am.get());
+        if(sig != g_deviceSignature){
+            g_deviceSignature = sig;
+            g_failStreak = 0;
+            g_giveUp = false;
+        }
+    }
+
     bool ok = (mode == 3);              // MODE_IN_COMMUNICATION: still the one we set
     if(ok && sdkInt(env) >= 31){
         std::vector<CommItem> items = commItems(env, am.get());
         const int want = pickIndex(items, g_wantId);
-        int current = -1;
-        if(jmethodID m = methodOf(env, am.get(), "getCommunicationDevice", "()Landroid/media/AudioDeviceInfo;")){
-            Ref info(env.get(), env->CallObjectMethod(am.get(), m));
-            Dev d;
-            if(info && !env.failed() && readDevice(env, info.get(), d))
-                current = d.id;
-            env.failed();
-        }
-        ok = want < 0 || items[size_t(want)].d.id == current;
+        ok = want < 0 || items[size_t(want)].d.id == currentCommId(env, am.get());
     }
-    if(ok)
+    if(ok){
+        g_failStreak = 0;
+        return;
+    }
+    if(g_giveUp)
         return;
     RAVAVA_WARN("android: the call route was changed by the system (%s), restoring it", DescribeRouteState().c_str());
     if(mode != 3)
         callVoid(env, am.get(), "setMode", "(I)V", 3);
     const std::string routed = applyRoute(env, am.get(), g_wantId);
+    if(sdkInt(env) >= 31){
+        std::vector<CommItem> items = commItems(env, am.get());
+        const int want = pickIndex(items, g_wantId);
+        if(want >= 0 && items[size_t(want)].d.id != currentCommId(env, am.get())){
+            if(++g_failStreak >= 3){
+                g_giveUp = true;
+                RAVAVA_WARN("android: the system does not accept route '%s' (%s), leaving the route to the system",
+                            routed.c_str(), DescribeRouteState().c_str());
+            }
+            return;
+        }
+    }
+    g_failStreak = 0;
     if(!routed.empty())
         RAVAVA_INFO("android: call route = %s", routed.c_str());
 }
