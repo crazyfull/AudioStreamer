@@ -42,6 +42,16 @@ next to `struct Stats`, is not allowed in C++).
 
 Real-time rule for everything the audio thread calls: no allocation, no lock shared with another thread, no I/O.
 
+## Android: the "call" model (like WhatsApp / Discord)
+
+While a stream is open the phone is in `MODE_IN_COMMUNICATION` and both streams are opened with the voice-communication
+usage / input preset and NO device id. The ONE communication device (speaker, earpiece, wired, USB, Bluetooth headset) is
+chosen with `AudioManager.setCommunicationDevice()` (API 31+) or `setSpeakerphoneOn` / `startBluetoothSco` (older). Android
+then routes speaker and microphone together. The speaker list is therefore the list of communication routes, "system default"
+means automatic (Bluetooth > wired > speaker). `ReassertRoute()` (1 s timer) puts the route back after a system change
+(USB cable, headset connecting) and leaves it alone while the phone app rings / is in a call. Limits: a Bluetooth microphone
+together with the phone speaker is impossible (one communication device), and call mode uses the call volume + voice DSP.
+
 ## Android: device list and Bluetooth handsfree (`platform/AndroidAudioRoute.*`)
 
 miniaudio's AAudio / OpenSL ES backends cannot list devices, and Android uses the phone's own microphone even while a
