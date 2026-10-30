@@ -18,6 +18,65 @@
 
 using namespace ravava;       // the audio library (src/ravava), incl. its network layer (ravava::Packet, ravava::PacketRouter)
 
+
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QJniEnvironment>
+#include <QCoreApplication>
+
+void startForegroundService()
+{
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        qDebug() << "ERROR: context invalid";
+        return;
+    }
+
+    QJniObject serviceClass = QJniObject::getStaticObjectField(
+        "org/qtproject/example/AudioForegroundService",
+        "class",
+        "Ljava/lang/Class;");
+
+    if (!serviceClass.isValid()) {
+        qDebug() << "ERROR: service class not found";
+        return;
+    }
+
+    QJniObject intent("android/content/Intent",
+                      "(Landroid/content/Context;Ljava/lang/Class;)V",
+                      context.object(),
+                      serviceClass.object());
+
+    if (!intent.isValid()) {
+        qDebug() << "ERROR: Intent invalid";
+        return;
+    }
+
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 26) {
+        context.callObjectMethod("startForegroundService",
+                                 "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+                                 intent.object());
+        qDebug() << "startForegroundService called";
+    } else {
+        context.callObjectMethod("startService",
+                                 "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+                                 intent.object());
+        qDebug() << "startService called";
+    }
+}
+
+void stopForegroundService() {
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    if (!activity.isValid()) return;
+
+    QJniObject intent("android/content/Intent", "(Landroid/content/Context;Ljava/lang/Class;)V",
+                      activity.object(),
+                      QJniObject::getStaticObjectField("org/qtproject/example/AudioForegroundService",
+                                                       "class", "Ljava/lang/Class;").object());
+    activity.callMethod<jboolean>("stopService", "(Landroid/content/Intent;)Z", intent.object());
+}
+#endif
+
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
@@ -291,6 +350,8 @@ void MainWindow::on_outputDevice_comboBox_currentIndexChanged(int)
 
 void MainWindow::on_btnStartRecording_clicked()
 {
+    startForegroundService();
+
     refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
     m_statHistory.clear();      // new player = new counters
@@ -301,6 +362,8 @@ void MainWindow::on_btnStartRecording_clicked()
 
 void MainWindow::on_btnStopRecording_clicked()
 {
+    stopForegroundService();
+
     if(m_pAudioRecorder)
         m_pAudioRecorder->Stop();
     //m_PlayerTimer.stop();
