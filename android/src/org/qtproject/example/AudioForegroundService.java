@@ -3,6 +3,7 @@ package org.qtproject.example;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
@@ -20,6 +21,17 @@ public class AudioForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Intent برای باز کردن Activity اصلی وقتی روی نوتیفیکیشن کلیک می‌شه
+        Intent notificationIntent = new Intent(this, org.qtproject.qt.android.bindings.QtActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                notificationIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             builder = new Notification.Builder(this, CHANNEL_ID);
@@ -31,11 +43,12 @@ public class AudioForegroundService extends Service {
                 .setContentTitle("AudioStreamer")
                 .setContentText("در حال پخش صدا...")
                 .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build();
 
         startForeground(NOTIFICATION_ID, notification);
-        return START_STICKY | START_FLAG_REDELIVERY;
+        return START_STICKY;
     }
 
     @Override
