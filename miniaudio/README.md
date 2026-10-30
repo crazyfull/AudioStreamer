@@ -5,3 +5,6 @@ contribution in the main file.
 
 This is not always up to date with the most recent commit in the dev branch, but will usually be up to date with the
 master branch.
+
+LOCAL PATCH (marked "RAVAVA PATCH" in miniaudio.c): ma_device_reinit__aaudio() keeps the device that was chosen explicitly when
+Android re-routes a stream (the original re-opened the default device). Re-apply it when this file is updated.

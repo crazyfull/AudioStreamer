@@ -28401,11 +28401,18 @@ static ma_result ma_device_reinit__aaudio(ma_device* pDevice, ma_device_type dev
         ma_device_descriptor descriptorCapture;
 
         deviceConfig = ma_device_config_init(deviceType);
-        deviceConfig.playback.pDeviceID             = NULL; /* Only doing rerouting with default devices. */
+        /*
+        RAVAVA PATCH: the original code always re-opened the DEFAULT device here, so a device that the application chose
+        explicitly (earpiece, phone speaker, USB...) was silently replaced by the system default (e.g. a Bluetooth
+        headset) at the first route change (a notification sound, a plugged-in USB cable). The first attempt now keeps the
+        chosen device (pID is NULL for "default", so nothing changes for default devices); only if that fails the
+        remaining attempts fall back to the default device.
+        */
+        deviceConfig.playback.pDeviceID             = (iAttempt == 1) ? pDevice->playback.pID : NULL;
         deviceConfig.playback.shareMode             = pDevice->playback.shareMode;
         deviceConfig.playback.format                = pDevice->playback.format;
         deviceConfig.playback.channels              = pDevice->playback.channels;
-        deviceConfig.capture.pDeviceID              = NULL; /* Only doing rerouting with default devices. */
+        deviceConfig.capture.pDeviceID              = (iAttempt == 1) ? pDevice->capture.pID : NULL;
         deviceConfig.capture.shareMode              = pDevice->capture.shareMode;
         deviceConfig.capture.format                 = pDevice->capture.format;
         deviceConfig.capture.channels               = pDevice->capture.channels;
