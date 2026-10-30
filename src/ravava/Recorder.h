@@ -47,6 +47,9 @@ private:
 
     std::string m_deviceChoice;       // the device id the user chose (GUI thread)
     int64_t m_lastKeepMs = 0;         // GUI thread: when KeepDevice() last re-opened the device
+    int m_keepIntervalMs = 3000;      // GUI thread
+    std::atomic<bool> m_switching{false};   // the device worker is busy
+    std::atomic<int> m_failedOpens{0};      // consecutive failed (re)opens of the microphone
     std::atomic<bool> m_deviceWanted{false};  // recording is on (set by Start, cleared by Stop): SetInputDevice() re-opens the mic
     DeviceSwitcher m_switcher;        // moves the microphone to another device off the GUI thread
     AudioInput m_input;               // declared last: destroyed first
@@ -77,13 +80,17 @@ public:
     // opened the default one is used, if that fails too recording stays silent (logged). Not recording: just remembered,
     // Start() uses the config. GUI thread only. Returns false only if there is no config.
     bool SetInputDevice(const std::string &deviceId);
-    // Call about once a second from the GUI thread: if the system moved the stream to another device than the chosen one
-    // (Android: a Bluetooth connection...) the chosen device is re-opened. At most once per 3 s.
+    // Call about once a second from the GUI thread. It repairs the microphone: if the system moved the stream to another
+    // device than the chosen one (Android: a Bluetooth connection...), or the microphone stopped (a re-open failed, a phone
+    // call took the device) the chosen device is opened again. At most once per 3 s; after two failed attempts in a row it
+    // falls back to the system default device (the choice in the UI is not touched).
     void KeepDevice();
+    void SetKeepIntervalMs(int ms) { m_keepIntervalMs = ms; }       // (tests)
     // the microphone that is REALLY in use (see AudioInput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveInputDevice() const { return m_input.ActiveDevice(); }
 private:
     bool startDevice();
+    void requestOpen(const std::string &deviceId);   // re-opens the microphone on the device worker
 };
 
 } // namespace ravava

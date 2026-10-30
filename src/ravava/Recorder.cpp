@@ -103,26 +103,46 @@ bool Recorder::SetInputDevice(const std::string &deviceId)
         m_input.SetDevice(deviceId);    // not recording: Start() opens it
         return true;
     }
+    requestOpen(deviceId);
+    return true;
+}
+
+void Recorder::requestOpen(const std::string &deviceId)
+{
     m_switcher.Request(deviceId, [this](const std::string &id){
+        m_switching = true;
         m_input.Stop();                 // returns when the capture callback is guaranteed to be finished
         m_cache.clear();                // the part of a frame captured from the old device is dropped
         m_marker = true;                // the next packet follows a gap: the receiver re-syncs its buffer
         m_input.SetDevice(id);
-        startDevice();                  // failure is logged
+        const bool ok = startDevice();  // failure is logged
+        m_failedOpens = ok ? 0 : m_failedOpens + 1;
+        m_switching = false;
     });
-    return true;
 }
 
 void Recorder::KeepDevice()
 {
-    if(!m_deviceWanted || !m_input.DeviceMoved())
+    if(!m_deviceWanted || m_switching)
         return;
+    const bool running = m_input.IsRunning();
+    if(running && !m_input.DeviceMoved())
+        return;                         // all is well
     const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    if(now - m_lastKeepMs < 3000)
-        return;                         // not in a loop: at most one re-open per 3 s
+    if(now - m_lastKeepMs < m_keepIntervalMs)
+        return;                         // not in a loop: at most one re-open per interval
     m_lastKeepMs = now;
-    RAVAVA_WARN("recorder: re-opening the chosen microphone");
-    SetInputDevice(m_deviceChoice);
+
+    std::string id = m_deviceChoice;
+    if(!running && m_failedOpens >= 2){
+        id.clear();
+        RAVAVA_WARN("recorder: the chosen microphone can't be opened, using the system default");
+    }else if(!running){
+        RAVAVA_WARN("recorder: the microphone is not running, opening it again");
+    }else{
+        RAVAVA_WARN("recorder: re-opening the chosen microphone");
+    }
+    requestOpen(id);
 }
 
 void Recorder::Stop()

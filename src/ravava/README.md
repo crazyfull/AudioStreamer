@@ -76,3 +76,8 @@ another device without telling (a notification sound, a Bluetooth headset connec
 notes which device the stream is really on (`AAudioStream_getDeviceId`); when it differs from the one that was opened for two
 polls in a row, the chosen device is re-opened (at most once per 3 s) and the route state (audio mode, SCO, communication
 device) is written to logcat (`adb logcat -s ravava`, "the system moved the stream").
+
+Recovery (`KeepDevice()` also covers these): a stopped speaker / microphone (a re-open failed, a phone call or a USB cable took
+the device) is opened again every 3 s; after two failed attempts the system default device is used (the choice in the UI is not
+touched). While a Bluetooth route is held, `ReassertRoute()` puts the phone back into MODE_IN_COMMUNICATION with the headset as
+communication device when the system reset it (calls, USB); it never touches the audio while the phone rings or is in a call.

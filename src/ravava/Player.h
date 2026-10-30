@@ -70,6 +70,9 @@ class Player
 
     std::string m_deviceChoice;             // the device id the user chose (GUI thread)
     int64_t m_lastKeepMs = 0;               // GUI thread: when KeepDevice() last re-opened the device
+    int m_keepIntervalMs = 3000;            // GUI thread
+    std::atomic<bool> m_switching{false};   // the device worker is busy
+    std::atomic<int> m_failedOpens{0};      // consecutive failed (re)opens of the speaker
     std::atomic<bool> m_deviceWanted;       // the speaker should be running (SetOutputDevice() then re-opens it)
     DeviceSwitcher m_switcher;              // moves the speaker to another device off the GUI thread
     AudioOutput m_output;                   // declared last: destroyed first
@@ -82,6 +85,7 @@ class Player
     void reapRetired();
     void init();                            // called by SetConfig()
     bool startDevice();                     // opens the speaker with the current m_output device choice
+    void requestOpen(const std::string &deviceId);   // re-opens the speaker on the device worker
     void publishStats();
 
 public:
@@ -95,9 +99,12 @@ public:
     // player stays silent (logged). Not running yet: just remembered for the first start. Returns false only if the
     // player has no config. GUI thread.
     bool SetOutputDevice(const std::string &deviceId);
-    // Call about once a second from the GUI thread: if the system moved the stream to another device than the chosen one
-    // (Android: a notification sound, a Bluetooth connection...) the chosen device is re-opened. At most once per 3 s.
+    // Call about once a second from the GUI thread. It repairs the speaker: if the system moved the stream to another
+    // device than the chosen one (Android: a notification sound, a Bluetooth connection...), or the speaker stopped (a re-open
+    // failed, a phone call took the device) the chosen device is opened again. At most once per 3 s; after two failed
+    // attempts in a row it falls back to the system default device (the choice in the UI is not touched).
     void KeepDevice();
+    void SetKeepIntervalMs(int ms) { m_keepIntervalMs = ms; }       // (tests)
     // the speaker that is REALLY in use (see AudioOutput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveOutputDevice() const { return m_output.ActiveDevice(); }
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).

@@ -324,6 +324,7 @@ static std::mutex g_routeMutex;
 static int g_heldStreams = 0;           // open streams that hold the communication route
 static int g_btSource = 0;              // ids of the headset's microphone / speaker (0 = unknown), valid while the route is held
 static int g_btSink = 0;
+static int g_wantBtId = 0;              // the headset id the user picked ("btsco:<n>")
 
 static bool hasPrefix(const std::string &s, const char *p) { return s.compare(0, std::strlen(p), p) == 0; }
 
@@ -417,7 +418,8 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     if(wantsBt){
         if(g_heldStreams == 0){
             g_btSource = g_btSink = 0;
-            requestBluetoothRoute(env, am.get(), std::atoi(deviceId.c_str() + 6));
+            g_wantBtId = std::atoi(deviceId.c_str() + 6);
+            requestBluetoothRoute(env, am.get(), g_wantBtId);
         }
         ++g_heldStreams;
         *routeHeld = true;
@@ -467,6 +469,46 @@ void ReleaseStream(bool routeHeld)
     if(jmethodID setMode = methodOf(env, am.get(), "setMode", "(I)V"))
         env->CallVoidMethod(am.get(), setMode, jint(0));        // MODE_NORMAL
     env.failed();
+}
+
+void ReassertRoute()
+{
+    static int64_t lastMs = 0;
+    std::unique_lock<std::mutex> lk(g_routeMutex, std::try_to_lock);    // the device worker may be inside PrepareStream: don't wait for it
+    if(!lk.owns_lock() || g_heldStreams == 0)
+        return;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    const int64_t now = int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+    if(now - lastMs < 2000)
+        return;
+    lastMs = now;
+
+    Env env;
+    if(!env) return;
+    Ref am = audioManager(env);
+    if(!am) return;
+    jmethodID getMode = methodOf(env, am.get(), "getMode", "()I");
+    if(!getMode) return;
+    const int mode = env->CallIntMethod(am.get(), getMode);
+    if(env.failed()) return;
+    if(mode == 1 || mode == 2 || mode == 4)
+        return;                         // ringing / a real call / call screening: the phone app owns the audio, don't fight it
+
+    bool ok = (mode == 3);              // MODE_IN_COMMUNICATION: still the one we set
+    if(ok && sdkInt(env) >= 31){
+        ok = false;
+        if(jmethodID m = methodOf(env, am.get(), "getCommunicationDevice", "()Landroid/media/AudioDeviceInfo;")){
+            Ref info(env.get(), env->CallObjectMethod(am.get(), m));
+            Dev d;
+            ok = info && !env.failed() && readDevice(env, info.get(), d) && isHandsfree(d.type);
+        }
+        env.failed();
+    }
+    if(ok)
+        return;
+    RAVAVA_WARN("android: the Bluetooth route was reset by the system (%s), restoring it", DescribeRouteState().c_str());
+    requestBluetoothRoute(env, am.get(), g_wantBtId);
 }
 
 std::string DescribeRouteState()

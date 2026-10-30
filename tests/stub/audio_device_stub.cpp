@@ -13,13 +13,14 @@ void (*g_stubSpeakerTap)(const int16_t *pcm, uint32_t frames, int channels) = nu
 std::string g_stubInputDevice, g_stubOutputDevice;
 static std::mutex g_stubDeviceMutex;        // SetDevice() runs on the device-switch worker thread, the test reads from its own
 std::atomic<int> g_stubInputStarts{0}, g_stubOutputStarts{0};         // how many times the device was opened
+std::atomic<int> g_stubInputFailStarts{0}, g_stubOutputFailStarts{0};  // test switch: the next N Start() calls fail
 std::atomic<bool> g_stubInputMoved{false}, g_stubOutputMoved{false};  // test switch: "the system moved the stream"
 std::string StubInputDevice()  { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubInputDevice; }
 std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubOutputDevice; }
 
 namespace ravava {
 
-struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
+struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; std::atomic<bool> running{false}; };
 AudioInput::AudioInput() : d(new Impl) {}
 void AudioInput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubInputDevice = id; }
 std::vector<AudioDeviceInfo> ListInputDevices()  { return { {"Stub mic", "aa", true}, {"Stub mic 2", "bb", false} }; }
@@ -27,7 +28,8 @@ std::vector<AudioDeviceInfo> ListOutputDevices() { return { {"Stub speaker", "cc
 AudioInput::~AudioInput(){ Stop(); }
 bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*){
     g_stubInputStarts++;
-    Stop(); d->run = true; d->running = true;
+    Stop();
+    if(g_stubInputFailStarts > 0){ g_stubInputFailStarts--; return false; } d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch); double ph=0; 
         auto next = std::chrono::steady_clock::now();
@@ -42,13 +44,14 @@ bool AudioInput::DeviceMoved() { return g_stubInputMoved.exchange(false); }
 std::string AudioInput::ActiveDevice() const { return "Stub mic"; }
 bool AudioInput::IsRunning() const { return d->running; }
 
-struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; bool running=false; };
+struct AudioOutput::Impl { std::thread t; std::atomic<bool> run{false}; std::atomic<bool> running{false}; };
 AudioOutput::AudioOutput() : d(new Impl) {}
 void AudioOutput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubOutputDevice = id; }
 AudioOutput::~AudioOutput(){ Stop(); }
 bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
     g_stubOutputStarts++;
-    Stop(); d->run = true; d->running = true;
+    Stop();
+    if(g_stubOutputFailStarts > 0){ g_stubOutputFailStarts--; return false; } d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch);
         auto next = std::chrono::steady_clock::now();
