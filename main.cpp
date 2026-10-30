@@ -1,3 +1,4 @@
+
 #include "mainwindow.h"
 
 #include <QApplication>
@@ -8,6 +9,10 @@
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_ANDROID
+    qputenv("QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED", "0");
+#endif
+
     QApplication a(argc, argv);
 #ifdef Q_OS_ANDROID
     InitAndroidAudio();         // before MainWindow: its constructor lists the sound devices
