@@ -1,6 +1,7 @@
 #include "Recorder.h"
 #include "VoicePacket.h"
 #include <algorithm>
+#include <chrono>
 
 namespace ravava {
 
@@ -80,6 +81,7 @@ void Recorder::Start()
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     m_input.SetDevice(m_pConfig->inputDeviceId);
+    m_deviceChoice = m_pConfig->inputDeviceId;
     m_deviceWanted = true;
     startDevice();
 }
@@ -96,6 +98,7 @@ bool Recorder::startDevice()
 // GUI thread. Only the microphone device is replaced: sequence numbers, the encoder and the echo canceller continue.
 bool Recorder::SetInputDevice(const std::string &deviceId)
 {
+    m_deviceChoice = deviceId;
     if(!m_deviceWanted){
         m_input.SetDevice(deviceId);    // not recording: Start() opens it
         return true;
@@ -108,6 +111,18 @@ bool Recorder::SetInputDevice(const std::string &deviceId)
         startDevice();                  // failure is logged
     });
     return true;
+}
+
+void Recorder::KeepDevice()
+{
+    if(!m_deviceWanted || !m_input.DeviceMoved())
+        return;
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if(now - m_lastKeepMs < 3000)
+        return;                         // not in a loop: at most one re-open per 3 s
+    m_lastKeepMs = now;
+    RAVAVA_WARN("recorder: re-opening the chosen microphone");
+    SetInputDevice(m_deviceChoice);
 }
 
 void Recorder::Stop()

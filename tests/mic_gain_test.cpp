@@ -29,6 +29,8 @@ static double takeRms(int *maxStep = nullptr)
     return r;
 }
 
+extern std::atomic<int> g_stubInputStarts;     // how many times the fake microphone was opened
+extern std::atomic<bool> g_stubInputMoved;     // test switch: "the system moved the stream to another device"
 std::string StubInputDevice();      // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
 int main()
@@ -77,6 +79,14 @@ int main()
         std::printf("  live device switch: level %.0f -> %.0f, markers %d -> %d\n", unity, after, before, int(g_markers));
         CHECK(after > unity * 0.7 && after < unity * 1.3);
         CHECK(g_markers == before + 1);
+
+        // the system moves the stream to another device: KeepDevice() re-opens the chosen one
+        const int opened0 = g_stubInputStarts;
+        g_stubInputMoved = true; rec.KeepDevice();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        CHECK(g_stubInputStarts == opened0 + 1);
+        CHECK(StubInputDevice() == "aa");
+        takeRms();
     }
     std::printf("  100 -> rms %.0f (tone amplitude 8000 -> %.0f expected)\n", unity, 8000 / std::sqrt(2.0));
     CHECK(unity > 5000 && unity < 6300);

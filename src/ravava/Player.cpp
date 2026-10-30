@@ -2,6 +2,7 @@
 #include "OpusCodec.h"
 #include "VoicePacket.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace ravava {
@@ -100,6 +101,7 @@ void Player::init()
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
     m_output.SetDevice(m_pConfig->outputDeviceId);
+    m_deviceChoice = m_pConfig->outputDeviceId;
     m_deviceWanted = true;
     if(startDevice()){
         m_ready = true;
@@ -119,6 +121,7 @@ bool Player::startDevice()
 // GUI thread. Only the sound device is replaced; the streams, jitter buffer and counters stay as they are.
 bool Player::SetOutputDevice(const std::string &deviceId)
 {
+    m_deviceChoice = deviceId;
     if(!m_deviceWanted){
         m_output.SetDevice(deviceId);   // not started yet: the next init() opens it
         return true;
@@ -130,6 +133,18 @@ bool Player::SetOutputDevice(const std::string &deviceId)
         startDevice();                  // packets that arrive meanwhile wait in the queue; failure is logged
     });
     return true;
+}
+
+void Player::KeepDevice()
+{
+    if(!m_deviceWanted || !m_output.DeviceMoved())
+        return;
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if(now - m_lastKeepMs < 3000)
+        return;                         // not in a loop: at most one re-open per 3 s
+    m_lastKeepMs = now;
+    RAVAVA_WARN("player: re-opening the chosen speaker");
+    SetOutputDevice(m_deviceChoice);
 }
 
 // Runs on the audio thread, exactly when the device needs data.
