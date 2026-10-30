@@ -43,7 +43,8 @@ static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
 extern std::atomic<int> g_stubOutputStarts;    // how many times the fake speaker was opened
-extern std::atomic<bool> g_stubOutputMoved;    // test switch: "the system moved the stream to another device"
+extern std::atomic<bool> g_stubOutputMoved;
+extern std::atomic<int> g_stubOutputFailStarts;   // test switch: the next N Start() calls fail    // test switch: "the system moved the stream to another device"
 std::string StubOutputDevice();     // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
 int main()
@@ -106,6 +107,26 @@ int main()
         g_stubOutputMoved = true; play.KeepDevice();        // again at once: rate limited
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         CHECK(g_stubOutputStarts == opened0 + 1);
+
+        // a re-open fails (a phone call took the device): KeepDevice() tries again, after two failures it uses the default
+        play.SetKeepIntervalMs(100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        g_stubOutputFailStarts = 2;
+        const int o1 = g_stubOutputStarts;
+        play.SetOutputDevice("dd");                         // the open fails (1st failure)
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        play.KeepDevice();                                  // not running -> tries "dd" again, fails (2nd failure)
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(StubOutputDevice() == "dd");
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        play.KeepDevice();                                  // two failures: falls back to the system default ("")
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(StubOutputDevice() == "");
+        CHECK(g_stubOutputStarts == o1 + 3);
+        play.KeepDevice();                                  // running again: nothing more happens
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(g_stubOutputStarts == o1 + 3);
+        sendMs(300); rms(); sendMs(300); CHECK(rms() > 1000);      // and it plays again
     }
 
     play.SetVolume(50); sendMs(300); rms();             // let the ramp finish

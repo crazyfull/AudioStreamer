@@ -126,25 +126,45 @@ bool Player::SetOutputDevice(const std::string &deviceId)
         m_output.SetDevice(deviceId);   // not started yet: the next init() opens it
         return true;
     }
+    requestOpen(deviceId);
+    return true;
+}
+
+void Player::requestOpen(const std::string &deviceId)
+{
     m_switcher.Request(deviceId, [this](const std::string &id){
+        m_switching = true;
         m_output.Stop();                // returns when the audio callback is guaranteed to be finished
         m_output.SetDevice(id);
         m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
-        startDevice();                  // packets that arrive meanwhile wait in the queue; failure is logged
+        const bool ok = startDevice();  // packets that arrive meanwhile wait in the queue; failure is logged
+        m_failedOpens = ok ? 0 : m_failedOpens + 1;
+        m_switching = false;
     });
-    return true;
 }
 
 void Player::KeepDevice()
 {
-    if(!m_deviceWanted || !m_output.DeviceMoved())
+    if(!m_deviceWanted || m_switching)
         return;
+    const bool running = m_output.IsRunning();
+    if(running && !m_output.DeviceMoved())
+        return;                         // all is well
     const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    if(now - m_lastKeepMs < 3000)
-        return;                         // not in a loop: at most one re-open per 3 s
+    if(now - m_lastKeepMs < m_keepIntervalMs)
+        return;                         // not in a loop: at most one re-open per interval
     m_lastKeepMs = now;
-    RAVAVA_WARN("player: re-opening the chosen speaker");
-    SetOutputDevice(m_deviceChoice);
+
+    std::string id = m_deviceChoice;
+    if(!running && m_failedOpens >= 2){
+        id.clear();
+        RAVAVA_WARN("player: the chosen speaker can't be opened, using the system default");
+    }else if(!running){
+        RAVAVA_WARN("player: the speaker is not running, opening it again");
+    }else{
+        RAVAVA_WARN("player: re-opening the chosen speaker");
+    }
+    requestOpen(id);
 }
 
 // Runs on the audio thread, exactly when the device needs data.

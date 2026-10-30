@@ -16,6 +16,7 @@
 #include "platform/AndroidAudioRoute.h"
 #endif
 #include <atomic>
+#include <mutex>
 #include <cstring>
 #include <cstdio>
 
@@ -105,8 +106,9 @@ struct AudioInput::Impl
 {
     ma_device dev;
     bool opened = false;
-    bool running = false;
+    std::atomic<bool> running{false};
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
+    mutable std::mutex nameMutex;   // activeName is written by the device-switch worker, read by the GUI
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
     std::atomic<int> wantedId{0};   // Android: AudioDeviceInfo id the stream was opened on (0 = system default / unknown)
     std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
@@ -196,6 +198,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     d->cbCount = 0;
     {
         char nm[256] = {0};
+        std::lock_guard<std::mutex> lk(d->nameMutex);
         d->activeName = ma_device_get_name(&d->dev, ma_device_type_capture, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
     }
 
@@ -233,6 +236,7 @@ std::string AudioInput::ActiveDevice() const
     std::string name = id > 0 ? android::DescribeDeviceId(id, true) : std::string();
     return name.empty() ? android::DescribeActiveDevice(true) : name;
 #else
+    std::lock_guard<std::mutex> lk(d->nameMutex);
     return d->running ? d->activeName : std::string();
 #endif
 }
@@ -240,6 +244,8 @@ std::string AudioInput::ActiveDevice() const
 bool AudioInput::DeviceMoved()
 {
 #ifdef RAVAVA_ANDROID
+    if(d->voiceRoute)
+        android::ReassertRoute();      // the system resets the Bluetooth route on calls / USB: put it back
     if(!d->running)
         return false;
     const int want = d->wantedId.load(), act = d->activeId.load();
@@ -267,9 +273,10 @@ struct AudioOutput::Impl
 {
     ma_device dev;
     bool opened = false;
-    bool running = false;
+    std::atomic<bool> running{false};
     int channels = 1;
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
+    mutable std::mutex nameMutex;   // activeName is written by the device-switch worker, read by the GUI
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
     std::atomic<int> wantedId{0};   // Android: AudioDeviceInfo id the stream was opened on (0 = system default / unknown)
     std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
@@ -360,6 +367,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     d->cbCount = 0;
     {
         char nm[256] = {0};
+        std::lock_guard<std::mutex> lk(d->nameMutex);
         d->activeName = ma_device_get_name(&d->dev, ma_device_type_playback, nm, sizeof(nm), nullptr) == MA_SUCCESS ? nm : "";
     }
 
@@ -397,6 +405,7 @@ std::string AudioOutput::ActiveDevice() const
     std::string name = id > 0 ? android::DescribeDeviceId(id, false) : std::string();
     return name.empty() ? android::DescribeActiveDevice(false) : name;
 #else
+    std::lock_guard<std::mutex> lk(d->nameMutex);
     return d->running ? d->activeName : std::string();
 #endif
 }
@@ -404,6 +413,8 @@ std::string AudioOutput::ActiveDevice() const
 bool AudioOutput::DeviceMoved()
 {
 #ifdef RAVAVA_ANDROID
+    if(d->voiceRoute)
+        android::ReassertRoute();      // the system resets the Bluetooth route on calls / USB: put it back
     if(!d->running)
         return false;
     const int want = d->wantedId.load(), act = d->activeId.load();

@@ -30,6 +30,7 @@ static double takeRms(int *maxStep = nullptr)
 }
 
 extern std::atomic<int> g_stubInputStarts;     // how many times the fake microphone was opened
+extern std::atomic<int> g_stubInputFailStarts;     // test switch: the next N Start() calls fail
 extern std::atomic<bool> g_stubInputMoved;     // test switch: "the system moved the stream to another device"
 std::string StubInputDevice();      // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
@@ -87,6 +88,20 @@ int main()
         CHECK(g_stubInputStarts == opened0 + 1);
         CHECK(StubInputDevice() == "aa");
         takeRms();
+
+        // a re-open fails (a phone call took the device): the microphone is silent until KeepDevice() opens it again
+        rec.SetKeepIntervalMs(100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        g_stubInputFailStarts = 1;
+        rec.SetInputDevice("bb");
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        takeRms();
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(takeRms() == 0);                              // really silent: no packets
+        rec.KeepDevice();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        CHECK(takeRms() > unity * 0.7);                     // recording again
+        CHECK(StubInputDevice() == "bb");
     }
     std::printf("  100 -> rms %.0f (tone amplitude 8000 -> %.0f expected)\n", unity, 8000 / std::sqrt(2.0));
     CHECK(unity > 5000 && unity < 6300);

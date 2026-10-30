@@ -54,6 +54,11 @@ int StreamDeviceId(void *aaudioStream);
 // Name of the device with that AudioDeviceInfo id (microphone or speaker side), "" if it is gone. JNI: not the audio thread.
 std::string DescribeDeviceId(int deviceId, bool capture);
 
+// Puts the phone back into the communication state of the Bluetooth route that is held (mode IN_COMMUNICATION + the headset as
+// communication device). The system resets it by itself on a phone call / ringtone, plugging in a USB cable... and then moves
+// the speaker to the earpiece and silences the headset. No-op while no Bluetooth route is held. Never waits.
+void ReassertRoute();
+
 // One line for the log: audio mode, Bluetooth SCO state, communication device. JNI: not the audio thread.
 std::string DescribeRouteState();
 
