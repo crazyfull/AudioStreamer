@@ -459,18 +459,29 @@ static void setScoOn(Env &env, jobject am, bool on)
 }
 
 // Selects the communication device. Returns a name for the log ("" = nothing could be selected).
-static std::string applyRoute(Env &env, jobject am, int wantId)
+// attempt 0: plain setCommunicationDevice. 1: clear it first. 2+: also start the classic SCO link for a Bluetooth headset (what
+// call apps do); the system sometimes refuses the new API alone after a call.
+static std::string applyRoute(Env &env, jobject am, int wantId, int attempt = 0)
 {
     if(sdkInt(env) >= 31){
         std::vector<CommItem> items = commItems(env, am);
         const int i = pickIndex(items, wantId);
         if(i < 0)
             return std::string();
+        if(attempt >= 1)
+            callVoid(env, am, "clearCommunicationDevice");
+        if(attempt >= 2 && kindOf(items[size_t(i)].d.type) == KindBluetooth){
+            setSpeakerphone(env, am, false);
+            callVoid(env, am, "startBluetoothSco");
+            setScoOn(env, am, true);
+        }
         jmethodID set = methodOf(env, am, "setCommunicationDevice", "(Landroid/media/AudioDeviceInfo;)Z");
         if(!set)
             return std::string();
         const bool ok = env->CallBooleanMethod(am, set, items[size_t(i)].obj.get()) != JNI_FALSE;
         env.failed();
+        if(!ok)
+            RAVAVA_WARN("android: setCommunicationDevice(%s) was refused (attempt %d)", describe(items[size_t(i)].d).c_str(), attempt);
         return ok ? describe(items[size_t(i)].d) : std::string();
     }
 
@@ -678,23 +689,17 @@ void ReassertRoute()
     }
     if(g_giveUp)
         return;
-    RAVAVA_WARN("android: the call route was changed by the system (%s), restoring it", DescribeRouteState().c_str());
+    if(g_failStreak >= 4){
+        g_giveUp = true;
+        RAVAVA_WARN("android: the system does not accept the call route (%s), leaving the route to the system",
+                    DescribeRouteState().c_str());
+        return;
+    }
+    RAVAVA_WARN("android: the call route was changed by the system (%s), restoring it (attempt %d)",
+                DescribeRouteState().c_str(), g_failStreak);
     if(mode != 3)
         callVoid(env, am.get(), "setMode", "(I)V", 3);
-    const std::string routed = applyRoute(env, am.get(), g_wantId);
-    if(sdkInt(env) >= 31){
-        std::vector<CommItem> items = commItems(env, am.get());
-        const int want = pickIndex(items, g_wantId);
-        if(want >= 0 && items[size_t(want)].d.id != currentCommId(env, am.get())){
-            if(++g_failStreak >= 3){
-                g_giveUp = true;
-                RAVAVA_WARN("android: the system does not accept route '%s' (%s), leaving the route to the system",
-                            routed.c_str(), DescribeRouteState().c_str());
-            }
-            return;
-        }
-    }
-    g_failStreak = 0;
+    const std::string routed = applyRoute(env, am.get(), g_wantId, g_failStreak++);
     if(!routed.empty())
         RAVAVA_INFO("android: call route = %s", routed.c_str());
 }
