@@ -12,6 +12,8 @@ void (*g_stubSpeakerTap)(const int16_t *pcm, uint32_t frames, int channels) = nu
 // the device id the last Start() was asked for (tests check that the config reaches the device layer)
 std::string g_stubInputDevice, g_stubOutputDevice;
 static std::mutex g_stubDeviceMutex;        // SetDevice() runs on the device-switch worker thread, the test reads from its own
+std::atomic<int> g_stubInputStarts{0}, g_stubOutputStarts{0};         // how many times the device was opened
+std::atomic<bool> g_stubInputMoved{false}, g_stubOutputMoved{false};  // test switch: "the system moved the stream"
 std::string StubInputDevice()  { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubInputDevice; }
 std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubOutputDevice; }
 
@@ -24,6 +26,7 @@ std::vector<AudioDeviceInfo> ListInputDevices()  { return { {"Stub mic", "aa", t
 std::vector<AudioDeviceInfo> ListOutputDevices() { return { {"Stub speaker", "cc", true}, {"Stub speaker 2", "dd", false} }; }
 AudioInput::~AudioInput(){ Stop(); }
 bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*){
+    g_stubInputStarts++;
     Stop(); d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch); double ph=0; 
@@ -35,6 +38,7 @@ bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*){
         }});
     return true; }
 void AudioInput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+bool AudioInput::DeviceMoved() { return g_stubInputMoved.exchange(false); }
 std::string AudioInput::ActiveDevice() const { return "Stub mic"; }
 bool AudioInput::IsRunning() const { return d->running; }
 
@@ -43,6 +47,7 @@ AudioOutput::AudioOutput() : d(new Impl) {}
 void AudioOutput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubOutputDevice = id; }
 AudioOutput::~AudioOutput(){ Stop(); }
 bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
+    g_stubOutputStarts++;
     Stop(); d->run = true; d->running = true;
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch);
@@ -50,6 +55,7 @@ bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
         while(d->run){ cb(buf.data(), frames); if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
     return true; }
 void AudioOutput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
+bool AudioOutput::DeviceMoved() { return g_stubOutputMoved.exchange(false); }
 std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 Pcm DecodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }

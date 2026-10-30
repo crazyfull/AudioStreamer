@@ -469,6 +469,33 @@ void ReleaseStream(bool routeHeld)
     env.failed();
 }
 
+std::string DescribeRouteState()
+{
+    Env env;
+    if(!env) return "(no JNI)";
+    Ref am = audioManager(env);
+    if(!am) return "(no AudioManager)";
+    std::string out;
+    if(jmethodID m = methodOf(env, am.get(), "getMode", "()I")){
+        static const char *modes[] = {"NORMAL", "RINGTONE", "IN_CALL", "IN_COMMUNICATION", "CALL_SCREENING"};
+        const int v = env->CallIntMethod(am.get(), m);
+        out += std::string("mode=") + ((v >= 0 && v < 5) ? modes[v] : std::to_string(v).c_str());
+    }
+    env.failed();
+    if(jmethodID m = methodOf(env, am.get(), "isBluetoothScoOn", "()Z"))
+        out += env->CallBooleanMethod(am.get(), m) ? " scoOn" : " scoOff";
+    env.failed();
+    if(sdkInt(env) >= 31)
+        if(jmethodID m = methodOf(env, am.get(), "getCommunicationDevice", "()Landroid/media/AudioDeviceInfo;")){
+            Ref info(env.get(), env->CallObjectMethod(am.get(), m));
+            Dev d;
+            if(info && !env.failed() && readDevice(env, info.get(), d))
+                out += " commDevice=" + describe(d);
+        }
+    env.failed();
+    return out;
+}
+
 int StreamDeviceId(void *aaudioStream)
 {
     using GetDeviceId = int32_t (*)(void *);

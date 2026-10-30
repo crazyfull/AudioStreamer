@@ -47,6 +47,10 @@ public:
     // what AudioManager reports (it can differ from the choice, e.g. when the phone's microphone is used although a
     // Bluetooth headset was selected). May call into Java: GUI thread, not the audio thread.
     std::string ActiveDevice() const;
+    // Android: the system moved the stream to another device than the one that was asked for (a notification sound, a
+    // Bluetooth connection...) and it stayed there for two calls in a row. Call it about once a second from the GUI
+    // thread; the owner then re-opens the chosen device. Always false elsewhere. Logs the route state when it is true.
+    bool DeviceMoved();
 
 private:
     struct Impl;
@@ -76,6 +80,10 @@ public:
     // what AudioManager reports (it can differ from the choice, e.g. when the phone's microphone is used although a
     // Bluetooth headset was selected). May call into Java: GUI thread, not the audio thread.
     std::string ActiveDevice() const;
+    // Android: the system moved the stream to another device than the one that was asked for (a notification sound, a
+    // Bluetooth connection...) and it stayed there for two calls in a row. Call it about once a second from the GUI
+    // thread; the owner then re-opens the chosen device. Always false elsewhere. Logs the route state when it is true.
+    bool DeviceMoved();
 
 private:
     struct Impl;

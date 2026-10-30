@@ -384,6 +384,12 @@ void MainWindow::onAudioPacket(const Packet::Header &hdr, const uint8_t *payload
 
 void MainWindow::OnStatsTimer()
 {
+    // once a second: if Android moved a stream to another device (notification sound, Bluetooth...), re-open the chosen one
+    if(m_pAudioPlayer)
+        m_pAudioPlayer->KeepDevice();
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->KeepDevice();
+
     JitterBuffer::Stats st;
     int depthFrames = 0, frameMs = 0;
 

@@ -108,6 +108,8 @@ struct AudioInput::Impl
     bool running = false;
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
+    std::atomic<int> wantedId{0};   // Android: AudioDeviceInfo id the stream was opened on (0 = system default / unknown)
+    std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
     std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
     unsigned cbCount = 0;           // audio thread only
     std::string deviceId;
@@ -163,6 +165,8 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
             cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
         }
         if(aid != 0){ chosen.aaudio = aid; haveChosen = true; }
+        d->wantedId = aid;
+        d->movedPolls = 0;
     }
 #else
     haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
@@ -233,6 +237,27 @@ std::string AudioInput::ActiveDevice() const
 #endif
 }
 
+bool AudioInput::DeviceMoved()
+{
+#ifdef RAVAVA_ANDROID
+    if(!d->running)
+        return false;
+    const int want = d->wantedId.load(), act = d->activeId.load();
+    if(want <= 0 || act <= 0 || act == want){
+        d->movedPolls = 0;
+        return false;
+    }
+    if(++d->movedPolls < 2)
+        return false;
+    d->movedPolls = 0;
+    RAVAVA_WARN("capture: the system moved the stream from device #%d to #%d (%s) - %s", want, act,
+                android::DescribeDeviceId(act, true).c_str(), android::DescribeRouteState().c_str());
+    return true;
+#else
+    return false;
+#endif
+}
+
 bool AudioInput::IsRunning() const {
     return d->running;
 }
@@ -246,6 +271,8 @@ struct AudioOutput::Impl
     int channels = 1;
     bool voiceRoute = false;        // Android: this stream holds the Bluetooth handsfree route
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
+    std::atomic<int> wantedId{0};   // Android: AudioDeviceInfo id the stream was opened on (0 = system default / unknown)
+    std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
     std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
     unsigned cbCount = 0;           // audio thread only
     std::string deviceId;
@@ -302,6 +329,8 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
         if(voice)
             cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
         if(aid != 0){ chosen.aaudio = aid; haveChosen = true; }
+        d->wantedId = aid;
+        d->movedPolls = 0;
     }
 #else
     haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
@@ -369,6 +398,27 @@ std::string AudioOutput::ActiveDevice() const
     return name.empty() ? android::DescribeActiveDevice(false) : name;
 #else
     return d->running ? d->activeName : std::string();
+#endif
+}
+
+bool AudioOutput::DeviceMoved()
+{
+#ifdef RAVAVA_ANDROID
+    if(!d->running)
+        return false;
+    const int want = d->wantedId.load(), act = d->activeId.load();
+    if(want <= 0 || act <= 0 || act == want){
+        d->movedPolls = 0;
+        return false;
+    }
+    if(++d->movedPolls < 2)
+        return false;
+    d->movedPolls = 0;
+    RAVAVA_WARN("playback: the system moved the stream from device #%d to #%d (%s) - %s", want, act,
+                android::DescribeDeviceId(act, false).c_str(), android::DescribeRouteState().c_str());
+    return true;
+#else
+    return false;
 #endif
 }
 

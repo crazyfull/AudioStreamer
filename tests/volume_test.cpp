@@ -42,6 +42,8 @@ static double rms()                      // of what arrived since the last call
 static int g_fail = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("  FAIL line %d: %s\n", __LINE__, #c); g_fail++; } }while(0)
 
+extern std::atomic<int> g_stubOutputStarts;    // how many times the fake speaker was opened
+extern std::atomic<bool> g_stubOutputMoved;    // test switch: "the system moved the stream to another device"
 std::string StubOutputDevice();     // from tests/stub/audio_device_stub.cpp (the device id the last Start() was asked for)
 
 int main()
@@ -90,6 +92,20 @@ int main()
         std::printf("  live device switch: rms %.0f -> %.0f, played frames %u -> %u\n", full, after, unsigned(st0.played), unsigned(st1.played));
         CHECK(after > full * 0.7 && after < full * 1.2);       // a short gap at the switch is allowed
         CHECK(st1.played > st0.played);                  // counters were not reset
+
+        // the system moves the stream to another device (notification, Bluetooth): KeepDevice() re-opens the chosen one,
+        // but not more often than once per 3 s
+        const int opened0 = g_stubOutputStarts;
+        play.KeepDevice();                                  // nothing moved: nothing happens
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(g_stubOutputStarts == opened0);
+        g_stubOutputMoved = true; play.KeepDevice();
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(g_stubOutputStarts == opened0 + 1);
+        CHECK(StubOutputDevice() == "cc");                  // re-opened on the CHOSEN device
+        g_stubOutputMoved = true; play.KeepDevice();        // again at once: rate limited
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(g_stubOutputStarts == opened0 + 1);
     }
 
     play.SetVolume(50); sendMs(300); rms();             // let the ramp finish

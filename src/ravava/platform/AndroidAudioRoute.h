@@ -54,6 +54,9 @@ int StreamDeviceId(void *aaudioStream);
 // Name of the device with that AudioDeviceInfo id (microphone or speaker side), "" if it is gone. JNI: not the audio thread.
 std::string DescribeDeviceId(int deviceId, bool capture);
 
+// One line for the log: audio mode, Bluetooth SCO state, communication device. JNI: not the audio thread.
+std::string DescribeRouteState();
+
 // What Android really uses right now, e.g. "Bluetooth headset (Bluetooth handsfree)" or "Phone microphone"; "" if unknown.
 // Microphone: the recording configuration of this app (API 28+). Speaker: the communication device while a Bluetooth
 // route is active (API 31+). Any thread except the audio thread (JNI calls).

@@ -37,6 +37,8 @@ void roomReset()
 // the device id the last Start() was asked for (tests check that the config reaches the device layer)
 std::string g_stubInputDevice, g_stubOutputDevice;
 static std::mutex g_stubDeviceMutex;        // SetDevice() runs on the device-switch worker thread, the test reads from its own
+std::atomic<int> g_stubInputStarts{0}, g_stubOutputStarts{0};         // how many times the device was opened
+std::atomic<bool> g_stubInputMoved{false}, g_stubOutputMoved{false};  // test switch: "the system moved the stream"
 std::string StubInputDevice()  { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubInputDevice; }
 std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubOutputDevice; }
 
@@ -92,6 +94,7 @@ bool AudioInput::Start(int rate, int ch, int ms, Callback cb, std::string*)
     return true;
 }
 void AudioInput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+bool AudioInput::DeviceMoved() { return g_stubInputMoved.exchange(false); }
 std::string AudioInput::ActiveDevice() const { return "Stub mic"; }
 bool AudioInput::IsRunning() const { return d->running; }
 
@@ -127,6 +130,7 @@ bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*)
     return true;
 }
 void AudioOutput::Stop() { d->run = false; if(d->t.joinable()) d->t.join(); d->running = false; }
+bool AudioOutput::DeviceMoved() { return g_stubOutputMoved.exchange(false); }
 std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 

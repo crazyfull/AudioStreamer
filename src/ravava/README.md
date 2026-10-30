@@ -70,3 +70,9 @@ an app that blocks its UI thread for ~5 s is killed). Quick successive calls are
 destructor wait for a switch in progress. On Android `ActiveDevice()` reports the device the stream is REALLY on
 (`AAudioStream_getDeviceId`), which can differ from the choice when the system re-routes (e.g. "System default" follows
 a newly connected Bluetooth / USB device; pick a device explicitly to keep it).
+
+`KeepDevice()` (Player / Recorder, called from the GUI's 1 s timer): on Android the system can move a running stream to
+another device without telling (a notification sound, a Bluetooth headset connecting, MIUI policies...). The audio callback
+notes which device the stream is really on (`AAudioStream_getDeviceId`); when it differs from the one that was opened for two
+polls in a row, the chosen device is re-opened (at most once per 3 s) and the route state (audio mode, SCO, communication
+device) is written to logcat (`adb logcat -s ravava`, "the system moved the stream").
