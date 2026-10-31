@@ -87,6 +87,18 @@ static std::vector<AudioDeviceInfo> listDevices(bool capture)
     return out;
 }
 
+#ifndef RAVAVA_ANDROID
+// PulseAudio / PipeWire list "Monitor of <speaker>" as capture devices: they record what the speaker plays, not a microphone.
+// With no microphone connected the default capture device is often such a monitor (or nothing), and recording from it gives
+// static / feedback instead of an error.
+static bool isMonitorName(const std::string &n)
+{
+    std::string l;
+    for(char c : n) l += char(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    return l.compare(0, 10, "monitor of") == 0 || l.find(".monitor") != std::string::npos || l.find("monitor of ") != std::string::npos;
+}
+#endif
+
 #ifdef RAVAVA_ANDROID
 // AAudio / OpenSL ES only know "the default device": the list comes from AudioManager (empty = fall back to miniaudio)
 static std::vector<AudioDeviceInfo> listAny(bool capture)
@@ -97,7 +109,14 @@ static std::vector<AudioDeviceInfo> listAny(bool capture)
 std::vector<AudioDeviceInfo> ListInputDevices()  { return listAny(true); }
 std::vector<AudioDeviceInfo> ListOutputDevices() { return listAny(false); }
 #else
-std::vector<AudioDeviceInfo> ListInputDevices()  { return listDevices(true); }
+std::vector<AudioDeviceInfo> ListInputDevices()
+{
+    std::vector<AudioDeviceInfo> all = listDevices(true), out;
+    for(AudioDeviceInfo &d : all)
+        if(!isMonitorName(d.name))
+            out.push_back(std::move(d));
+    return out;
+}
 std::vector<AudioDeviceInfo> ListOutputDevices() { return listDevices(false); }
 #endif
 
@@ -172,6 +191,19 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     }
 #else
     haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
+    if(!haveChosen){
+        // "system default": make sure there is a real microphone, and never record a speaker monitor
+        const std::vector<AudioDeviceInfo> mics = ListInputDevices();
+        if(mics.empty()){
+            if(err) *err = "no microphone found (connect one and start again)";
+            return false;
+        }
+        bool defaultIsReal = false;
+        for(const AudioDeviceInfo &m : mics)
+            if(m.isDefault) defaultIsReal = true;
+        if(!defaultIsReal)
+            haveChosen = stringToId(mics.front().id, chosen);       // the default is a monitor: take the first real microphone
+    }
 #endif
     if(haveChosen){
         cfg.capture.pDeviceID = &chosen;
