@@ -115,6 +115,25 @@ void releaseWakeLock()
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
+#ifdef Q_OS_ANDROID
+    QWidget *central = ui->centralwidget;
+    QLayout *oldLayout = central->layout();
+    if (oldLayout)
+        delete oldLayout;
+
+    QVBoxLayout *layout = new QVBoxLayout(central);
+    layout->addWidget(ui->tabWidget);
+    layout->addWidget(ui->groupBox_2);
+    layout->addWidget(ui->groupBox_3);
+    //layout->addWidget(ui->verticalSpacer_3);
+    layout->addItem(ui->verticalSpacer_2);
+
+
+#endif
+
+
+
     setupRouter();
 
     uint32_t a = -1;
@@ -154,6 +173,13 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->BandWith_comboBox->addItem("Wideband - [8kHz 16kHz]", OPUS_BANDWIDTH_WIDEBAND);
     ui->BandWith_comboBox->addItem("Supper-wideband - [12kHz 24kHz]", OPUS_BANDWIDTH_SUPERWIDEBAND);
     ui->BandWith_comboBox->addItem("fullband - [20kHz 48kHz]", OPUS_BANDWIDTH_FULLBAND);
+
+    //add serevr addresses
+    ui->server_comboBox->addItem("echo amazon server", "52.43.121.77");
+    ui->server_comboBox->addItem("kharej", "217.154.196.225");
+    ui->server_comboBox->addItem("iran", "95.38.155.49");
+    ui->server_comboBox->addItem("local server", "192.168.1.188");
+
 
     refreshAudioDevices();
     ui->inputDevice_comboBox->installEventFilter(this);       // list is refreshed when the user opens it
@@ -395,6 +421,9 @@ void MainWindow::on_btnStartRecording_clicked()
     m_statHistory.clear();      // new player = new counters
     m_pAudioRecorder->Start();
     //m_PlayerTimer.start();
+
+    ui->btnStartRecording->setDisabled(true);
+    ui->btnStopRecording->setDisabled(false);
 }
 
 
@@ -408,6 +437,8 @@ void MainWindow::on_btnStopRecording_clicked()
     if(m_pAudioRecorder)
         m_pAudioRecorder->Stop();
     //m_PlayerTimer.stop();
+    ui->btnStartRecording->setDisabled(false);
+    ui->btnStopRecording->setDisabled(true);
 }
 
 // audio packet body (from the recorder) -> UDP packet (envelope + body) -> network
@@ -570,9 +601,9 @@ void MainWindow::OnRateTimer()
 
     QString  msg;
     // measured over the 5 s timer interval; counts the app payload (Opus packet + header), without IP/UDP headers
-    msg.append("Send Rate: " + GetFormatSize(m_Rate/5) + "/sec    ");
-    msg.append("Receive Rate: " + GetFormatSize(m_RxRate/5) + "/sec    ");
-    msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate + m_RxRate)/5) + "/sec");
+    msg.append("Send: " + GetFormatSize(m_Rate/5) + "/sec    ");
+    msg.append("Receive: " + GetFormatSize(m_RxRate/5) + "/sec    ");
+    //msg.append("Send & Receive Rate: " + GetFormatSize((m_Rate + m_RxRate)/5) + "/sec");
 
 
     // ui->txtBuffer->setPlainText( "Send Rate: " + GetFormatSize(m_Rate) + "/sec" );
@@ -693,11 +724,13 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
     if(m_packet.length() >= 0){
 
         //52.20.16.20:40000
-        sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("52.43.121.77"), 10001); //public
+        //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("52.43.121.77"), 10001); //public
         //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("217.154.196.225"), 10001); //kharej khodam
         //sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress("95.38.155.49"), 10001); //iran khodam
+        sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress(ui->server_comboBox->currentData().toString()), 10001); //local khodam
         //if(Buff.length() < 39) return 0;
         //
+        qDebug() <<  "Server() " << ui->server_comboBox->currentData().toString();
 
 
         if(sendSize > 0)
