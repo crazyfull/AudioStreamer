@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>457</width>
+    <width>509</width>
     <height>696</height>
    </rect>
   </property>
@@ -36,10 +36,214 @@
        <enum>QFrame::Raised</enum>
       </property>
       <layout class="QGridLayout" name="gridLayout_3">
+       <item row="9" column="0" colspan="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_micGain">
+         <item>
+          <widget class="QLabel" name="label_micGain">
+           <property name="text">
+            <string>Mic gain</string>
+           </property>
+           <property name="margin">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="MicGainSlider">
+           <property name="toolTip">
+            <string>Microphone gain: 100 = unchanged, up to 200 (+12 dB)</string>
+           </property>
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>200</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="tickPosition">
+            <enum>QSlider::TicksBelow</enum>
+           </property>
+           <property name="tickInterval">
+            <number>5</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_micGainValue">
+           <property name="minimumSize">
+            <size>
+             <width>32</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>100</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_5">
+         <property name="text">
+          <string>Max Bandwith:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="0" colspan="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QCheckBox" name="playMusic_checkBox">
+           <property name="text">
+            <string>PlayMusic</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txtMusicPath">
+           <property name="text">
+            <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label">
+         <property name="text">
+          <string>opusBitrate:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="13" column="0" colspan="3">
+        <layout class="QHBoxLayout" name="horizontalLayout_logs">
+         <item>
+          <widget class="QPlainTextEdit" name="txtLog">
+           <property name="font">
+            <font>
+             <pointsize>11</pointsize>
+            </font>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="5" column="0" colspan="2">
+        <widget class="QFrame" name="frame_2">
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="autoGain_checkBox">
+            <property name="toolTip">
+             <string>Automatic mic level + limiter (webrtc AGC2)</string>
+            </property>
+            <property name="text">
+             <string>Auto gain</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QComboBox" name="noise_comboBox">
+            <property name="toolTip">
+             <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QCheckBox" name="useDtx_checkBox">
+            <property name="text">
+             <string>useDtx</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+            <property name="autoRepeat">
+             <bool>false</bool>
+            </property>
+            <property name="autoExclusive">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" colspan="2">
+           <widget class="QComboBox" name="echoLevel_comboBox">
+            <property name="toolTip">
+             <string>Higher = your voice is cut less while the speaker plays (more echo may pass). Applied on Start.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QCheckBox" name="LoopBack_checkBox">
+            <property name="text">
+             <string>Loopback</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+            <property name="autoRepeat">
+             <bool>false</bool>
+            </property>
+            <property name="autoExclusive">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QCheckBox" name="musicMode_checkBox">
+            <property name="toolTip">
+             <string>Music mode: Opus is tuned for music (full bandwidth, fine treble) instead of speech. Channels, bitrate and frame size stay as set.</string>
+            </property>
+            <property name="text">
+             <string>musicMode</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item row="10" column="0">
+        <widget class="QLabel" name="label_inputDevice">
+         <property name="text">
+          <string>Microphone:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="2">
+        <widget class="QLabel" name="label_4">
+         <property name="text">
+          <string>%</string>
+         </property>
+        </widget>
+       </item>
        <item row="1" column="1">
         <widget class="QComboBox" name="BitRate_comboBox">
+         <property name="editable">
+          <bool>true</bool>
+         </property>
          <property name="currentIndex">
-          <number>1</number>
+          <number>0</number>
          </property>
          <item>
           <property name="text">
@@ -78,99 +282,152 @@
          </item>
          <item>
           <property name="text">
+           <string>96000</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>128000</string>
           </property>
          </item>
         </widget>
        </item>
-       <item row="5" column="0" colspan="2">
-        <widget class="QFrame" name="frame_2">
-         <property name="frameShape">
-          <enum>QFrame::NoFrame</enum>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_2">
+         <property name="text">
+          <string>frameMs:</string>
          </property>
-         <layout class="QGridLayout" name="gridLayout_2">
-          <property name="leftMargin">
-           <number>0</number>
+        </widget>
+       </item>
+       <item row="11" column="0">
+        <widget class="QLabel" name="label_outputDevice">
+         <property name="text">
+          <string>Speaker:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QComboBox" name="frameMS_comboBox">
+         <property name="currentText">
+          <string>20</string>
+         </property>
+         <property name="currentIndex">
+          <number>1</number>
+         </property>
+         <item>
+          <property name="text">
+           <string>10</string>
           </property>
-          <property name="topMargin">
-           <number>0</number>
+         </item>
+         <item>
+          <property name="text">
+           <string>20</string>
           </property>
-          <property name="rightMargin">
-           <number>0</number>
+         </item>
+         <item>
+          <property name="text">
+           <string>40</string>
           </property>
-          <property name="bottomMargin">
-           <number>0</number>
+         </item>
+         <item>
+          <property name="text">
+           <string>60</string>
           </property>
-          <item row="0" column="0" colspan="2">
-           <widget class="QCheckBox" name="musicMode_checkBox">
-            <property name="toolTip">
-             <string>Music mode: Opus is tuned for music (full bandwidth, fine treble) instead of speech. Channels, bitrate and frame size stay as set.</string>
-            </property>
-            <property name="text">
-             <string>musicMode</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="2">
-           <widget class="QCheckBox" name="useDtx_checkBox">
-            <property name="text">
-             <string>useDtx</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-            <property name="autoRepeat">
-             <bool>false</bool>
-            </property>
-            <property name="autoExclusive">
-             <bool>false</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QCheckBox" name="autoGain_checkBox">
-            <property name="toolTip">
-             <string>Automatic mic level + limiter (webrtc AGC2)</string>
-            </property>
-            <property name="text">
-             <string>Auto gain</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <widget class="QCheckBox" name="LoopBack_checkBox">
-            <property name="text">
-             <string>Loopback</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-            <property name="autoRepeat">
-             <bool>false</bool>
-            </property>
-            <property name="autoExclusive">
-             <bool>false</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QComboBox" name="noise_comboBox">
-            <property name="toolTip">
-             <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1" colspan="2">
-           <widget class="QComboBox" name="echoLevel_comboBox">
-            <property name="toolTip">
-             <string>Higher = your voice is cut less while the speaker plays (more echo may pass). Applied on Start.</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         </item>
+         <item>
+          <property name="text">
+           <string>80</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>100</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>120</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="BandWith_comboBox">
+         <property name="currentIndex">
+          <number>-1</number>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="1">
+        <widget class="QComboBox" name="outputDevice_comboBox">
+         <property name="toolTip">
+          <string>Playback device (applied on Start)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QComboBox" name="LossPrec_comboBox">
+         <property name="currentText">
+          <string>20</string>
+         </property>
+         <property name="currentIndex">
+          <number>2</number>
+         </property>
+         <item>
+          <property name="text">
+           <string>0</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>10</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>20</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>30</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>40</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>50</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>60</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>70</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>80</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>90</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>100</string>
+          </property>
+         </item>
         </widget>
        </item>
        <item row="4" column="1">
@@ -246,40 +503,6 @@
          </item>
         </layout>
        </item>
-       <item row="13" column="0" colspan="3">
-        <layout class="QHBoxLayout" name="horizontalLayout_logs">
-         <item>
-          <widget class="QPlainTextEdit" name="txtLog">
-           <property name="font">
-            <font>
-             <pointsize>11</pointsize>
-            </font>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="0" column="1">
-        <widget class="QComboBox" name="BandWith_comboBox">
-         <property name="currentIndex">
-          <number>-1</number>
-         </property>
-        </widget>
-       </item>
-       <item row="10" column="1">
-        <widget class="QComboBox" name="inputDevice_comboBox">
-         <property name="toolTip">
-          <string>Recording device (applied on Start)</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="2">
-        <widget class="QLabel" name="label_4">
-         <property name="text">
-          <string>%</string>
-         </property>
-        </widget>
-       </item>
        <item row="7" column="0" colspan="3">
         <layout class="QHBoxLayout" name="horizontalLayout">
          <property name="leftMargin">
@@ -320,182 +543,17 @@
          </item>
         </layout>
        </item>
-       <item row="11" column="1">
-        <widget class="QComboBox" name="outputDevice_comboBox">
+       <item row="10" column="1">
+        <widget class="QComboBox" name="inputDevice_comboBox">
          <property name="toolTip">
-          <string>Playback device (applied on Start)</string>
+          <string>Recording device (applied on Start)</string>
          </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="label_5">
-         <property name="text">
-          <string>Max Bandwith:</string>
-         </property>
-        </widget>
-       </item>
-       <item row="11" column="0">
-        <widget class="QLabel" name="label_outputDevice">
-         <property name="text">
-          <string>Speaker:</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_2">
-         <property name="text">
-          <string>frameMs:</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="2">
-        <spacer name="horizontalSpacer">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="3" column="1">
-        <widget class="QComboBox" name="LossPrec_comboBox">
-         <property name="currentText">
-          <string>20</string>
-         </property>
-         <property name="currentIndex">
-          <number>2</number>
-         </property>
-         <item>
-          <property name="text">
-           <string>0</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>10</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>20</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>30</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>40</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>50</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>60</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>70</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>80</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>90</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>100</string>
-          </property>
-         </item>
         </widget>
        </item>
        <item row="4" column="0">
         <widget class="QLabel" name="label_6">
          <property name="text">
           <string>Channel:</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="0" colspan="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_micGain">
-         <item>
-          <widget class="QLabel" name="label_micGain">
-           <property name="text">
-            <string>Mic gain</string>
-           </property>
-           <property name="margin">
-            <number>10</number>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QSlider" name="MicGainSlider">
-           <property name="toolTip">
-            <string>Microphone gain: 100 = unchanged, up to 200 (+12 dB)</string>
-           </property>
-           <property name="minimum">
-            <number>0</number>
-           </property>
-           <property name="maximum">
-            <number>200</number>
-           </property>
-           <property name="value">
-            <number>100</number>
-           </property>
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="tickPosition">
-            <enum>QSlider::TicksBelow</enum>
-           </property>
-           <property name="tickInterval">
-            <number>5</number>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="label_micGainValue">
-           <property name="minimumSize">
-            <size>
-             <width>32</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>100</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="10" column="0">
-        <widget class="QLabel" name="label_inputDevice">
-         <property name="text">
-          <string>Microphone:</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_3">
-         <property name="text">
-          <string>Loss Perc:</string>
          </property>
         </widget>
        </item>
@@ -512,73 +570,10 @@
          </property>
         </spacer>
        </item>
-       <item row="2" column="1">
-        <widget class="QComboBox" name="frameMS_comboBox">
-         <property name="currentText">
-          <string>20</string>
-         </property>
-         <property name="currentIndex">
-          <number>1</number>
-         </property>
-         <item>
-          <property name="text">
-           <string>10</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>20</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>40</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>60</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>80</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>100</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>120</string>
-          </property>
-         </item>
-        </widget>
-       </item>
-       <item row="6" column="0" colspan="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
-         <item>
-          <widget class="QCheckBox" name="playMusic_checkBox">
-           <property name="text">
-            <string>PlayMusic</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="txtMusicPath">
-           <property name="text">
-            <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="label">
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_3">
          <property name="text">
-          <string>opusBitrate:</string>
+          <string>Loss Perc:</string>
          </property>
         </widget>
        </item>
@@ -593,6 +588,19 @@
           <string>Copy log</string>
          </property>
         </widget>
+       </item>
+       <item row="2" column="2">
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>

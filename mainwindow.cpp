@@ -24,9 +24,6 @@ using namespace ravava;       // the audio library (src/ravava), incl. its netwo
 #include <QJniEnvironment>
 #include <QCoreApplication>
 
-#endif
-
-#ifdef Q_OS_ANDROID
 void startForegroundService()
 {
     QJniObject context = QNativeInterface::QAndroidApplication::context();
@@ -75,9 +72,7 @@ void stopForegroundService()
 
     context.callMethod<jboolean>("stopService", "(Landroid/content/Intent;)Z", intent.object());
 }
-#endif
 
-#ifdef Q_OS_ANDROID
 QJniObject g_wakeLock;   // global
 
 void acquireWakeLock()
@@ -389,8 +384,11 @@ void MainWindow::on_outputDevice_comboBox_currentIndexChanged(int)
 
 void MainWindow::on_btnStartRecording_clicked()
 {
+#ifdef Q_OS_ANDROID
     startForegroundService();
     acquireWakeLock();
+#endif
+
 
     refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
@@ -402,9 +400,10 @@ void MainWindow::on_btnStartRecording_clicked()
 
 void MainWindow::on_btnStopRecording_clicked()
 {
+#ifdef Q_OS_ANDROID
     releaseWakeLock();
     stopForegroundService();
-
+#endif
 
     if(m_pAudioRecorder)
         m_pAudioRecorder->Stop();
