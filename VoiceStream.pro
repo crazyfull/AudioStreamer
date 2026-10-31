@@ -78,6 +78,7 @@ win32 {
 }
 
 linux:!android  {
+
     #GCC
     message("linux x64 build")
     TARGET = ../../RavAva_x64
@@ -125,9 +126,13 @@ linux:!android  {
 
 android {
     message("Android ARM64 build")
+    #mohem baraye rahati install
+    ANDROID_TARGET_SDK_VERSION = 34
 
     TARGET = RavAva
     ANDROID_ABIS = arm64-v8a
+    #ANDROID_ABIS = armeabi-v7a arm64-v8a x86 x86_64  universal apk
+
 
     # INCLUDEPATH += $$PWD/../VoiceCodec/build/include/opus
     # DEPENDPATH += $$PWD/../VoiceCodec/build/include/opus
@@ -136,8 +141,16 @@ android {
     OPUS_ROOT = $$PWD/../VoiceCodec/build
     INCLUDEPATH += $$OPUS_ROOT/include/opus
     DEPENDPATH += $$OPUS_ROOT/include/opus
-    LIBS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
-    PRE_TARGETDEPS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
+
+    # لینک کردن Opus بر اساس معماری فعلی
+    equals(ANDROID_TARGET_ARCH, arm64-v8a) {
+        LIBS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
+        PRE_TARGETDEPS += $$OPUS_ROOT/lib/arm64-v8a/libopus.a
+    }
+    equals(ANDROID_TARGET_ARCH, armeabi-v7a) {
+        LIBS += $$OPUS_ROOT/lib/armeabi-v7a/libopus.a
+        PRE_TARGETDEPS += $$OPUS_ROOT/lib/armeabi-v7a/libopus.a
+    }
 
     # miniaudio
     LIBS += -ldl -lm -llog

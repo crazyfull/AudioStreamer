@@ -115,6 +115,8 @@ void releaseWakeLock()
 }
 #endif
 
+
+
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
@@ -124,7 +126,6 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     if(a <= 1){
         qDebug() << "sizeof " << a;
     }
-
 
     //udp connection object
     m_pUDPClient = new QUdpSocket(this);
