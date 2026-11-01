@@ -1,3 +1,12 @@
+/*
+ * RavAva - real-time voice library (Opus over any datagram transport)
+ * Copyright (c) 2026 Mojtaba Kahvand. All rights reserved.
+ * Author: Mojtaba Kahvand
+ *
+ * Proprietary software, NOT free / open source. Use, copying, modification and distribution are forbidden without a
+ * written license from the author. See the LICENSE file in the repository root.
+ * SPDX-License-Identifier: LicenseRef-RavAva-Proprietary
+ */
 #include "JitterBuffer.h"
 #include "VoicePacket.h"
 #include <algorithm>
