@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>457</width>
-    <height>765</height>
+    <width>459</width>
+    <height>785</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -290,16 +290,16 @@
     <property name="geometry">
      <rect>
       <x>9</x>
-      <y>250</y>
+      <y>252</y>
       <width>441</width>
-      <height>127</height>
+      <height>141</height>
      </rect>
     </property>
     <property name="title">
      <string>Processing</string>
     </property>
     <layout class="QGridLayout" name="gridLayout_4">
-     <item row="0" column="0" colspan="7">
+     <item row="0" column="0" colspan="5">
       <layout class="QHBoxLayout" name="horizontalLayout_3">
        <item>
         <widget class="QLabel" name="label_6">
@@ -340,58 +340,53 @@
        </item>
       </layout>
      </item>
-     <item row="1" column="0" colspan="2">
-      <widget class="QCheckBox" name="LoopBack_checkBox">
-       <property name="text">
-        <string>Loopback</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-       <property name="autoRepeat">
-        <bool>false</bool>
-       </property>
-       <property name="autoExclusive">
-        <bool>false</bool>
-       </property>
-      </widget>
+     <item row="1" column="0" colspan="5">
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QCheckBox" name="autoGain_checkBox">
+         <property name="toolTip">
+          <string>Automatic mic level + limiter (webrtc AGC2)</string>
+         </property>
+         <property name="text">
+          <string>Auto gain</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="useDtx_checkBox">
+         <property name="text">
+          <string>useDtx</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+         <property name="autoRepeat">
+          <bool>false</bool>
+         </property>
+         <property name="autoExclusive">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="musicMode_checkBox">
+         <property name="toolTip">
+          <string>Music mode: Opus is tuned for music (full bandwidth, fine treble) instead of speech. Channels, bitrate and frame size stay as set.</string>
+         </property>
+         <property name="text">
+          <string>musicMode</string>
+         </property>
+         <property name="checked">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
-     <item row="1" column="2" colspan="2">
-      <widget class="QCheckBox" name="musicMode_checkBox">
+     <item row="2" column="1">
+      <widget class="QComboBox" name="noise_comboBox">
        <property name="toolTip">
-        <string>Music mode: Opus is tuned for music (full bandwidth, fine treble) instead of speech. Channels, bitrate and frame size stay as set.</string>
-       </property>
-       <property name="text">
-        <string>musicMode</string>
-       </property>
-       <property name="checked">
-        <bool>false</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="4" colspan="2">
-      <widget class="QCheckBox" name="useDtx_checkBox">
-       <property name="text">
-        <string>useDtx</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-       <property name="autoRepeat">
-        <bool>false</bool>
-       </property>
-       <property name="autoExclusive">
-        <bool>false</bool>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="6">
-      <widget class="QCheckBox" name="autoGain_checkBox">
-       <property name="toolTip">
-        <string>Automatic mic level + limiter (webrtc AGC2)</string>
-       </property>
-       <property name="text">
-        <string>Auto gain</string>
+        <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
        </property>
       </widget>
      </item>
@@ -402,14 +397,21 @@
        </property>
       </widget>
      </item>
-     <item row="2" column="1" colspan="2">
-      <widget class="QComboBox" name="noise_comboBox">
+     <item row="2" column="4">
+      <widget class="QComboBox" name="echoLevel_comboBox">
        <property name="toolTip">
-        <string>Noise suppression on the microphone (webrtc). Applied on Start.</string>
+        <string>Higher = your voice is cut less while the speaker plays (more echo may pass). Applied on Start.</string>
        </property>
       </widget>
      </item>
      <item row="2" column="3">
+      <widget class="QLabel" name="label_inputDevice_3">
+       <property name="text">
+        <string>Echo:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="2">
       <spacer name="horizontalSpacer_3">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
@@ -422,29 +424,28 @@
        </property>
       </spacer>
      </item>
-     <item row="2" column="4">
-      <widget class="QLabel" name="label_inputDevice_3">
-       <property name="text">
-        <string>Echo:</string>
+     <item row="3" column="1">
+      <spacer name="verticalSpacer_3">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
        </property>
-      </widget>
-     </item>
-     <item row="2" column="5" colspan="2">
-      <widget class="QComboBox" name="echoLevel_comboBox">
-       <property name="toolTip">
-        <string>Higher = your voice is cut less while the speaker plays (more echo may pass). Applied on Start.</string>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
        </property>
-      </widget>
+      </spacer>
      </item>
     </layout>
    </widget>
    <widget class="QGroupBox" name="groupBox_3">
     <property name="geometry">
      <rect>
-      <x>9</x>
-      <y>380</y>
+      <x>10</x>
+      <y>396</y>
       <width>441</width>
-      <height>361</height>
+      <height>371</height>
      </rect>
     </property>
     <property name="styleSheet">
@@ -694,14 +695,34 @@
         </spacer>
        </item>
        <item row="2" column="0">
-        <widget class="QLabel" name="label_4">
+        <widget class="QLabel" name="lblServer">
          <property name="text">
           <string>Server:</string>
          </property>
         </widget>
        </item>
        <item row="2" column="1">
-        <widget class="QComboBox" name="server_comboBox"/>
+        <widget class="QComboBox" name="server_comboBox">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="2">
+        <widget class="QCheckBox" name="LoopBack_checkBox">
+         <property name="text">
+          <string>Loopback</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+         <property name="autoRepeat">
+          <bool>false</bool>
+         </property>
+         <property name="autoExclusive">
+          <bool>false</bool>
+         </property>
+        </widget>
        </item>
       </layout>
      </item>

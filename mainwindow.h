@@ -82,6 +82,9 @@ private slots:
 
     void on_btnTalk_clicked(bool checked);
 
+
+    void on_LoopBack_checkBox_stateChanged(int arg1);
+
 private:
     Ui::MainWindow *ui;
     void initTCP();

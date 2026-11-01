@@ -777,3 +777,8 @@ void MainWindow::on_btnTalk_clicked(bool checked)
 
 }
 
+void MainWindow::on_LoopBack_checkBox_stateChanged(int arg1)
+{
+     ui->server_comboBox->setDisabled(arg1);
+}
+
