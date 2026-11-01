@@ -191,6 +191,8 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
         }
     }
 
+    m_level.Feed(src, uint32_t(n / size_t(m_pConfig->channels)), int(m_pConfig->inputRate), int(m_pConfig->channels));
+
     // opus needs EXACT frames (e.g. 20ms), device chunks have arbitrary sizes -> cut them
     const size_t chunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
     CutBlocks(m_cache, chunk, src, n, [this](const int16_t *frame){ onFrame(frame); });

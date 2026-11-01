@@ -11,6 +11,7 @@
 #include "AudioProcessor.h"
 #include "BlockCutter.h"
 #include "GainRamp.h"
+#include "LevelMeter.h"
 #include "DeviceSwitcher.h"
 
 namespace ravava {
@@ -34,6 +35,7 @@ private:
     // (frames are cut straight out of the device buffer, only the < 1 frame tail is kept).
     Pcm m_cache;                      // tail of mic samples that don't fill a whole opus frame yet (< 1 frame)
     Pcm m_scratch;                    // echo canceller output / music samples for the current device chunk
+    LevelMeter m_level;               // loudness of what is sent (audio thread writes)
     Pcm m_gained;                     // mic chunk after the input gain (only used while the gain is not 100 %)
     GainRamp m_inputGain;             // microphone gain 0..200 %, GUI -> audio thread (see GainRamp.h)
     Bytes m_encoded;                  // one opus packet
@@ -69,6 +71,9 @@ public:
     // microphone gain in percent: 0 = mute, 100 = unchanged (default), up to 200 = +12 dB (clips instead of wrapping).
     // Any thread, takes effect within ~10 ms without clicks. Applied to the raw mic signal BEFORE the echo canceller /
     // noise suppression / AGC (like an analog mic gain). Not used while playing a music file.
+    // loudness of the audio that is SENT (after gain / echo cancel, 0..100, see LevelMeter.h). Any thread, lock-free.
+    int GetLevel() const { return m_level.Level(); }
+    int TakePeakLevel() { return m_level.TakePeak(); }
     void SetInputGain(int percent) { m_inputGain.Set(percent); }
     int  GetInputGain() const { return m_inputGain.Get(); }
     static int MaxInputGain() { return 200; }
