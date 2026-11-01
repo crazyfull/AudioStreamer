@@ -12,6 +12,18 @@
 
 using namespace ravava;
 
+// Paces a sender on an ABSOLUTE clock: a plain sleep_for(20 ms) overshoots on loaded / macOS machines, the packets then
+// arrive slower than real time and the jitter buffer rightly underruns. This keeps the average rate exact.
+static void paceMs(int ms)
+{
+    static auto next = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if(next < now - std::chrono::milliseconds(100))
+        next = now;                                         // we were away for a while: don't burst to catch up
+    next += std::chrono::milliseconds(ms);
+    std::this_thread::sleep_until(next);
+}
+
 extern void (*g_stubSpeakerTap)(const int16_t*, uint32_t, int);
 static std::atomic<double> g_sumSq{0};
 static std::atomic<long> g_n{0};
@@ -50,7 +62,7 @@ static void talk(Player &p, Sender &s, int ms)
 {
     for(int t = 0; t < ms; t += s.cfg.frameMs){
         p.Play(s.next());
-        std::this_thread::sleep_for(std::chrono::milliseconds(s.cfg.frameMs));
+        paceMs(s.cfg.frameMs);
     }
 }
 
@@ -90,7 +102,7 @@ int main()
     for(int i = 0; i < 40; i++){
         play.Play(main20.next());
         if(i % 2 == 0) play.Play(stray60.next());       // every other packet is a stray 60 ms one
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        paceMs(20);
     }
     const double r = rms();
     JitterBuffer::Stats after; play.GetStats(after, d, fm);

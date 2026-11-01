@@ -13,6 +13,18 @@
 
 using namespace ravava;
 
+// Paces a sender on an ABSOLUTE clock: a plain sleep_for(20 ms) overshoots on loaded / macOS machines, the packets then
+// arrive slower than real time and the jitter buffer rightly underruns. This keeps the average rate exact.
+static void paceMs(int ms)
+{
+    static auto next = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if(next < now - std::chrono::milliseconds(100))
+        next = now;                                         // we were away for a while: don't burst to catch up
+    next += std::chrono::milliseconds(ms);
+    std::this_thread::sleep_until(next);
+}
+
 extern void (*g_stubSpeakerTap)(const int16_t*, uint32_t, int);
 
 static std::atomic<double> g_sumSq{0};
@@ -68,7 +80,7 @@ int main()
             Bytes opus = enc.Encode(frame.data(), N);
             VoicePacket::WrapInto(wire, seq, seq == 0, 0, opus); seq++;
             play.Play(wire);
-            std::this_thread::sleep_for(std::chrono::milliseconds(cfg.frameMs));
+            paceMs(cfg.frameMs);
         }
     };
 
@@ -175,7 +187,7 @@ int main()
             Bytes opus = enc.Encode(frame.data(), N);
             VoicePacket::WrapInto(wire, seq, seq == 0, 0, opus); seq++;
             p2.Play(wire);
-            std::this_thread::sleep_for(std::chrono::milliseconds(cfg.frameMs));
+            paceMs(cfg.frameMs);
         }
         const double heard = rms();
         std::printf("  heard after the late open: rms %.0f\n", heard);
