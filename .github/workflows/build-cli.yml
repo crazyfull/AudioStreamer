@@ -1,0 +1,74 @@
+# Builds the loopback CLI example (example/loopback) on macOS so it can be tested without owning a Mac.
+# Run it from the Actions tab ("Build CLI" -> "Run workflow"), or it runs on every push that touches the library / example.
+# Result: an artifact per CPU type (arm64 = Apple Silicon, x86_64 = Intel) with a self-contained ravava_loopback binary
+# (Opus is built from source and linked statically, nothing to install on the tester's Mac). How to test: example/TESTING.md
+name: Build CLI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/ravava/**'
+      - 'miniaudio/**'
+      - 'example/**'
+      - '.github/workflows/build-cli.yml'
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest          # Apple Silicon
+          - arch: x86_64
+            runner: macos-15-intel        # Intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      OPUS_VERSION: "1.5.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Opus from source, static, installed under $GITHUB_WORKSPACE/opus-install (the same prefix RAVAVA_OPUS_ROOT expects)
+      - name: Build Opus (static)
+        run: |
+          curl -fsSL -o opus.tar.gz "https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz"
+          tar xf opus.tar.gz
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+                -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+          cmake --build opus-build -j 4
+          cmake --install opus-build
+          ls -R opus-install | head -30
+
+      - name: Build ravava_loopback
+        run: |
+          cmake -S example/loopback -B build -DCMAKE_BUILD_TYPE=Release \
+                -DRAVAVA_OPUS_ROOT="$GITHUB_WORKSPACE/opus-install" -DRAVAVA_WITH_WEBRTC=OFF
+          cmake --build build -j 4
+          file build/ravava_loopback
+          otool -L build/ravava_loopback
+          ./build/ravava_loopback --help | head -5
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/ravava_loopback dist/
+          cp example/TESTING.md dist/TESTING.md
+          (cd dist && zip -r "../ravava_loopback-macos-${{ matrix.arch }}.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ravava_loopback-macos-${{ matrix.arch }}
+          path: ravava_loopback-macos-${{ matrix.arch }}.zip
+          retention-days: 30
+
+      # the library tests need no sound card; they run after the artifact is saved, a failure here does not lose the binary
+      - name: Library tests (ctest)
+        run: |
+          cmake -S src/ravava -B build-tests -DCMAKE_BUILD_TYPE=Release -DRAVAVA_BUILD_TESTS=ON \
+                -DRAVAVA_OPUS_ROOT="$GITHUB_WORKSPACE/opus-install" -DRAVAVA_WITH_WEBRTC=OFF
+          cmake --build build-tests -j 4
+          (cd build-tests && ctest --output-on-failure)
