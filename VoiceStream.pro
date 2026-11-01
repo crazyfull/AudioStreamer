@@ -232,3 +232,6 @@ ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
 
 DISTFILES += \
     android/src/org/qtproject/example/AudioForegroundService.java
+
+RESOURCES += \
+    resource.qrc

@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>resource/icon/green.png</file>
+        <file>resource/icon/mic-off.png</file>
+        <file>resource/icon/mic-on.png</file>
+    </qresource>
+</RCC>
