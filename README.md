@@ -34,7 +34,7 @@ Author / copyright: Mojtaba Kahvand, 2026. **Proprietary, not free software** â€
 | `src/ravava/CMakeLists.txt` | standalone CMake build of the library (static by default) |
 | `src/ravava/net/` | optional network envelope: `Packet.h` (type + stream id), `PacketRouter` |
 | `src/ravava/platform/` | Android-only audio routing (JNI), compiled only on Android |
-| `miniaudio/` | miniaudio (device I/O) with a small local patch; **compiled into libRavAva**, never built separately |
+| `miniaudio/` | miniaudio (device I/O), upstream file unmodified; **compiled into libRavAva**, never built separately |
 | `libs/opus/win32/` | prebuilt Opus (MSVC x86/x64) used by Windows builds; `libs/webrtc/` = how to build webrtc for Windows |
 | `example/loopback/` | CLI example: mic -> Opus -> speaker, 48000 Hz mono fullband (`example/README.md`) |
 | `tests/` | tests that need no sound card (fake device in `tests/stub/`); `tests/README.txt` |

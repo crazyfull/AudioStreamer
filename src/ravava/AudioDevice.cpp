@@ -142,6 +142,9 @@ struct AudioInput::Impl
     std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
     std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
     unsigned cbCount = 0;           // audio thread only
+    std::atomic<unsigned> cbTotal{0};   // audio callbacks since Start (Android: a stream the system silently stopped has none)
+    unsigned lastCbTotal = 0;           // DeviceMoved() (GUI thread)
+    int stalledPolls = 0;               // consecutive DeviceMoved() calls that saw no new callback
     std::string deviceId;
     Callback cb;
 
@@ -149,6 +152,7 @@ struct AudioInput::Impl
     {
         Impl *s = static_cast<Impl*>(pDevice->pUserData);
 #ifdef RAVAVA_AAUDIO_STREAMS
+        s->cbTotal.fetch_add(1, std::memory_order_relaxed);
         if((s->cbCount++ & 63) == 0)    // about every 0.6 s: which device is the stream really on (the system may re-route it)
             s->activeId.store(android::StreamDeviceId(pDevice->aaudio.pStreamCapture), std::memory_order_relaxed);
 #endif
@@ -237,6 +241,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     d->opened = true;
     d->activeId = -1;
     d->cbCount = 0;
+    d->cbTotal = 0; d->lastCbTotal = 0; d->stalledPolls = 0;
     {
         char nm[256] = {0};
         std::lock_guard<std::mutex> lk(d->nameMutex);
@@ -289,6 +294,22 @@ bool AudioInput::DeviceMoved()
         android::ReassertRoute();      // the system resets the Bluetooth route on calls / USB: put it back
     if(!d->running)
         return false;
+#ifdef RAVAVA_AAUDIO_STREAMS
+    // The system can stop a stream without telling (a phone call, a USB / Bluetooth change): miniaudio then still says
+    // "started" and nothing is heard until the user stops and starts again. A running stream calls back every few
+    // milliseconds, so no callback during 3 polls (about 3 s) = stalled: report it, the caller re-opens the device.
+    const unsigned total = d->cbTotal.load(std::memory_order_relaxed);
+    if(total == d->lastCbTotal){
+        if(++d->stalledPolls >= 3){
+            d->stalledPolls = 0;
+            RAVAVA_WARN("capture: no audio callback for 3 s, the system stopped the stream - %s", android::DescribeRouteState().c_str());
+            return true;
+        }
+    }else{
+        d->lastCbTotal = total;
+        d->stalledPolls = 0;
+    }
+#endif
     const int want = d->wantedId.load(), act = d->activeId.load();
     if(want <= 0 || act <= 0 || act == want){
         d->movedPolls = 0;
@@ -323,6 +344,9 @@ struct AudioOutput::Impl
     std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
     std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
     unsigned cbCount = 0;           // audio thread only
+    std::atomic<unsigned> cbTotal{0};   // audio callbacks since Start (Android: a stream the system silently stopped has none)
+    unsigned lastCbTotal = 0;           // DeviceMoved() (GUI thread)
+    int stalledPolls = 0;               // consecutive DeviceMoved() calls that saw no new callback
     std::string deviceId;
     Callback cb;
 
@@ -330,6 +354,7 @@ struct AudioOutput::Impl
     {
         Impl *s = static_cast<Impl*>(pDevice->pUserData);
 #ifdef RAVAVA_AAUDIO_STREAMS
+        s->cbTotal.fetch_add(1, std::memory_order_relaxed);
         if((s->cbCount++ & 63) == 0)
             s->activeId.store(android::StreamDeviceId(pDevice->aaudio.pStreamPlayback), std::memory_order_relaxed);
 #endif
@@ -406,6 +431,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     d->opened = true;
     d->activeId = -1;
     d->cbCount = 0;
+    d->cbTotal = 0; d->lastCbTotal = 0; d->stalledPolls = 0;
     {
         char nm[256] = {0};
         std::lock_guard<std::mutex> lk(d->nameMutex);
@@ -458,6 +484,22 @@ bool AudioOutput::DeviceMoved()
         android::ReassertRoute();      // the system resets the Bluetooth route on calls / USB: put it back
     if(!d->running)
         return false;
+#ifdef RAVAVA_AAUDIO_STREAMS
+    // The system can stop a stream without telling (a phone call, a USB / Bluetooth change): miniaudio then still says
+    // "started" and nothing is heard until the user stops and starts again. A running stream calls back every few
+    // milliseconds, so no callback during 3 polls (about 3 s) = stalled: report it, the caller re-opens the device.
+    const unsigned total = d->cbTotal.load(std::memory_order_relaxed);
+    if(total == d->lastCbTotal){
+        if(++d->stalledPolls >= 3){
+            d->stalledPolls = 0;
+            RAVAVA_WARN("playback: no audio callback for 3 s, the system stopped the stream - %s", android::DescribeRouteState().c_str());
+            return true;
+        }
+    }else{
+        d->lastCbTotal = total;
+        d->stalledPolls = 0;
+    }
+#endif
     const int want = d->wantedId.load(), act = d->activeId.load();
     if(want <= 0 || act <= 0 || act == want){
         d->movedPolls = 0;

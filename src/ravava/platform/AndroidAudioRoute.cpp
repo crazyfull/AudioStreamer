@@ -389,7 +389,7 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture)
     for(const Dev &d : getDevices(env, am.get(), 3))
         if(isHandsfree(d.type)){
             bool have = false;
-            for(const Dev &b : bt) if(b.id == d.id) have = true;
+            for(const Dev &b : bt) if(b.id == d.id || (!d.name.empty() && b.name == d.name)) have = true;      // same headset: its SCO speaker / microphone ids differ
             if(!have) bt.push_back(d);
         }
     for(const Dev &d : bt){
@@ -420,8 +420,6 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture)
 static std::mutex g_routeMutex;
 static int g_heldStreams = 0;           // open streams: while > 0 the phone is in call mode with our route
 static int g_wantId = 0;                // the communication device the user chose (AudioDeviceInfo id), 0 = automatic
-static int g_btSource = 0;              // ids of the headset's microphone / speaker (0 = unknown), found after the SCO link is up
-static int g_btSink = 0;
 
 static bool hasPrefix(const std::string &s, const char *p) { return s.compare(0, std::strlen(p), p) == 0; }
 
@@ -560,6 +558,18 @@ static void sleepMs(int ms)
     nanosleep(&ts, nullptr);
 }
 
+// true while the phone rings / is in a real call / screens a call: the phone app owns mode, speakerphone and route then
+static bool phoneBusy(Env &env, jobject am)
+{
+    jmethodID getMode = methodOf(env, am, "getMode", "()I");
+    if(!getMode)
+        return false;
+    const int mode = env->CallIntMethod(am, getMode);
+    if(env.failed())
+        return false;
+    return mode == 1 || mode == 2 || mode == 4;
+}
+
 void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld)
 {
     *aaudioId = 0;
@@ -567,7 +577,7 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     *routeHeld = false;
     RAVAVA_INFO("android: opening the %s on device '%s'", capture ? "microphone" : "speaker", deviceId.empty() ? "(system default)" : deviceId.c_str());
 
-    std::lock_guard<std::mutex> lk(g_routeMutex);
+    std::unique_lock<std::mutex> lk(g_routeMutex);
     Env env;
     if(!env){ RAVAVA_WARN("android: no JNI, the system default route is used"); return; }
     Ref am = audioManager(env);
@@ -576,12 +586,13 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     const bool wantsBt = hasPrefix(deviceId, "btsco:");
     const int idNumber = wantsBt ? std::atoi(deviceId.c_str() + 6) : hasPrefix(deviceId, "aaudio:") ? std::atoi(deviceId.c_str() + 7) : 0;
 
-    // 1) call mode (once) + the communication device
+    // 1) call mode (once) + the communication device. Not while a real phone call is going on: the streams are still opened
+    //    (voice-communication, they follow the call) but mode and route are left to the phone app; ReassertRoute() takes over
+    //    after the call.
+    const bool busy = phoneBusy(env, am.get());
     const bool first = g_heldStreams == 0;
-    if(first){
-        g_btSource = g_btSink = 0;
+    if(first && !busy)
         callVoid(env, am.get(), "setMode", "(I)V", 3);              // MODE_IN_COMMUNICATION
-    }
     ++g_heldStreams;
     g_failStreak = 0;
     g_giveUp = false;
@@ -592,13 +603,13 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     std::string routed;
     if(!capture){
         g_wantId = idNumber;            // the speaker choice defines the route (0 = automatic: Bluetooth > wired > speaker)
-        routed = applyRoute(env, am.get(), g_wantId);
+        if(!busy) routed = applyRoute(env, am.get(), g_wantId);
     }else if(wantsBt){
         g_wantId = idNumber;            // a headset microphone: the headset is the route (the speaker follows, as in any call app)
-        routed = applyRoute(env, am.get(), g_wantId);
+        if(!busy) routed = applyRoute(env, am.get(), g_wantId);
     }else if(first){
         g_wantId = 0;
-        routed = applyRoute(env, am.get(), 0);
+        if(!busy) routed = applyRoute(env, am.get(), 0);
     }
     if(!routed.empty())
         RAVAVA_INFO("android: call route = %s", routed.c_str());
@@ -612,14 +623,18 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     }
     if(wantsBt){
         // The headset's microphone only appears once the SCO link is up (a few seconds). A stream opened before that
-        // would silently use the phone's microphone: wait for it and pin the stream to it.
-        for(int i = 0; i < 40 && !g_btSource; ++i){
-            findHandsfreeIds(env, am.get(), &g_btSource, &g_btSink);
-            if(g_btSource)
+        // would silently use the phone's microphone: wait for it and pin the stream to it. Its id is looked up again on
+        // every open (a new SCO link has new ids; an old one would pin the stream to nothing). The route mutex is NOT held
+        // while waiting, so closing the other stream / the route check are never blocked for 2 s.
+        lk.unlock();
+        int source = 0, sink = 0;
+        for(int i = 0; i < 40 && !source; ++i){
+            findHandsfreeIds(env, am.get(), &source, &sink);
+            if(source)
                 break;
             sleepMs(50);
         }
-        *aaudioId = g_btSource;
+        *aaudioId = source;
         if(*aaudioId)
             RAVAVA_INFO("android: microphone pinned to the Bluetooth headset (device id %d)", int(*aaudioId));
         else
@@ -635,13 +650,18 @@ void ReleaseStream(bool routeHeld)
     if(g_heldStreams > 0 && --g_heldStreams > 0)
         return;                         // the other direction (mic / speaker) still uses the route
     g_heldStreams = 0;
-    g_btSource = g_btSink = 0;
     g_wantId = 0;
 
     Env env;
     if(!env) return;
     Ref am = audioManager(env);
     if(!am) return;
+    // Undo only what is ours. While the phone rings / is in a real call the phone app owns the mode, the speakerphone and
+    // the communication device: resetting them here would cut or move the user's call.
+    jmethodID getMode = methodOf(env, am.get(), "getMode", "()I");
+    const int mode = getMode ? env->CallIntMethod(am.get(), getMode) : 3;
+    if(env.failed() || mode == 1 || mode == 2 || mode == 4)
+        return;
     if(sdkInt(env) >= 31)
         callVoid(env, am.get(), "clearCommunicationDevice");
     setSpeakerphone(env, am.get(), false);
@@ -696,6 +716,11 @@ void ReassertRoute()
         g_failStreak = 0;
         return;
     }
+    if(mode != 3){
+        // the call ended (the system set MODE_NORMAL): our mode is always put back, whatever happened to the device
+        callVoid(env, am.get(), "setMode", "(I)V", 3);
+        RAVAVA_INFO("android: audio mode restored (%s)", DescribeRouteState().c_str());
+    }
     if(g_giveUp)
         return;
     if(g_failStreak >= 4){
@@ -706,8 +731,6 @@ void ReassertRoute()
     }
     RAVAVA_WARN("android: the call route was changed by the system (%s), restoring it (attempt %d)",
                 DescribeRouteState().c_str(), g_failStreak);
-    if(mode != 3)
-        callVoid(env, am.get(), "setMode", "(I)V", 3);
     const std::string routed = applyRoute(env, am.get(), g_wantId, g_failStreak++);
     if(!routed.empty())
         RAVAVA_INFO("android: call route = %s", routed.c_str());
