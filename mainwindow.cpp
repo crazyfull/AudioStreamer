@@ -568,7 +568,14 @@ void MainWindow::OnStatsTimer()
     }
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
-        ui->txtLog->setPlainText(devices + "Receive stats: (not started, or no audio received yet)");
+        // say WHY nothing is heard: your own voice only comes back through LoopBack, anything else must come from another user
+        QString why = "Receive stats: (not started, or no audio received yet)";
+        if(m_pAudioRecorder){
+            why += ui->btnTalk->isChecked() ? "\nTalk     : ON (sending)" : "\nTalk     : OFF - nothing is sent (and nothing is looped back)";
+            why += ui->LoopBack_checkBox->isChecked() ? "\nLoopBack : ON (you hear your own audio)"
+                                                      : "\nLoopBack : OFF - you only hear what OTHER users send";
+        }
+        ui->txtLog->setPlainText(devices + why);
         return;
     }
 
