@@ -53,8 +53,7 @@ private:
     uint8_t m_tx;                     // counts transmitted packets (loss statistics on the receiver)
     bool m_marker;                    // next packet follows a silence gap
 
-    Pcm m_music;                      // whole music file, already at inputRate / channels
-    size_t m_musicPos;
+    AudioFileReader m_file;           // music file, decoded on a background thread (playMusic)
 
     std::string m_deviceChoice;       // the device id the user chose (GUI thread)
     int64_t m_lastKeepMs = 0;         // GUI thread: when KeepDevice() last re-opened the device
@@ -66,7 +65,6 @@ private:
     AudioInput m_input;               // declared last: destroyed first
 
     void init();
-    bool loadMusic();
     void onCapture(const int16_t *pcm, uint32_t frames);   // audio thread
     void onFrame(const int16_t *frame);                     // audio thread: exactly one opus frame
 
@@ -88,6 +86,10 @@ public:
     static int MaxInputGain() { return 200; }
     void Start();
     void Stop();
+    // playMusic: why the music file could not be opened / decoded ("" = fine), and whether it was played to the end.
+    // Any thread. Without a readable file the recorder sends silence.
+    std::string MusicError() const { return m_file.Error(); }
+    bool IsMusicFinished() const { return m_file.IsFinished(); }
     // Switch the microphone while recording (no Stop / Start needed). "" = system default. The switch runs on a worker
     // thread, so this returns at once and never freezes the GUI; several quick calls are merged (the last one wins). It is
     // a short gap in the stream (longer for Bluetooth); the next packet carries the "marker" flag. If the device can't be

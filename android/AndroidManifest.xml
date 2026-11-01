@@ -21,6 +21,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <!-- "PlayMusic": the music file is read by its path (READ_MEDIA_AUDIO on Android 13+, READ_EXTERNAL_STORAGE before) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <!-- Bluetooth handsfree headset: BLUETOOTH_CONNECT is a runtime permission on Android 12+ -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>

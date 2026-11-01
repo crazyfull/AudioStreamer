@@ -144,6 +144,35 @@ int main()
     CHECK(best < steadyStep * 3 / 2 + 300);                             // a gain click would step by thousands more
 
     rec.Stop();
+
+    // PlayMusic: the music file replaces the microphone (the stub reads "tone" as a 440 Hz sine, anything else cannot be opened)
+    {
+        std::printf("music file\n");
+        AudioConfig mc = cfg; mc.playMusic = true; mc.musicPath = "tone";
+        Recorder mrec;
+        std::atomic<int> packets{0};
+        mrec.SetPacketHandler([&](const Bytes &){ packets++; });
+        mrec.SetConfig(&mc);
+        mrec.Start();
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+        std::printf("  tone file: %d packets, level %d, error '%s'\n", packets.load(), mrec.GetLevel(), mrec.MusicError().c_str());
+        CHECK(packets > 20);
+        CHECK(mrec.GetLevel() > 30);
+        CHECK(mrec.MusicError().empty());
+        mrec.Stop();
+
+        AudioConfig bad = cfg; bad.playMusic = true; bad.musicPath = "/no/such/file.mp3";
+        Recorder brec;
+        brec.SetPacketHandler([&](const Bytes &){});
+        brec.SetConfig(&bad);
+        brec.Start();
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        std::printf("  missing file: error '%s'\n", brec.MusicError().c_str());
+        CHECK(!brec.MusicError().empty());                              // the user is told, not left with silence
+        CHECK(brec.GetLevel() == 0);
+        brec.Stop();
+    }
+
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);
     return g_fail ? 1 : 0;
 }

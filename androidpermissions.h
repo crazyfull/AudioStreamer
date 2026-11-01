@@ -9,6 +9,10 @@
 // device lists are refreshed on every Start, so the headset shows up on the next Start.
 void RequestAndroidAudioPermissions();
 
+// "PlayMusic" reads an audio file by its path: Android 13+ needs READ_MEDIA_AUDIO, older versions READ_EXTERNAL_STORAGE.
+// Asked only when the user starts with PlayMusic checked (not at every start-up). Nothing happens if it is granted.
+void RequestAndroidMusicPermission();
+
 // Hands the Java VM and the Activity to the audio library (ravava::android::Init). Call it right after QApplication is
 // created, BEFORE the first MainWindow: the constructor already lists the sound devices.
 void InitAndroidAudio();
