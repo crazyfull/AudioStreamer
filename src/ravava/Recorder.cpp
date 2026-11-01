@@ -75,7 +75,9 @@ void Recorder::Start()
     m_input.SetDevice(m_pConfig->inputDeviceId);
     m_deviceChoice = m_pConfig->inputDeviceId;
     m_deviceWanted = true;
-    startDevice();
+    m_failedOpens = 0;
+    m_switching = true;
+    requestOpen(m_deviceChoice);        // on the device worker: opening the microphone can take seconds (Android)
     RAVAVA_INFO("recorder: Start() took %d ms%s", int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()),
                 m_pConfig->playMusic ? " (music file is opened in the background)" : "");
 }
@@ -143,6 +145,7 @@ void Recorder::Stop()
 {
     m_deviceWanted = false;
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
+    m_switching = false;
     m_input.Stop();         // returns when the callback is guaranteed to be finished
     m_file.Close();
     m_cache.clear();

@@ -119,7 +119,10 @@ Follow these exactly; each one is a crash or a glitch if broken.
    set config again (that is what the demo app does on every Start).
 4. Set before `Start()` / `SetConfig()`: `SetPacketHandler` (before `Start`), `SetAudioProcessor` (Recorder before `Start`,
    **Player before `SetConfig`**).
-5. Shut down: `Recorder::Stop()` first, then destroy. Destructors stop the devices and wait for a running device switch.
+5. `Recorder::Start()` and `Player::SetConfig()` return at once: the devices are opened on a worker thread (seconds on Android).
+   `Player::Play()` accepts packets meanwhile (they wait in the queue). Check `ActiveInputDevice()` / `ActiveOutputDevice()`
+   or the log (`opened in N ms`) to see when a device really runs; `KeepDevice()` retries a failed open.
+   Shut down: `Recorder::Stop()` first, then destroy. Destructors stop the devices and wait for a running device switch.
    Never destroy an object from inside its own packet handler or callback.
 6. Share ONE `AudioProcessor` (`shared_ptr`) between the recorder and the player of the same session. Never one per object.
    It needs the speaker signal as reference; without `Player` feeding it, echo cancellation cannot work.
