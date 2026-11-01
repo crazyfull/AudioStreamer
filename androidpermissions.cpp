@@ -7,16 +7,11 @@
 #include <QStringList>
 
 // Works on every Qt 6 (no QPermission / QtBluetooth needed): the Qt activity is a normal android.app.Activity.
-void RequestAndroidAudioPermissions()
+static void requestMissing(const QStringList &want)
 {
     QJniObject activity(QNativeInterface::QAndroidApplication::context());
     if(!activity.isValid())
         return;
-
-    QStringList want;
-    want << "android.permission.RECORD_AUDIO";
-    if(QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
-        want << "android.permission.BLUETOOTH_CONNECT";
 
     QStringList missing;
     for(const QString &p : want){
@@ -38,6 +33,22 @@ void RequestAndroidAudioPermissions()
     activity.callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", array, jint(1));
     env->DeleteLocalRef(array);
     env->DeleteLocalRef(stringClass);
+}
+
+void RequestAndroidAudioPermissions()
+{
+    QStringList want;
+    want << "android.permission.RECORD_AUDIO";
+    if(QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        want << "android.permission.BLUETOOTH_CONNECT";
+    requestMissing(want);
+}
+
+void RequestAndroidMusicPermission()
+{
+    requestMissing(QStringList() << (QNativeInterface::QAndroidApplication::sdkVersion() >= 33
+                                         ? "android.permission.READ_MEDIA_AUDIO"
+                                         : "android.permission.READ_EXTERNAL_STORAGE"));
 }
 
 void InitAndroidAudio()

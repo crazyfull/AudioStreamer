@@ -104,6 +104,34 @@ private:
 // the requested rate/channels. Returns interleaved s16 samples; empty on failure.
 Pcm DecodeAudioFile(const std::string &path, int sampleRate, int channels, std::string *err = nullptr);
 
+// ---- music file -> PCM, streaming -----------------------------------------------------------------------------------
+// Decodes a file (wav / mp3 / flac) on a background thread into a ring buffer of about 2 seconds, converted to the requested
+// rate / channels. Nothing is loaded into memory as a whole and nothing blocks: Open() returns at once, the audio thread
+// only copies ready samples out of the ring. (DecodeAudioFile() above decodes the whole file in the calling thread: a long
+// mp3 means seconds of work and tens of megabytes.)
+class AudioFileReader
+{
+public:
+    AudioFileReader();
+    ~AudioFileReader();
+    AudioFileReader(const AudioFileReader&) = delete;
+    AudioFileReader& operator=(const AudioFileReader&) = delete;
+
+    // Starts decoding from the beginning (a running decode is stopped first). Returns at once; the file is opened by the
+    // background thread, a failure shows up in Error().
+    void Open(const std::string &path, int sampleRate, int channels);
+    void Close();                               // stops the thread, waits for it
+    // Audio thread: copies up to `samples` interleaved s16 samples into dst and returns how many were ready (fewer = still
+    // buffering, or the end of the file). Lock-free, no allocation.
+    size_t Read(int16_t *dst, size_t samples);
+    bool IsFinished() const;                    // end of the file reached and everything was read
+    std::string Error() const;                  // "" = fine so far; why the file could not be opened / decoded (any thread)
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> d;
+};
+
 } // namespace ravava
 
 #endif // RAVAVA_AUDIODEVICE_H

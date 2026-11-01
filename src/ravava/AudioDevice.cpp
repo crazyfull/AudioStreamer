@@ -25,6 +25,9 @@
 #include "platform/AndroidAudioRoute.h"
 #endif
 #include <atomic>
+#include <chrono>
+#include <thread>
+#include <vector>
 #include <mutex>
 #include <cstring>
 #include <cstdio>
@@ -535,6 +538,111 @@ Pcm DecodeAudioFile(const std::string &path, int sampleRate, int channels, std::
     Pcm out(p, p + size_t(frameCount) * size_t(channels));
     ma_free(pFrames, nullptr);
     return out;
+}
+
+// ============================================================ AudioFileReader
+struct AudioFileReader::Impl
+{
+    std::vector<int16_t> ring;              // capacity is a power of two (samples)
+    size_t mask = 0;
+    std::atomic<uint64_t> wr{0}, rd{0};     // total samples written / read; free-running, index = value & mask
+    std::atomic<bool> stop{false};
+    std::atomic<bool> eof{false};           // the decoder reached the end of the file
+    std::thread th;
+    mutable std::mutex errMutex;
+    std::string err;
+
+    void setError(const std::string &e) { std::lock_guard<std::mutex> lk(errMutex); err = e; }
+
+    void run(std::string path, int rate, int channels)
+    {
+        ma_decoder_config cfg = ma_decoder_config_init(ma_format_s16, ma_uint32(channels), ma_uint32(rate));
+        ma_decoder dec;
+        ma_result r = ma_decoder_init_file(path.c_str(), &cfg, &dec);
+        if(r != MA_SUCCESS){
+            std::string e = std::string("cannot open '") + path + "': " + ma_result_description(r);
+#ifdef RAVAVA_ANDROID
+            e += " (Android: the app needs the permission to read audio files, and content:// paths cannot be used)";
+#endif
+            setError(e);
+            RAVAVA_WARN("music: %s", e.c_str());
+            eof = true;
+            return;
+        }
+        const size_t cap = ring.size();
+        const size_t chunkFrames = 2048;
+        std::vector<int16_t> tmp(chunkFrames * size_t(channels));
+        while(!stop.load(std::memory_order_relaxed)){
+            const uint64_t w = wr.load(std::memory_order_relaxed);
+            const uint64_t used = w - rd.load(std::memory_order_acquire);
+            if(cap - used < tmp.size()){
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));      // ring is full: wait for the audio thread
+                continue;
+            }
+            ma_uint64 got = 0;
+            r = ma_decoder_read_pcm_frames(&dec, tmp.data(), chunkFrames, &got);
+            const size_t n = size_t(got) * size_t(channels);
+            for(size_t i = 0; i < n; ++i)
+                ring[size_t((w + i) & mask)] = tmp[i];
+            wr.store(w + n, std::memory_order_release);
+            if(r != MA_SUCCESS || got == 0){
+                if(r != MA_SUCCESS && r != MA_AT_END){
+                    setError(std::string("decoding '") + path + "' failed: " + ma_result_description(r));
+                    RAVAVA_WARN("music: %s", err.c_str());
+                }
+                break;
+            }
+        }
+        ma_decoder_uninit(&dec);
+        eof = true;
+    }
+};
+
+AudioFileReader::AudioFileReader() : d(new Impl) {}
+AudioFileReader::~AudioFileReader() { Close(); }
+
+void AudioFileReader::Open(const std::string &path, int sampleRate, int channels)
+{
+    Close();
+    if(channels < 1) channels = 1;
+    size_t cap = 1024;
+    while(cap < size_t(sampleRate) * size_t(channels) * 2)      // about 2 s
+        cap <<= 1;
+    d->ring.assign(cap, 0);
+    d->mask = cap - 1;
+    d->wr = 0; d->rd = 0;
+    d->stop = false; d->eof = false;
+    d->setError(std::string());
+    d->th = std::thread([this, path, sampleRate, channels]{ d->run(path, sampleRate, channels); });
+}
+
+void AudioFileReader::Close()
+{
+    d->stop = true;
+    if(d->th.joinable())
+        d->th.join();
+}
+
+size_t AudioFileReader::Read(int16_t *dst, size_t samples)
+{
+    const uint64_t r = d->rd.load(std::memory_order_relaxed);
+    const uint64_t avail = d->wr.load(std::memory_order_acquire) - r;
+    const size_t n = size_t(avail < samples ? avail : samples);
+    for(size_t i = 0; i < n; ++i)
+        dst[i] = d->ring[size_t((r + i) & d->mask)];
+    d->rd.store(r + n, std::memory_order_release);
+    return n;
+}
+
+bool AudioFileReader::IsFinished() const
+{
+    return d->eof.load(std::memory_order_acquire) && d->rd.load() == d->wr.load();
+}
+
+std::string AudioFileReader::Error() const
+{
+    std::lock_guard<std::mutex> lk(d->errMutex);
+    return d->err;
 }
 
 } // namespace ravava

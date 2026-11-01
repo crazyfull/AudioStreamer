@@ -177,7 +177,7 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in 
 | Class | Purpose and key calls |
 |---|---|
 | `AudioConfig` | all settings, `Validate(&err)`, `FrameSamples()`, `RenderRate()` |
-| `Recorder` | `SetConfig`, `SetPacketHandler`, `SetAudioProcessor`, `Start`, `Stop`, `SetInputGain`, `GetLevel`, `SetInputDevice(id)`, `KeepDevice`, `ActiveInputDevice` |
+| `Recorder` | `SetConfig`, `SetPacketHandler`, `SetAudioProcessor`, `Start`, `Stop`, `SetInputGain`, `GetLevel`, `SetInputDevice(id)`, `KeepDevice`, `ActiveInputDevice`, `MusicError`, `IsMusicFinished` (playMusic) |
 | `Player` | `SetConfig`, `SetAudioProcessor`, `Play(datagram)`, `SetVolume`, `GetLevel`, `GetStats(stats, depthFrames, frameMs)`, `SetOutputDevice(id)`, `KeepDevice`, `ActiveOutputDevice` |
 | `AudioProcessor` | `IsAvailable()`, `Init(captureRate, renderRate, channels, Options, &err)`, used through `SetAudioProcessor` |
 | `ListInputDevices()` / `ListOutputDevices()` | `vector<AudioDeviceInfo>{name, id, isDefault}` |
@@ -185,7 +185,8 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in 
 | `net::Packet`, `PacketRouter` | `Packet::WrapInto`, `Packet::Parse`, `router.SetHandler(type, fn)`, `router.Dispatch(bytes)` |
 | `VoicePacket` | audio body layout helpers |
 | `LevelMeter` | loudness 0..100 (RMS in dBFS, -60 = 0, -3 = 100) |
-| `DecodeAudioFile(path, rate, ch)` | decode a music file to PCM (used for `playMusic`) |
+| `AudioFileReader` | streaming music-file decoder (wav / mp3 / flac) on a background thread with a ~2 s ring buffer; used by `playMusic` (never loads the whole file; on Android the path needs READ_MEDIA_AUDIO / READ_EXTERNAL_STORAGE, `content://` URIs do not work) |
+| `DecodeAudioFile(path, rate, ch)` | decodes a whole file to PCM at once (small files only) |
 
 Loss figures: `lost` is a net number (goes down when a late packet arrives); for windowed figures use the growth of
 `lostEvents` minus the growth of `reordered`.

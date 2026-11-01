@@ -4,6 +4,9 @@
 #include "src/ravava/Recorder.h"
 #include "src/ravava/Player.h"
 #include "src/ravava/AudioProcessor.h"
+#ifdef Q_OS_ANDROID
+#include "androidpermissions.h"
+#endif
 #include <QDebug>
 #include <QUdpSocket>
 #include <QTcpSocket>
@@ -427,6 +430,10 @@ void MainWindow::on_btnStartRecording_clicked()
 #endif
 
 
+#ifdef Q_OS_ANDROID
+    if(ui->playMusic_checkBox->isChecked())
+        RequestAndroidMusicPermission();        // reading the music file by its path needs it (the answer arrives later: Start again)
+#endif
     refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
     m_statHistory.clear();      // new player = new counters
@@ -551,6 +558,13 @@ void MainWindow::OnStatsTimer()
         const QString spk = m_pAudioPlayer ? QString::fromStdString(m_pAudioPlayer->ActiveOutputDevice()) : QString();
         devices = QString("Mic      : %1\nSpeaker  : %2\n").arg(mic.isEmpty() ? "(not running / unknown)" : mic)
                       .arg(spk.isEmpty() ? "(not running / unknown)" : spk);
+    }
+
+    // PlayMusic: the file is decoded in the background; say clearly when it can't be read (path, permission) or has ended
+    if(m_pAudioRecorder && m_AudioConfig.playMusic){
+        const QString merr = QString::fromStdString(m_pAudioRecorder->MusicError());
+        devices += merr.isEmpty() ? (m_pAudioRecorder->IsMusicFinished() ? QString("Music    : finished\n") : QString("Music    : playing\n"))
+                                  : QString("Music    : ERROR - %1\n").arg(merr);
     }
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){

@@ -63,4 +63,27 @@ std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 Pcm DecodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }
 
+// fake music file: path "tone" = an endless 440 Hz sine (amplitude 8000), anything else = "cannot open"
+#include <cmath>
+struct AudioFileReader::Impl { bool tone = false; int rate = 48000, ch = 1; uint64_t pos = 0; std::string err; };
+AudioFileReader::AudioFileReader() : d(new Impl) {}
+AudioFileReader::~AudioFileReader() {}
+void AudioFileReader::Open(const std::string &path, int sampleRate, int channels)
+{
+    d->tone = (path == "tone"); d->rate = sampleRate; d->ch = channels < 1 ? 1 : channels; d->pos = 0;
+    d->err = d->tone ? std::string() : std::string("cannot open '") + path + "' (stub)";
+}
+void AudioFileReader::Close() {}
+size_t AudioFileReader::Read(int16_t *dst, size_t samples)
+{
+    if(!d->tone) return 0;
+    for(size_t i = 0; i < samples; i += size_t(d->ch)){
+        const int16_t v = int16_t(8000.0 * std::sin(2.0 * 3.14159265358979 * 440.0 * double(d->pos++) / d->rate));
+        for(int c = 0; c < d->ch; ++c) dst[i + size_t(c)] = v;
+    }
+    return samples;
+}
+bool AudioFileReader::IsFinished() const { return false; }
+std::string AudioFileReader::Error() const { return d->err; }
+
 } // namespace ravava

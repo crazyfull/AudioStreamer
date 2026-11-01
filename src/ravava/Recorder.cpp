@@ -20,7 +20,6 @@ Recorder::Recorder() : m_inputGain(200)
     m_seq = 0;
     m_tx = 0;
     m_marker = true;
-    m_musicPos = 0;
 }
 
 Recorder::~Recorder()
@@ -46,24 +45,6 @@ void Recorder::init()
         return;
     }
     m_pOpus = std::move(codec);
-
-    if(m_pConfig->playMusic)
-        loadMusic();
-}
-
-// The whole file is decoded once, up front (the old code also buffered all of it), so the
-// real-time capture callback never touches the disk.
-bool Recorder::loadMusic()
-{
-    std::string err;
-    m_music = DecodeAudioFile(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels, &err);
-    m_musicPos = 0;
-    if(m_music.empty()){
-        RAVAVA_WARN("music: %s", err.c_str());
-        return false;
-    }
-    RAVAVA_INFO("music loaded: %s (%zu samples)", m_pConfig->musicPath.c_str(), m_music.size());
-    return true;
 }
 
 void Recorder::Start()
@@ -86,7 +67,8 @@ void Recorder::Start()
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
-    m_musicPos = 0;
+    if(m_pConfig->playMusic)
+        m_file.Open(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels);    // from the beginning, decoded in the background
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     m_input.SetDevice(m_pConfig->inputDeviceId);
@@ -159,6 +141,7 @@ void Recorder::Stop()
     m_deviceWanted = false;
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
     m_input.Stop();         // returns when the callback is guaranteed to be finished
+    m_file.Close();
     m_cache.clear();
     m_scratch.clear();
     m_gained.clear();
@@ -176,12 +159,10 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
 
     if(m_pConfig->playMusic){
         // the mic only acts as a clock: the same amount of samples is taken from the music file
-        const size_t avail = m_musicPos < m_music.size() ? m_music.size() - m_musicPos : 0;
-        const size_t take = std::min(count, avail);
+        // (the file is decoded on a background thread, this only copies ready samples)
         m_scratch.resize(count);
-        std::copy(m_music.begin() + m_musicPos, m_music.begin() + m_musicPos + take, m_scratch.begin());
-        std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // file ended -> silence
-        m_musicPos += take;
+        const size_t take = m_file.Read(m_scratch.data(), count);
+        std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // still buffering / file ended -> silence
         src = m_scratch.data();
     }else{
         // microphone gain first, on a copy (the device buffer is read-only); at 100 % nothing is copied
