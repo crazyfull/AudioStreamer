@@ -1,6 +1,8 @@
-# ravava — the audio library part of VoiceStream
+# src/ravava — libRavAva internals and design notes
 
-Everything in this folder is the future **libRavAva**: Opus voice over any datagram transport, jitter buffer
+Usage, safety rules, API summary and build instructions: repository root `README.md`. Copyright (c) 2026 Mojtaba Kahvand, proprietary (`LICENSE`).
+
+Everything in this folder is **libRavAva**: Opus voice over any datagram transport, jitter buffer
 (reorder / FEC / PLC), echo cancellation / noise suppression / AGC (optional webrtc), receive volume + level meter.
 
 * No Qt, no sockets: it never opens a socket. The app hands it received datagrams and takes datagrams back.
@@ -52,34 +54,9 @@ means automatic (Bluetooth > wired > speaker). `ReassertRoute()` (1 s timer) put
 (USB cable, headset connecting) and leaves it alone while the phone app rings / is in a call. Limits: a Bluetooth microphone
 together with the phone speaker is impossible (one communication device), and call mode uses the call volume + voice DSP.
 
-## Building libRavAva with CMake (all platforms)
+## Building libRavAva
 
-`src/ravava/CMakeLists.txt` is a standalone project for the library (the Qt app still uses `VoiceStream.pro`). miniaudio
-(`../../miniaudio`, with the RAVAVA patch) is compiled INTO the library, it is not a separate build.
-
-    cmake -S src/ravava -B build -DCMAKE_BUILD_TYPE=Release        # static library by default
-    cmake --build build
-    cmake --install build --prefix /some/prefix                    # lib/libRavAva.a, include/ravava/*.h, lib/cmake/RavAva
-
-| option | default | meaning |
-|---|---|---|
-| `RAVAVA_BUILD_SHARED` | OFF | ON = shared library instead of static |
-| `RAVAVA_WITH_WEBRTC` | AUTO | AUTO: use webrtc-audio-processing 1.x when found (then echo cancel / noise suppression / AGC are compiled in), ON: required, OFF: never |
-| `RAVAVA_OPUS_ROOT` | | prefix of libopus (`include[/opus]/opus.h`, `lib[/<ANDROID_ABI>]/libopus.a`); without it: CMake package, pkg-config, system, and on MSVC `libs/opus/win32` |
-| `RAVAVA_WEBRTC_ROOT` | | prefix of webrtc-audio-processing 1.x (without it: pkg-config, system, MSVC `libs/webrtc/win32`) |
-| `RAVAVA_INSTALL_OPUS_HEADERS` | ON | also copies `opus.h` & co into `include/ravava/` (`OpusCodec.h` includes `"opus.h"`), so the include folder is complete |
-| `RAVAVA_STATIC_RUNTIME` | OFF | MSVC: `/MT` (`/MTd`) like VoiceStream.pro |
-| `RAVAVA_BUILD_TESTS` | OFF | builds the sound-card-free tests of `tests/`, run them with `ctest` |
-
-The headers are copied to `<build>/include/ravava/` while building (so a build tree can be used without installing) and
-installed to `<prefix>/include/ravava/`: `#include <ravava/Player.h>`. Use it from another CMake project:
-
-    find_package(RavAva REQUIRED)                      # -DCMAKE_PREFIX_PATH=<prefix>
-    target_link_libraries(myapp PRIVATE RavAva::RavAva)   # brings opus, webrtc (if used), pthread / dl / log / frameworks
-
-Android: use the NDK toolchain file (`-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a
--DRAVAVA_OPUS_ROOT=...`); `platform/AndroidAudioRoute.cpp` is added automatically. With a static libRavAva, webrtc's
-own dependencies (abseil) must be linkable too: on Linux pkg-config's static flags are used.
+Moved to the repository root `README.md` (section 7: CMake options, linking Opus, webrtc, examples, Android, tests).
 
 ## Android: device list and Bluetooth handsfree (`platform/AndroidAudioRoute.*`)
 

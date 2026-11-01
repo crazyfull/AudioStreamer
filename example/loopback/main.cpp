@@ -1,3 +1,12 @@
+/*
+ * RavAva - real-time voice library (Opus over any datagram transport)
+ * Copyright (c) 2026 Mojtaba Kahvand. All rights reserved.
+ * Author: Mojtaba Kahvand
+ *
+ * Proprietary software, NOT free / open source. Use, copying, modification and distribution are forbidden without a
+ * written license from the author. See the LICENSE file in the repository root.
+ * SPDX-License-Identifier: LicenseRef-RavAva-Proprietary
+ */
 // RavAva loopback: what the microphone records is Opus-encoded by ravava::Recorder, handed straight to ravava::Player
 // (optionally through a simulated lossy network) and played by the speaker. Fixed format: 48000 Hz, mono, fullband.
 // Use headphones (or --echo 1..4 with the webrtc build) or the speaker will howl into the microphone.

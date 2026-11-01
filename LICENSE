@@ -1,0 +1,35 @@
+RavAva - Proprietary License
+============================
+
+Copyright (c) 2026 Mojtaba Kahvand. All rights reserved.
+Author: Mojtaba Kahvand
+
+THIS SOFTWARE IS NOT FREE SOFTWARE AND NOT OPEN SOURCE.
+
+The source code, headers, build files, documentation, examples and tests in this repository (together "RavAva") are the
+exclusive property of the author. Seeing the code (for example because the repository is visible to you) does NOT give you
+any right to use it.
+
+1. Without a written license agreement signed or otherwise granted in writing by the author, you may NOT:
+   - use RavAva, in whole or in part, in any product, service, project or internal tool, commercial or not;
+   - copy, modify, translate, adapt, merge, compile, link, sublicense, sell, rent, lend, publish or distribute RavAva,
+     in source or binary form, or any work derived from it;
+   - remove or change this notice or the copyright / author lines in the files;
+   - use RavAva, its code or its documentation to train, fine-tune or evaluate machine-learning models.
+
+2. A license, if granted, is limited to the terms written in that agreement (scope, number of products, time, fee).
+   Everything that is not expressly granted is reserved.
+
+3. Third-party components keep their own licenses, which are not changed by this file:
+   - miniaudio (miniaudio/) - public domain or MIT No Attribution, by David Reid;
+   - Opus (libopus) - BSD 3-clause, Xiph.Org Foundation, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry,
+     CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Microsoft Corporation;
+   - webrtc-audio-processing (optional, not part of this repository) - BSD 3-clause, The WebRTC project authors, and the
+     licenses of the libraries it contains (abseil: Apache 2.0, ...).
+   Whoever distributes a product that contains them must follow their license texts.
+
+4. NO WARRANTY. RAVAVA IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. THE AUTHOR IS NOT LIABLE FOR ANY CLAIM, DAMAGE OR OTHER LIABILITY
+   ARISING FROM THE SOFTWARE OR ITS USE.
+
+Contact for licensing: Mojtaba Kahvand <mojtaba.kahvand@gmail.com>
