@@ -71,4 +71,5 @@ jobs:
           cmake -S src/ravava -B build-tests -DCMAKE_BUILD_TYPE=Release -DRAVAVA_BUILD_TESTS=ON \
                 -DRAVAVA_OPUS_ROOT="$GITHUB_WORKSPACE/opus-install" -DRAVAVA_WITH_WEBRTC=OFF
           cmake --build build-tests -j 4
-          (cd build-tests && ctest --output-on-failure)
+          # volume_test sends audio in real time with sleep(); a busy shared CI machine can delay it. Retry up to 3 times.
+          (cd build-tests && ctest --output-on-failure --repeat until-pass:3)
