@@ -275,6 +275,15 @@ void MainWindow::CreateTimer()
     connect(&m_StatsTimer, SIGNAL(timeout()), this, SLOT(OnStatsTimer()));
     m_StatsTimer.setInterval(1000);
     m_StatsTimer.start();
+    connect(&m_LevelTimer, &QTimer::timeout, this, &MainWindow::OnLevelTimer);
+    m_LevelTimer.setInterval(50);
+    m_LevelTimer.start();
+    ui->receivedVolume->setRange(0, 100);
+    ui->receivedVolume->setValue(0);
+    ui->receivedVolume->setTextVisible(false);
+    ui->myVolume->setRange(0, 100);
+    ui->myVolume->setValue(0);
+    ui->myVolume->setTextVisible(false);
 
     /*
     connect(&m_PlayerTimer, SIGNAL(timeout()), this, SLOT(OnPlayerTimer()));
@@ -516,6 +525,13 @@ void MainWindow::onAudioPacket(const Packet::Header &hdr, const uint8_t *payload
         m_pAudioPlayer->Play(payload, size);
 }
 
+// the two volume bars: what is received (to the speaker) and what is sent (from the microphone)
+void MainWindow::OnLevelTimer()
+{
+    ui->receivedVolume->setValue(m_pAudioPlayer ? m_pAudioPlayer->GetLevel() : 0);
+    ui->myVolume->setValue(m_pAudioRecorder ? m_pAudioRecorder->GetLevel() : 0);
+}
+
 void MainWindow::OnStatsTimer()
 {
     // once a second: if Android moved a stream to another device (notification sound, Bluetooth...), re-open the chosen one
@@ -584,11 +600,6 @@ void MainWindow::OnStatsTimer()
     }else{
         t += "\nEcho     : off";
     }
-
-    // loudness of the received audio (0..100, loudest since the last refresh) as a text bar
-    const int lvl = m_pAudioPlayer->TakePeakLevel();
-    t += QString("\nVolume   : [%1%2] %3%")
-             .arg(QString(lvl / 5, QChar('#'))).arg(QString(20 - lvl / 5, QChar('-'))).arg(lvl);
 
     // network layer: who is talking (stream id of the last audio packet) and packets that are not audio
     const PacketRouter::Stats &net = m_router.GetStats();

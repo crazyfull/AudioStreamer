@@ -66,6 +66,23 @@ int main()
     std::printf("microphone gain\n");
     const double unity = measure(100);
 
+    // level of the SENT audio (myVolume bar): a tone reads loud, half gain reads lower, mute reads 0
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        const int loud = rec.GetLevel();
+        std::printf("  sent level: gain 100 -> %d\n", loud);
+        CHECK(loud > 30 && loud <= 100);
+        rec.SetInputGain(25);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        const int quiet = rec.GetLevel();
+        std::printf("  sent level: gain 25  -> %d\n", quiet);
+        CHECK(quiet < loud);
+        rec.SetInputGain(0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        CHECK(rec.GetLevel() == 0);
+        rec.SetInputGain(100);
+    }
+
     // switching the microphone while recording: no Stop / Start, the stream goes on, the next packet is marked
     {
         const int before = g_markers;
