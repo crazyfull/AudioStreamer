@@ -78,6 +78,8 @@ private slots:
 
     void on_btnCopyLog_clicked();
 
+    void on_btnTalk_clicked(bool checked);
+
 private:
     Ui::MainWindow *ui;
     void initTCP();

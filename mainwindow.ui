@@ -6,29 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>460</width>
-    <height>691</height>
+    <width>457</width>
+    <height>765</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>RavAva Example</string>
-  </property>
-  <property name="styleSheet">
-   <string notr="true">
-
-    QSlider::handle:horizontal {
-        width: 28px;
-        height: 28px;
-        margin: -10px 0;
-        background: #2196F3;
-        border-radius: 14px;
-    }
-
-    QSlider::groove:horizontal {
-        height: 8px;
-        background: rgb(120, 120, 120);
-        border-radius: 40px;
-    }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTabWidget" name="tabWidget">
@@ -36,8 +19,8 @@
      <rect>
       <x>9</x>
       <y>9</y>
-      <width>437</width>
-      <height>191</height>
+      <width>441</width>
+      <height>241</height>
      </rect>
     </property>
     <property name="tabPosition">
@@ -54,6 +37,95 @@
       <string>Codec</string>
      </attribute>
      <layout class="QGridLayout" name="gridLayout">
+      <item row="2" column="2">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Loss Perc:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QComboBox" name="BitRate_comboBox">
+        <property name="editable">
+         <bool>true</bool>
+        </property>
+        <property name="currentIndex">
+         <number>1</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>8000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>12000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>16000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>24000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>32000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>48000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>64000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>96000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>128000</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="4" column="2">
+       <spacer name="verticalSpacer_2">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>180</width>
+          <height>111</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="1" column="0">
+       <widget class="QComboBox" name="BandWith_comboBox">
+        <property name="currentIndex">
+         <number>-1</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>opusBitrate:</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_5">
         <property name="text">
@@ -61,11 +133,65 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QComboBox" name="BandWith_comboBox">
-        <property name="currentIndex">
-         <number>-1</number>
+      <item row="2" column="1">
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Maximum</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="1" column="2">
+       <widget class="QComboBox" name="frameMS_comboBox">
+        <property name="currentText">
+         <string>20</string>
+        </property>
+        <property name="currentIndex">
+         <number>1</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>10</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>20</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>40</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>60</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>80</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>120</string>
+         </property>
+        </item>
        </widget>
       </item>
       <item row="3" column="2">
@@ -133,154 +259,11 @@
         </item>
        </widget>
       </item>
-      <item row="2" column="2">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Loss Perc:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <spacer name="verticalSpacer_2">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>180</width>
-          <height>111</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="2" column="1">
-       <spacer name="horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::Maximum</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>opusBitrate:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QComboBox" name="BitRate_comboBox">
-        <property name="editable">
-         <bool>true</bool>
-        </property>
-        <property name="currentIndex">
-         <number>0</number>
-        </property>
-        <item>
-         <property name="text">
-          <string>8000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>12000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>16000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>24000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>32000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>48000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>64000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>96000</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>128000</string>
-         </property>
-        </item>
-       </widget>
-      </item>
       <item row="0" column="2">
        <widget class="QLabel" name="label_2">
         <property name="text">
          <string>frameMs:</string>
         </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QComboBox" name="frameMS_comboBox">
-        <property name="currentText">
-         <string>20</string>
-        </property>
-        <property name="currentIndex">
-         <number>1</number>
-        </property>
-        <item>
-         <property name="text">
-          <string>10</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>20</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>40</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>60</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>80</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>100</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>120</string>
-         </property>
-        </item>
        </widget>
       </item>
      </layout>
@@ -292,24 +275,13 @@
      <layout class="QGridLayout" name="gridLayout_3">
       <item row="0" column="0">
        <widget class="QPushButton" name="btnCopyLog">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>Copy log</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0">
-       <widget class="QPlainTextEdit" name="txtLog">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
-        </property>
-       </widget>
+       <widget class="QPlainTextEdit" name="txtLog"/>
       </item>
      </layout>
     </widget>
@@ -318,8 +290,8 @@
     <property name="geometry">
      <rect>
       <x>9</x>
-      <y>210</y>
-      <width>437</width>
+      <y>250</y>
+      <width>441</width>
       <height>127</height>
      </rect>
     </property>
@@ -470,10 +442,25 @@
     <property name="geometry">
      <rect>
       <x>9</x>
-      <y>350</y>
-      <width>437</width>
-      <height>301</height>
+      <y>380</y>
+      <width>441</width>
+      <height>361</height>
      </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true"> QSlider::handle:horizontal {
+        width: 28px;
+        height: 28px;
+        margin: -10px 0;
+        background: #2196F3;
+        border-radius: 14px;
+    }
+
+    QSlider::groove:horizontal {
+        height: 8px;
+        background: rgb(120, 120, 120);
+        border-radius: 40px;
+    }</string>
     </property>
     <property name="title">
      <string>Audio</string>
@@ -486,7 +473,7 @@
       <number>3</number>
      </property>
      <item>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
         <widget class="QCheckBox" name="playMusic_checkBox">
          <property name="text">
@@ -498,14 +485,9 @@
         <widget class="QLineEdit" name="txtMusicPath">
          <property name="minimumSize">
           <size>
-           <width>40</width>
-           <height>30</height>
+           <width>0</width>
+           <height>0</height>
           </size>
-         </property>
-         <property name="font">
-          <font>
-           <pointsize>10</pointsize>
-          </font>
          </property>
          <property name="text">
           <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
@@ -515,51 +497,11 @@
       </layout>
      </item>
      <item>
-      <layout class="QHBoxLayout" name="horizontalLayout">
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
-       <item>
-        <widget class="QPushButton" name="btnStartRecording">
-         <property name="text">
-          <string>Start </string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnStopRecording">
-         <property name="text">
-          <string>Stop</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="horizontalSpacer_2">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeType">
-          <enum>QSizePolicy::Expanding</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-      </layout>
-     </item>
-     <item>
       <layout class="QHBoxLayout" name="horizontalLayout_volume">
        <item>
         <widget class="QLabel" name="label_volume">
          <property name="text">
-          <string>Volume</string>
+          <string>Volume  </string>
          </property>
          <property name="margin">
           <number>10</number>
@@ -604,6 +546,31 @@
          </property>
         </widget>
        </item>
+       <item>
+        <widget class="QProgressBar" name="receivedVolume">
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>10</height>
+          </size>
+         </property>
+         <property name="value">
+          <number>24</number>
+         </property>
+         <property name="textVisible">
+          <bool>false</bool>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="invertedAppearance">
+          <bool>false</bool>
+         </property>
+         <property name="textDirection">
+          <enum>QProgressBar::BottomToTop</enum>
+         </property>
+        </widget>
+       </item>
       </layout>
      </item>
      <item>
@@ -639,7 +606,7 @@
           <enum>QSlider::TicksBelow</enum>
          </property>
          <property name="tickInterval">
-          <number>5</number>
+          <number>10</number>
          </property>
         </widget>
        </item>
@@ -653,6 +620,31 @@
          </property>
          <property name="text">
           <string>100</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="myVolume">
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>10</height>
+          </size>
+         </property>
+         <property name="value">
+          <number>24</number>
+         </property>
+         <property name="textVisible">
+          <bool>false</bool>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="invertedAppearance">
+          <bool>false</bool>
+         </property>
+         <property name="textDirection">
+          <enum>QProgressBar::BottomToTop</enum>
          </property>
         </widget>
        </item>
@@ -714,6 +706,128 @@
       </layout>
      </item>
      <item>
+      <widget class="Line" name="line">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QPushButton" name="btnStartRecording">
+         <property name="text">
+          <string>Start </string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnStopRecording">
+         <property name="text">
+          <string>Stop</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Expanding</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnTalk">
+         <property name="minimumSize">
+          <size>
+           <width>64</width>
+           <height>64</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>64</width>
+           <height>64</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">
+QWidget::disabled{
+    color: #787878;
+}
+
+QPushButton{
+    background-color: transparent;
+    border-color: #f0f0f0;
+    border-width: 0px;
+    border-radius: 0px;
+    border-style: solid;
+    min-width: 64px;
+    min-height: 64px;
+    color: #000;
+}
+
+QPushButton::hover{
+   /* background-color: #3dacf1;*/
+}
+
+QPushButton::pressed{
+  /*  background-color: #fffccc;*/
+}
+
+QPushButton:hover:!pressed
+{
+ /* border: 1px solid red;*/
+}
+QPushButton::disabled
+{
+  /*border: 1px solid red;*/
+  background-color: #f0f0f0;
+}
+
+QPushButton:checked {
+/*
+    background-color: #50c0f9;
+    border: 1px solid #ffffff;
+    color: #ffffff;*/
+}
+</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resource.qrc">
+           <normaloff>:/icons/resource/icon/mic-off.png</normaloff>:/icons/resource/icon/mic-off.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>64</width>
+           <height>64</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
       <spacer name="verticalSpacer">
        <property name="orientation">
         <enum>Qt::Vertical</enum>
@@ -731,6 +845,8 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <resources/>
+ <resources>
+  <include location="resource.qrc"/>
+ </resources>
  <connections/>
 </ui>

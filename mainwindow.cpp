@@ -114,6 +114,7 @@ void releaseWakeLock()
 
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
+
     ui->setupUi(this);
 
 #ifdef Q_OS_ANDROID
@@ -129,9 +130,10 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     //layout->addWidget(ui->verticalSpacer_3);
     layout->addItem(ui->verticalSpacer_2);
 
+#else
+    ui->groupBox_3->setStyleSheet("");
 
 #endif
-
 
 
     setupRouter();
@@ -449,6 +451,9 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
     qDebug( "Ekhtelaf: [%d]", aTime.time().msecsTo( currentTime.time() ) );
 */
 
+    if(!ui->btnTalk->isChecked()){
+        return;
+    }
 
     /**/
     // envelope: packet type + stream id in front of the audio body
@@ -529,7 +534,7 @@ void MainWindow::OnStatsTimer()
         const QString mic = m_pAudioRecorder ? QString::fromStdString(m_pAudioRecorder->ActiveInputDevice()) : QString();
         const QString spk = m_pAudioPlayer ? QString::fromStdString(m_pAudioPlayer->ActiveOutputDevice()) : QString();
         devices = QString("Mic      : %1\nSpeaker  : %2\n").arg(mic.isEmpty() ? "(not running / unknown)" : mic)
-                                                        .arg(spk.isEmpty() ? "(not running / unknown)" : spk);
+                      .arg(spk.isEmpty() ? "(not running / unknown)" : spk);
     }
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
@@ -730,7 +735,6 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
         sendSize = m_pUDPClient->writeDatagram(m_packet, QHostAddress(ui->server_comboBox->currentData().toString()), 10001); //local khodam
         //if(Buff.length() < 39) return 0;
         //
-        qDebug() <<  "Server() " << ui->server_comboBox->currentData().toString();
 
 
         if(sendSize > 0)
@@ -742,15 +746,6 @@ qint64 MainWindow::SendUDP(const QByteArray &Buff, bool bypasWithDNS){
 
 
     return sendSize;
-
-    /*
-    if(m_UDPClient->writeDatagram(Buff.data(), Buff.size(), QHostAddress::Broadcast, 10001)==-1){
-        int test = 1;
-    }else{
-        m_UDPClient->flush();
-    }
-    return 1;
-    */
 }
 
 
@@ -758,5 +753,16 @@ void MainWindow::on_btnCopyLog_clicked()
 {
     //
     QGuiApplication::clipboard()->setText(ui->txtLog->toPlainText());
+}
+
+
+void MainWindow::on_btnTalk_clicked(bool checked)
+{
+    if(checked){
+        ui->btnTalk->setIcon(QIcon(":/icons/resource/icon/mic-on.png"));
+    }else{
+        ui->btnTalk->setIcon(QIcon(":/icons/resource/icon/mic-off.png"));
+    }
+
 }
 
