@@ -6,7 +6,7 @@
 #   cmake --build build
 #   cmake --install build --prefix /some/prefix        # lib/libRavAva.a  +  include/ravava/*.h  +  lib/cmake/RavAva
 #
-# miniaudio (../../miniaudio, with the RAVAVA patch) is compiled INTO the library: nothing to build separately.
+# miniaudio (../../miniaudio) is compiled INTO the library: nothing to build separately.
 #
 # Options (-DNAME=value):
 #   RAVAVA_BUILD_SHARED      OFF  OFF = static library (default), ON = shared library
