@@ -11,6 +11,7 @@ on:
       - 'src/ravava/**'
       - 'miniaudio/**'
       - 'example/**'
+      - 'tests/**'
       - '.github/workflows/build-cli.yml'
 
 jobs:
