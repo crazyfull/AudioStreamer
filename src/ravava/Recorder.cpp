@@ -67,6 +67,7 @@ void Recorder::Start()
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
+    const auto t0 = std::chrono::steady_clock::now();
     if(m_pConfig->playMusic)
         m_file.Open(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels);    // from the beginning, decoded in the background
 
@@ -75,6 +76,8 @@ void Recorder::Start()
     m_deviceChoice = m_pConfig->inputDeviceId;
     m_deviceWanted = true;
     startDevice();
+    RAVAVA_INFO("recorder: Start() took %d ms%s", int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()),
+                m_pConfig->playMusic ? " (music file is opened in the background)" : "");
 }
 
 bool Recorder::startDevice()

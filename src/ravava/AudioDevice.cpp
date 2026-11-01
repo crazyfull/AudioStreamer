@@ -176,6 +176,9 @@ void AudioInput::SetDevice(const std::string &deviceId) { d->deviceId = deviceId
 
 bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
 {
+    const auto t0 = std::chrono::steady_clock::now();
+    auto sinceMs = [&t0]{ return int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()); };
+    int prepareMs = 0;
     Stop();
     d->cb = std::move(cb);
 
@@ -196,6 +199,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     {
         int32_t aid = 0; bool voice = false, held = false;
         android::PrepareStream(d->deviceId, true, &aid, &voice, &held);
+        prepareMs = sinceMs();
         d->voiceRoute = held;
         if(voice){
             cfg.aaudio.inputPreset = ma_aaudio_input_preset_voice_communication;    // lets Android use the headset's mic
@@ -257,6 +261,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
         Stop();
         return false;
     }
+    RAVAVA_INFO("capture: opened in %d ms (route setup %d ms)", sinceMs(), prepareMs);
     d->running = true;
     return true;
 }
@@ -380,6 +385,9 @@ void AudioOutput::SetDevice(const std::string &deviceId) { d->deviceId = deviceI
 
 bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb, std::string *err)
 {
+    const auto t0 = std::chrono::steady_clock::now();
+    auto sinceMs = [&t0]{ return int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()); };
+    int prepareMs = 0;
     Stop();
     d->cb = std::move(cb);
     d->channels = channels;
@@ -401,6 +409,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     {
         int32_t aid = 0; bool voice = false, held = false;
         android::PrepareStream(d->deviceId, false, &aid, &voice, &held);
+        prepareMs = sinceMs();
         d->voiceRoute = held;
         if(voice)
             cfg.aaudio.usage = ma_aaudio_usage_voice_communication;
@@ -447,6 +456,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
         Stop();
         return false;
     }
+    RAVAVA_INFO("playback: opened in %d ms (route setup %d ms)", sinceMs(), prepareMs);
     d->running = true;
     return true;
 }
