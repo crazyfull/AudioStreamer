@@ -81,7 +81,7 @@ void Player::SetConfig(AudioConfig *pConfig)
 
 void Player::init()
 {
-    if(m_output.IsRunning() || !m_pConfig)
+    if(m_output.IsRunning() || m_deviceWanted || !m_pConfig)     // (m_deviceWanted: the speaker is already being opened)
         return;
 
     // Opus decoder can output 8/12/16/24/48k. miniaudio converts rate/channels to what the
@@ -112,10 +112,14 @@ void Player::init()
     m_output.SetDevice(m_pConfig->outputDeviceId);
     m_deviceChoice = m_pConfig->outputDeviceId;
     m_deviceWanted = true;
-    if(startDevice()){
-        m_ready = true;
-        RAVAVA_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
-    }
+    // The speaker is opened on the device worker: on Android that takes seconds (call mode + route), which used to freeze the
+    // GUI (a thread blocked for ~5 s gets the app killed). Play() accepts packets from now on, they wait in the queue until
+    // the speaker runs. m_ready no longer depends on the open succeeding: when it failed once (a route that was still being
+    // torn down) KeepDevice() opens it later, and the received audio must be heard then.
+    m_failedOpens = 0;
+    m_ready = true;
+    m_switching = true;
+    requestOpen(m_deviceChoice);
 }
 
 bool Player::startDevice()
@@ -147,6 +151,8 @@ void Player::requestOpen(const std::string &deviceId)
         m_output.SetDevice(id);
         m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
         const bool ok = startDevice();  // packets that arrive meanwhile wait in the queue; failure is logged
+        if(ok)
+            RAVAVA_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
         m_failedOpens = ok ? 0 : m_failedOpens + 1;
         m_switching = false;
     });

@@ -54,7 +54,8 @@ int main()
     OpusCodec enc; enc.InitEncoder(cfg);
     Player play;
     cfg.outputDeviceId = "dd";                              // the config choice must reach the device layer
-    play.SetConfig(&cfg);
+    play.SetConfig(&cfg);                                   // the speaker is opened by the device worker
+    for(int i = 0; i < 50 && StubOutputDevice() != "dd"; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     CHECK(StubOutputDevice() == "dd");
 
     // 1 kHz tone at about -12 dBFS, sent as real 20 ms packets in real time
@@ -155,6 +156,31 @@ int main()
     }
     std::printf("  biggest sample step during a 0 -> 100 jump (best of 3): %d\n", best);
     CHECK(best < 8000 * 2 * std::sin(M_PI * 1000 / cfg.inputRate) * 1.5 + 200);   // not bigger than the tone itself can step
+
+    // The first open of the speaker fails (on Android: the route was still being torn down by the previous Stop). The player
+    // must still accept the received packets, and once KeepDevice() has opened the speaker they must be heard.
+    {
+        std::printf("speaker fails to open at start\n");
+        AudioConfig c2 = cfg;
+        Player p2;
+        p2.SetKeepIntervalMs(100);
+        g_stubOutputFailStarts = 1;
+        p2.SetConfig(&c2);                                  // returns at once, the worker's open fails
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        p2.KeepDevice();                                    // not running -> opens it again
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        rms();
+        for(int k = 0; k < 40; k++){                        // 800 ms of tone into the new player
+            for(int i = 0; i < N; i++){ frame[i] = int16_t(8000.0 * std::sin(ph)); ph += 2 * M_PI * 1000 / cfg.inputRate; }
+            Bytes opus = enc.Encode(frame.data(), N);
+            VoicePacket::WrapInto(wire, seq, seq == 0, 0, opus); seq++;
+            p2.Play(wire);
+            std::this_thread::sleep_for(std::chrono::milliseconds(cfg.frameMs));
+        }
+        const double heard = rms();
+        std::printf("  heard after the late open: rms %.0f\n", heard);
+        CHECK(heard > 1000);
+    }
 
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);
     return g_fail ? 1 : 0;

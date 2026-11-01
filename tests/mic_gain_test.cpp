@@ -51,7 +51,8 @@ int main()
     rec.SetConfig(&cfg);
     CHECK(rec.GetInputGain() == 100 && Recorder::MaxInputGain() == 200);
     cfg.inputDeviceId = "bb";                                           // the config choice must reach the device layer
-    rec.Start();
+    rec.Start();                                                        // the microphone is opened by the device worker
+    for(int i = 0; i < 50 && StubInputDevice() != "bb"; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     CHECK(StubInputDevice() == "bb");
 
     int lastStep = 0;                                                   // biggest sample step while a gain was steady
