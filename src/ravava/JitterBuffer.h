@@ -156,7 +156,7 @@ private:
     int m_warmPackets = 25;
     int64_t m_frameUs = 20000;
     int64_t m_leakUs = 10;                      // the baseline rises this much per packet (follows clock drift)
-    int m_envShift = 8;                         // the peak falls by 1/2^shift of the gap per packet (~5 s)
+    int m_envShift = 8;                         // the peak falls by 1/2^shift of the gap per packet (~15 s)
     bool m_trInit = false;
     int m_trN = 0;                              // samples seen
     int64_t m_trBase = 0;                       // smallest transit time lately (arrival - sequence * frame time)
@@ -165,6 +165,10 @@ private:
     int m_lvlAvg = 0;                           // average loudness of the played frames * 16
     bool m_insertPending = false;               // repeat one frame (concealment) at the next normal frame
     int m_sinceSlip = 0, m_slipGap = 5, m_wait = 0, m_maxWait = 12;
+    // The buffer fill (newest packet - playout position) dips whenever a packet is late and recovers when it arrives, so a single
+    // reading says nothing about the delay. The delay is the PEAK over a short window (= the fill when the network is on time);
+    // playoutWant() decides on the peak of the last complete window, never more than once per window.
+    int m_winLen = 30, m_winCnt = 0, m_winMax = 0, m_spanPeak = -1;
 };
 
 } // namespace ravava

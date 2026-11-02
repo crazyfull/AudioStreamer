@@ -332,6 +332,8 @@ if(RAVAVA_BUILD_TESTS)
     ravava_test(player_sim_test STUB audio_device_stub SOURCES Player.cpp ${_core})      # real time, ~75 s
     add_test(NAME net_sim_legacy COMMAND net_sim_test legacy --check)
     add_test(NAME net_sim_timed  COMMAND net_sim_test timed --check)
+    add_test(NAME net_sim_timed_speech COMMAND net_sim_test timed speech --check)
+    add_test(NAME net_sim_legacy_speech COMMAND net_sim_test legacy speech --check)
     ravava_test(volume_test STUB audio_device_stub SOURCES Player.cpp ${_core})
     ravava_test(format_test STUB audio_device_stub SOURCES Player.cpp ${_core})
     ravava_test(mic_gain_test STUB audio_device_stub SOURCES Recorder.cpp OpusCodec.cpp AudioProcessor.cpp)
