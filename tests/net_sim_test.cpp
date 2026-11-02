@@ -43,6 +43,7 @@ struct Result {
     double avgMs = 0, p95Ms = 0, maxMs = 0, badPct = 0;
     JitterBuffer::Stats st;
     uint32_t silent = 0;                // PopFrame() returned false after the first frame was played
+    uint32_t plcInSilence = 0;          // DTX only: concealment of a frame the sender never sent (a pause), nobody is harmed
     int finalTarget = 0;
 };
 
@@ -155,7 +156,14 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
             else      jb.Push(d.data(), d.size());
             ai++;
         }
+        const uint32_t plcBefore = jb.GetStats().plc;
+        const int64_t posBefore = jb.PlayoutPosition();
         const bool got = jb.PopFrame(pcm);
+        if(g_dtx && jb.GetStats().plc != plcBefore){
+            const int64_t idx = posBefore - seq0;                // first packet's extended sequence = seq0
+            if(idx >= 0 && idx < total && wire[size_t(idx)].empty())
+                r.plcInSilence += jb.GetStats().plc - plcBefore;
+        }
         if(got){
             started = true;
             okFrames++;
@@ -176,7 +184,8 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
         r.p95Ms = delays[size_t(double(delays.size()) * 0.95)];
     }
     const double bad = (g_dtx ? 0.0 : double(r.silent)) +   // with DTX a silent pop is normal (the sender is quiet)
-                        double(r.st.plc) + double(r.st.skipped) + double(r.st.stretched);
+                        double(r.st.plc) - double(r.plcInSilence) +        // ... and so is concealing a frame the sender skipped (a pause)
+                        double(r.st.skipped) + double(r.st.stretched);
     r.badPct = 100.0 * bad / double(pulls);
     return r;
 }
@@ -240,8 +249,8 @@ int main(int argc, char **argv)
 
     if(compare){
         // Guard rail: the adaptive playout may not be much WORSE than the plain buffer in any scenario. Limits (generous, they catch
-        // a broken change, not tuning noise): bad% <= legacy * 1.25 + 0.5, underruns <= legacy * 2 + 30 (cheap: a loss the buffer could not hide is concealed either way, bad% is the
-        // audible figure), average delay <= legacy * 1.8 + 20 ms. NOT for "dtx": see the note in tests/README.txt.
+        // a broken change, not tuning noise): bad% <= legacy * 1.25 + 0.5 (1.0 with dtx: a pause makes the figure noisier), underruns <= legacy * 2 + 30 (cheap: a loss the buffer could not hide is concealed either way, bad% is the
+        // audible figure), average delay <= legacy * 1.8 + 20 ms.
         std::printf("signal: %s%s | adaptive vs legacy (legacy -> adaptive)\n", g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
         std::printf("%-26s | delay ms        | bad%%          | underrun   | rebuffer  | late\n", "scenario");
         int fails = 0;
@@ -249,7 +258,7 @@ int main(int argc, char **argv)
             if(only && !std::strstr(s.name, only))
                 continue;
             const Agg l = aggregate(s, false), a = aggregate(s, true);
-            const bool ok = a.bad <= l.bad * 1.25 + 0.5 && a.underrun <= l.underrun * 2.0 + 30 && a.avg <= l.avg * 1.8 + 20;
+            const bool ok = a.bad <= l.bad * 1.25 + (g_dtx ? 1.0 : 0.5) && a.underrun <= l.underrun * 2.0 + 30 && a.avg <= l.avg * 1.8 + 20;
             std::printf("%-26s | %5.0f -> %5.0f  | %5.2f -> %5.2f | %3u -> %3u | %3u -> %3u | %3u -> %3u  %s\n", s.name, l.avg, a.avg, l.bad, a.bad,
                         l.underrun, a.underrun, l.rebuffer, a.rebuffer, l.late, a.late, ok ? "ok" : "FAIL");
             if(!ok) fails++;

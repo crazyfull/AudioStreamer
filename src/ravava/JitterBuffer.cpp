@@ -468,7 +468,12 @@ bool JitterBuffer::popFrame(Pcm &out)
             return false;
         }
         m_plcRun++;
-        m_next++;
+        // Adaptive: nothing newer is queued, so there is no sign that frame m_next is LOST, only that it has not come YET (late
+        // packet, link stall, a pause of a DTX sender). Conceal, but keep waiting for it: when it arrives it is played (the stream
+        // is one frame later, the trim brings the delay back) instead of being thrown away as "late" after concealment took its
+        // place. The plain buffer moves on at once (its behaviour is pinned by tests/ref).
+        if(!m_adaptive)
+            m_next++;
         m_stats.plc++;
         return m_pCodec->DecodePlc(m_frameSamples, out);
     }
@@ -485,7 +490,18 @@ bool JitterBuffer::popFrame(Pcm &out)
         return takeNext(out);
     }
 
+    const int concealed = m_plcRun;       // frames of concealment already played while waiting for m_next (adaptive only, see above)
     m_plcRun = 0;
+    if(m_adaptive && concealed > 0){
+        // m_next did not come while we waited and something newer is here: those frames are lost, and the concealment that was
+        // played while waiting already stands for `concealed` of them (concealing them again, or FEC for a frame that was concealed,
+        // would add frames of delay): skip them, and if that reaches the packet we have, play it.
+        m_next = std::min<int64_t>(first, m_next + concealed);
+        if(m_next == first){
+            m_stats.played++;
+            return takeNext(out);
+        }
+    }
     if(first == m_next + 1){
         // next packet carries a low-bitrate copy of the lost frame (inband FEC)
         const bool ok = m_pCodec->DecodeFec(slotData(fp), fp->len, m_frameSamples, out);

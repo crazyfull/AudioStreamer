@@ -61,13 +61,16 @@ More net_sim_test modes:
   fixed burst lengths 3 / 5 / 10 / 20 / 30 packets (columns plc, silent, rebuf show what each length costs);
   ./net_sim_test compare [speech]   legacy and adaptive side by side; fails if adaptive is much worse than legacy anywhere
                                     (bad% <= legacy*1.25+0.5, underrun <= legacy*2+30, delay <= legacy*1.8+20 ms). Guard rail, not tuning.
-  ./net_sim_test compare dtx        (also "timed dtx") the sender skips silent frames like Recorder does. NOT part of ctest: it fails today.
-                                    With DTX the adaptive playout (default limits 40..200 ms) is clearly worse than the plain buffer: about twice
-                                    the underruns / PLC frames and hundreds of late packets when the speaker clock drifts. The plain buffer's
-                                    deeper cushion bridges the short silences inside words; the shallow adaptive one runs dry before the next packet.
-                                    Setting the minimum depth to ~100 ms (Player::SetJitterLimitsMs(100, 200)) brings the underruns back to the plain
-                                    buffer's level but not the late packets. => with DTX keep SetAdaptivePlayout(false). (Counted PLC frames in the
-                                    natural silence are not audible damage, so bad% is pessimistic here; the late packets are real losses.)
+  ./net_sim_test compare dtx        (also "timed dtx") the sender skips silent frames like Recorder does (Opus DTX sends 1-byte frames, which
+                                    Recorder drops, and a real packet at least every 400 ms). bad% does not count concealment of the frames the
+                                    sender skipped (a pause: nobody is harmed). In ctest too.
+                                    What the adaptive playout does with DTX: a frame that has not come YET while nothing newer is queued (late packet,
+                                    link stall, pause of a DTX sender) is concealed but waited for: when it arrives it is played, instead of being
+                                    thrown away as "late" after the concealment took its place (that used to eat hundreds of packets, e.g. 353 late
+                                    in the +300 ppm drift run, now 0). Frames the concealment already stood for are skipped, not concealed twice.
+                                    Remaining difference to the plain buffer with DTX: more (cheap) underruns, because the cushion is thinner,
+                                    and up to ~1 point more bad frames on a few clean-ish lines (loss 5%, jitter 10 ms, latency step);
+                                    3G + stalls with DTX is better than the plain buffer (bad 7.0% -> 2.9%).
 
 Audio callback time (real Player, fake speaker thread that times every callback; bursts of up to 256 datagrams = a full PacketQueue,
 plus a GUI thread polling GetStats() / SetVolume() at ~3 kHz; ~30 s):

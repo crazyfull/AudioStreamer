@@ -74,6 +74,8 @@ public:
     const Stats &GetStats() const { return m_stats; }
     int TargetDepth() const { return depth(); }
     int Occupancy() const { return m_count; }       // packets waiting right now
+    // extended sequence number of the frame that is played next (diagnostics / tests; valid while playing)
+    int64_t PlayoutPosition() const { return m_next; }
     // how far the newest packet is ahead of the playout position, in frames = the delay this buffer adds (0 while prefilling)
     int DelayFrames() const { return m_playing ? int(m_highest - m_next) : 0; }
 
