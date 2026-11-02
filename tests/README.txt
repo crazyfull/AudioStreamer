@@ -44,3 +44,8 @@ Stress / fuzz (run under sanitizers; ~25 s plain, ~1-2 min with TSan or ASan+UBS
 Microphone gain (real Recorder + Opus, fake mic; 100 = unchanged, 50 = -12 dB, 200 = +12 dB, 0 = mute, no click on a jump):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/mic_gain_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o mic_gain_test
 
+Network simulation (virtual clock, real libopus packets, no sound card; ~1 min): random / burst loss, jitter, 3G link stalls, latency step,
+speaker clock drift +-300 ppm. Prints delay (avg/p95/max), bad%, underrun / PLC / FEC / silent / skipped / stretched / late per scenario;
+--check turns the limits into the exit code. "legacy" = reactive buffer (no arrival time), "timed" = adaptive playout (what Player uses):
+  g++ -std=c++17 -O2 -pthread -I/usr/include/opus -Isrc tests/net_sim_test.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o net_sim_test
+  ./net_sim_test legacy --check ; ./net_sim_test timed --check ; ./net_sim_test timed "3G"   (a name filter runs one scenario)

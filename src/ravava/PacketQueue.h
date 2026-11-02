@@ -14,7 +14,8 @@
 // taking a lock or allocating: a ring of fixed slots, lock-free on the consumer side.
 //
 //   Push()  : any thread(s). Producers share a small mutex among themselves only; the audio thread never touches it.
-//   Drain() : the ONE consumer (audio thread). Wait-free.
+//             An arrival time (microseconds, any monotonic clock) can travel with the datagram.
+//   Drain() : the ONE consumer (audio thread). Wait-free. f(data, size) or f(data, size, arrivalUs).
 //
 // When the ring is full (audio thread stalled) Push() drops the NEW datagram and returns false.
 
@@ -24,6 +25,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <type_traits>
 
 namespace ravava {
 
@@ -37,7 +39,7 @@ public:
     PacketQueue(const PacketQueue&) = delete;
     PacketQueue& operator=(const PacketQueue&) = delete;
 
-    bool Push(const uint8_t *data, size_t size)
+    bool Push(const uint8_t *data, size_t size, int64_t arrivalUs = 0)
     {
         if(!data || !size || size > MaxSize)
             return false;
@@ -50,6 +52,7 @@ public:
 
         Slot &s = m_slots[head & (Slots - 1)];
         s.size = uint16_t(size);
+        s.arrivalUs = arrivalUs;
         std::memcpy(s.data, data, size);
         m_head.store(head + 1, std::memory_order_release);
         return true;
@@ -64,7 +67,10 @@ public:
         const size_t head = m_head.load(std::memory_order_acquire);
         while(tail != head){
             const Slot &s = m_slots[tail & (Slots - 1)];
-            f(s.data, size_t(s.size));
+            if constexpr(std::is_invocable<F&, const uint8_t*, size_t, int64_t>::value)
+                f(s.data, size_t(s.size), s.arrivalUs);
+            else
+                f(s.data, size_t(s.size));
             ++tail;
             ++n;
             m_tail.store(tail, std::memory_order_release);
@@ -80,6 +86,7 @@ public:
 
 private:
     struct Slot {
+        int64_t arrivalUs = 0;
         uint16_t size = 0;
         uint8_t data[MaxSize];
     };
