@@ -15,6 +15,9 @@ static std::mutex g_stubDeviceMutex;        // SetDevice() runs on the device-sw
 std::atomic<int> g_stubInputStarts{0}, g_stubOutputStarts{0};         // how many times the device was opened
 std::atomic<int> g_stubInputFailStarts{0}, g_stubOutputFailStarts{0};  // test switch: the next N Start() calls fail
 std::atomic<bool> g_stubInputMoved{false}, g_stubOutputMoved{false};  // test switch: "the system moved the stream"
+// how long the speaker callback (= Player::onDeviceData, on the fake audio thread) ran: longest, count, and how many took more
+// than half / all of the device period (the deadline). tests/callback_time_test.cpp reads them.
+std::atomic<long> g_stubOutCbMaxUs{0}, g_stubOutCbCount{0}, g_stubOutCbOverHalf{0}, g_stubOutCbOverDeadline{0};
 std::string StubInputDevice()  { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubInputDevice; }
 std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); return g_stubOutputDevice; }
 
@@ -55,7 +58,15 @@ bool AudioOutput::Start(int rate, int ch, int ms, Callback cb, std::string*){
     d->t = std::thread([=]{
         const uint32_t frames = rate*ms/1000; std::vector<int16_t> buf(frames*ch);
         auto next = std::chrono::steady_clock::now();
-        while(d->run){ cb(buf.data(), frames); if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
+        while(d->run){
+            const auto t0 = std::chrono::steady_clock::now();
+            cb(buf.data(), frames);
+            const long us = long(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+            g_stubOutCbCount++;
+            if(us > g_stubOutCbMaxUs) g_stubOutCbMaxUs = us;                 // (one audio thread writes these)
+            if(us * 2 > ms * 1000) g_stubOutCbOverHalf++;
+            if(us > ms * 1000) g_stubOutCbOverDeadline++;
+            if(g_stubSpeakerTap) g_stubSpeakerTap(buf.data(), frames, ch); next += std::chrono::milliseconds(ms); std::this_thread::sleep_until(next); }});
     return true; }
 void AudioOutput::Stop(){ d->run=false; if(d->t.joinable()) d->t.join(); d->running=false; }
 bool AudioOutput::DeviceMoved() { return g_stubOutputMoved.exchange(false); }

@@ -6,7 +6,9 @@
 //   events  : underruns, PLC frames, FEC frames, silent pops after start, skipped (dropped) frames, late packets
 // Build:
 //   g++ -std=c++17 -O2 -pthread -Ilibs/opus/win32/include -Isrc tests/net_sim_test.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o net_sim_test
-// Run:  ./net_sim_test [legacy|timed] [speech] [--check] [name-filter]   (speech = speech-like signal with pauses instead of a steady tone)
+// Run:  ./net_sim_test [legacy|timed] [speech|dtx] [--check] [name-filter]   |   ./net_sim_test compare [speech|dtx] [name-filter]
+//   dtx = speech-like signal AND the sender skips the silent frames (Opus DTX, as Recorder does); "silent" is then not counted as bad
+//   compare = legacy and adaptive side by side, fails if adaptive is much worse than legacy anywhere (guard rail, see main())   (speech = speech-like signal with pauses instead of a steady tone)
 //   legacy = Push(datagram, size) (no arrival time: the old reactive buffer),
 //   timed  = SetAdaptive(true) + Push(datagram, size, arrivalUs) (what Player does).
 //   --check turns the acceptance thresholds into the exit code.
@@ -46,7 +48,8 @@ struct Result {
 
 struct Arrival { int64_t atUs; int idx; bool operator<(const Arrival &o) const { return atUs < o.atUs || (atUs == o.atUs && idx < o.idx); } };
 
-static bool g_speech = false;       // "speech" argument: talk bursts with syllable-like modulation, pauses with faint background noise
+static bool g_speech = false;
+static bool g_dtx = false;          // "dtx" argument: the sender skips silent frames like Recorder does (marker on the next packet, tx counts only sent ones)       // "speech" argument: talk bursts with syllable-like modulation, pauses with faint background noise
 
 // 10 s of a speech-like signal: words of 0.3-1.4 s (harmonic tone, 4-5 Hz syllable modulation) separated by pauses of 0.1-0.7 s
 // with faint noise (quiet frames, as the playout control looks for them). Deterministic.
@@ -79,7 +82,7 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     std::normal_distribution<double> gauss(0.0, 1.0);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
 
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 16000; cfg.useDtx = false; cfg.useFec = true; cfg.expectedLossPerc = 10;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 16000; cfg.useDtx = g_dtx; cfg.useFec = true; cfg.expectedLossPerc = 10;
     OpusCodec enc; enc.InitEncoder(cfg);
     const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;
@@ -103,11 +106,15 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     // ---- the network
     uint16_t seq0 = 65400;                                  // crosses the 16 bit wrap
     int burstLeft = 0;
+    uint32_t txc = 0; bool dtxMarker = false;
     double nextStall = sc.stallEverySec > 0 ? -std::log(1.0 - uni(rng)) * sc.stallEverySec : 1e18;
     double stallEnd = -1;
     for(int i = 0; i < total; i++){
         const double sendS = i * frameUs / 1e6;
-        wire[size_t(i)] = VoicePacket::Wrap(uint16_t(seq0 + i), i == 0, uint8_t(i & 127), pool[size_t(i) % pool.size()]);
+        const Bytes &pk = pool[size_t(i) % pool.size()];
+        if(g_dtx && pk.size() <= 2){ dtxMarker = true; continue; }        // silence: nothing is sent (see Recorder.cpp)
+        wire[size_t(i)] = VoicePacket::Wrap(uint16_t(seq0 + i), i == 0 || dtxMarker, uint8_t(txc++ & 127), pk);
+        dtxMarker = false;
         if(burstLeft > 0){ burstLeft--; continue; }
         if(sc.burstStartPct > 0 && uni(rng) * 100 < sc.burstStartPct){
             burstLeft = sc.burstMin + int(rng() % unsigned(sc.burstMax - sc.burstMin + 1)) - 1;
@@ -168,20 +175,45 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
         std::sort(delays.begin(), delays.end());
         r.p95Ms = delays[size_t(double(delays.size()) * 0.95)];
     }
-    const double bad = double(r.silent) + double(r.st.plc) + double(r.st.skipped) + double(r.st.stretched);
+    const double bad = (g_dtx ? 0.0 : double(r.silent)) +   // with DTX a silent pop is normal (the sender is quiet)
+                        double(r.st.plc) + double(r.st.skipped) + double(r.st.stretched);
     r.badPct = 100.0 * bad / double(pulls);
     return r;
 }
 
+struct Agg {
+    double avg = 0, p95 = 0, max = 0, bad = 0, target = 0;
+    uint32_t underrun = 0, plc = 0, fec = 0, silent = 0, skipped = 0, stretched = 0, forced = 0, late = 0, rebuffer = 0;
+};
+
+// average over a few seeds so one lucky run doesn't decide
+static Agg aggregate(const Scenario &s, bool timed)
+{
+    const int seeds = 5;
+    Agg g;
+    for(int sd = 1; sd <= seeds; sd++){
+        const Result r = run(s, timed, unsigned(sd));
+        g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget;
+        g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.silent += r.silent; g.skipped += r.st.skipped;
+        g.stretched += r.st.stretched; g.forced += r.st.slipForced; g.late += r.st.late; g.rebuffer += r.st.rebuffer;
+    }
+    g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds;
+    g.underrun /= seeds; g.plc /= seeds; g.fec /= seeds; g.silent /= seeds; g.skipped /= seeds; g.stretched /= seeds;
+    g.forced /= seeds; g.late /= seeds; g.rebuffer /= seeds;
+    return g;
+}
+
 int main(int argc, char **argv)
 {
-    bool timed = false, check = false;
+    bool timed = false, check = false, compare = false;
     const char *only = nullptr;             // any other argument: run only the scenarios whose name contains it
     for(int i = 1; i < argc; i++){
         if(!std::strcmp(argv[i], "timed")) timed = true;
         else if(!std::strcmp(argv[i], "legacy")) timed = false;
         else if(!std::strcmp(argv[i], "--check")) check = true;
         else if(!std::strcmp(argv[i], "speech")) g_speech = true;
+        else if(!std::strcmp(argv[i], "dtx")) { g_dtx = true; g_speech = true; }     // DTX only makes sense with pauses
+        else if(!std::strcmp(argv[i], "compare")) compare = true;
         else only = argv[i];
     }
 
@@ -191,6 +223,12 @@ int main(int argc, char **argv)
         {"loss 5%",                   5,   0,    0,   0,   40,  3,    0,   0,     0,   0,   0,     0,    120, 6.0,  160},
         {"loss 20%",                 20,   0,    0,   0,   40,  3,    0,   0,     0,   0,   0,     0,    120, 25,   160},
         {"burst loss 3-10",           1,   1.0,  3,  10,   40,  3,    0,   0,     0,   0,   0,     0,    120, 12,   160},
+        // fixed burst lengths (one burst per ~7 s on average): what each length costs in PLC / re-buffering / silence
+        {"burst 3",                   0,   0.3,  3,   3,   40,  3,    0,   0,     0,   0,   0,     0,    120, 6,    200},
+        {"burst 5",                   0,   0.3,  5,   5,   40,  3,    0,   0,     0,   0,   0,     0,    120, 8,    200},
+        {"burst 10",                  0,   0.3, 10,  10,   40,  3,    0,   0,     0,   0,   0,     0,    120, 12,   200},
+        {"burst 20",                  0,   0.3, 20,  20,   40,  3,    0,   0,     0,   0,   0,     0,    120, 20,   200},
+        {"burst 30",                  0,   0.3, 30,  30,   40,  3,    0,   0,     0,   0,   0,     0,    120, 28,   200},
         {"jitter 10ms",               0,   0,    0,   0,   40,  10,   0,   0,     0,   0,   0,     0,    120, 1.0,  160},
         {"jitter 30ms",               0,   0,    0,   0,   40,  30,   0,   0,     0,   0,   0,     0,    120, 3.0,  220},
         {"jitter 60ms",               0,   0,    0,   0,   40,  60,   0,   0,     0,   0,   0,     0,    120, 6.0,  300},
@@ -200,25 +238,37 @@ int main(int argc, char **argv)
         {"drift speaker -300ppm",     0,   0,    0,   0,   40,  3,    0,   0,     0,   0,   0,    -300,  600, 1.0,  260},
     };
 
-    std::printf("mode: %s\n", timed ? "timed (arrival time given)" : "legacy (no arrival time)");
-    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec silent skipped stretch forced late | target\n", "scenario");
+    if(compare){
+        // Guard rail: the adaptive playout may not be much WORSE than the plain buffer in any scenario. Limits (generous, they catch
+        // a broken change, not tuning noise): bad% <= legacy * 1.25 + 0.5, underruns <= legacy * 2 + 30 (cheap: a loss the buffer could not hide is concealed either way, bad% is the
+        // audible figure), average delay <= legacy * 1.8 + 20 ms. NOT for "dtx": see the note in tests/README.txt.
+        std::printf("signal: %s%s | adaptive vs legacy (legacy -> adaptive)\n", g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
+        std::printf("%-26s | delay ms        | bad%%          | underrun   | rebuffer  | late\n", "scenario");
+        int fails = 0;
+        for(const Scenario &s : sc){
+            if(only && !std::strstr(s.name, only))
+                continue;
+            const Agg l = aggregate(s, false), a = aggregate(s, true);
+            const bool ok = a.bad <= l.bad * 1.25 + 0.5 && a.underrun <= l.underrun * 2.0 + 30 && a.avg <= l.avg * 1.8 + 20;
+            std::printf("%-26s | %5.0f -> %5.0f  | %5.2f -> %5.2f | %3u -> %3u | %3u -> %3u | %3u -> %3u  %s\n", s.name, l.avg, a.avg, l.bad, a.bad,
+                        l.underrun, a.underrun, l.rebuffer, a.rebuffer, l.late, a.late, ok ? "ok" : "FAIL");
+            if(!ok) fails++;
+        }
+        std::printf(fails ? "FAIL: %d scenarios where adaptive is much worse than legacy\n" : "PASS\n", fails);
+        return fails ? 1 : 0;
+    }
+
+    std::printf("mode: %s, signal: %s%s\n", timed ? "timed (arrival time given)" : "legacy (no arrival time)",
+                g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
+    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec silent rebuf skipped stretch forced late | target\n", "scenario");
     int fails = 0;
     for(const Scenario &s : sc){
         if(only && !std::strstr(s.name, only))
             continue;
-        // average over a few seeds so one lucky run doesn't decide
-        const int seeds = 5;
-        Result agg; double a = 0, p = 0, m = 0, b = 0;
-        uint32_t ur = 0, plc = 0, fec = 0, sil = 0, skp = 0, late = 0, str = 0, frc = 0; int tg = 0;
-        for(int sd = 1; sd <= seeds; sd++){
-            Result r = run(s, timed, unsigned(sd));
-            a += r.avgMs; p += r.p95Ms; m = std::max(m, r.maxMs); b += r.badPct;
-            ur += r.st.underrun; plc += r.st.plc; fec += r.st.fec; sil += r.silent; skp += r.st.skipped; str += r.st.stretched; frc += r.st.slipForced; late += r.st.late; tg += r.finalTarget;
-        }
-        a /= seeds; p /= seeds; b /= seeds;
-        const bool ok = b <= s.maxBadPct && p <= s.maxP95Ms;
-        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %5u %6u %7u %6u %4u | %4.1f  %s\n", s.name, a, p, m, b,
-                    ur / seeds, plc / seeds, fec / seeds, sil / seeds, skp / seeds, str / seeds, frc / seeds, late / seeds, double(tg) / seeds,
+        const Agg g = aggregate(s, timed);
+        const bool ok = g.bad <= s.maxBadPct && g.p95 <= s.maxP95Ms;
+        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %5u %5u %6u %7u %6u %4u | %4.1f  %s\n", s.name, g.avg, g.p95, g.max, g.bad,
+                    g.underrun, g.plc, g.fec, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target,
                     check ? (ok ? "ok" : "FAIL") : "");
         if(!ok) fails++;
     }

@@ -330,10 +330,13 @@ if(RAVAVA_BUILD_TESTS)
         SOURCES Recorder.cpp Player.cpp JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)   # defines its own AudioProcessor
     ravava_test(net_sim_test SOURCES JitterBuffer.cpp OpusCodec.cpp)
     ravava_test(player_sim_test STUB audio_device_stub SOURCES Player.cpp ${_core})      # real time, ~75 s
+    ravava_test(callback_time_test STUB audio_device_stub SOURCES Player.cpp ${_core})   # real time, ~30 s
     add_test(NAME net_sim_legacy COMMAND net_sim_test legacy --check)
     add_test(NAME net_sim_timed  COMMAND net_sim_test timed --check)
     add_test(NAME net_sim_timed_speech COMMAND net_sim_test timed speech --check)
     add_test(NAME net_sim_legacy_speech COMMAND net_sim_test legacy speech --check)
+    add_test(NAME net_sim_compare        COMMAND net_sim_test compare)           # adaptive may not be much worse than legacy anywhere
+    add_test(NAME net_sim_compare_speech COMMAND net_sim_test compare speech)
     ravava_test(volume_test STUB audio_device_stub SOURCES Player.cpp ${_core})
     ravava_test(format_test STUB audio_device_stub SOURCES Player.cpp ${_core})
     ravava_test(mic_gain_test STUB audio_device_stub SOURCES Recorder.cpp OpusCodec.cpp AudioProcessor.cpp)
