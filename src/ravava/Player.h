@@ -47,6 +47,7 @@ class Player
         OpusCodec codec;
         std::unique_ptr<JitterBuffer> jitter;
         int frameMs = 0;
+        bool adaptive = false;              // the jitter buffer gets arrival times
         Stream *retiredLink = nullptr;      // m_retired list
     };
     Stream *m_cur;                          // audio thread only: the stream being played (null until the first packet)
@@ -63,6 +64,8 @@ class Player
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
     std::atomic<uint32_t> m_ingestDropped;  // datagrams dropped because the queue was full
+    std::atomic<bool> m_adaptive{true};     // see SetAdaptivePlayout()
+    std::atomic<int> m_limMinMs{0}, m_limMaxMs{0};
 
     // stats for the GUI: the audio thread publishes a copy (never blocks: try_lock), GetStats() reads it
     mutable std::mutex m_statsMutex;
@@ -118,6 +121,14 @@ public:
     std::string ActiveOutputDevice() const { return m_output.ActiveDevice(); }
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
+
+    // Adaptive playout (default ON): the player stamps every datagram when Play() gets it and the jitter buffer follows the
+    // measured network jitter (deeper BEFORE the audio breaks up, shallower again when the network is calm), and keeps the
+    // delay near what the network needs by dropping / repeating single frames at quiet moments. OFF = the plain reactive
+    // buffer (grows only after an underrun). Both calls apply to streams created afterwards: call them BEFORE the first Play().
+    void SetAdaptivePlayout(bool on) { m_adaptive.store(on, std::memory_order_relaxed); }
+    // limits of the jitter buffer depth in ms (default 40 .. 200); 0 = leave that limit at its default.
+    void SetJitterLimitsMs(int minMs, int maxMs) { m_limMinMs.store(minMs, std::memory_order_relaxed); m_limMaxMs.store(maxMs, std::memory_order_relaxed); }
 
     // live receive statistics (loss, FEC/PLC, buffer depth). false if the player isn't running.
     // The figures are at most ~10 ms old.

@@ -64,6 +64,16 @@ static void testPacketQueue()
     size_t expect = 0; bool ordered = true;
     size_t n = q.Drain([&](const uint8_t *d, size_t s){ if(s != 1 || d[0] != uint8_t(expect)) ordered = false; expect++; });
     CHECK(n == PacketQueue::Slots && ordered);
+    {   // the arrival time travels with the datagram (both Drain forms)
+        PacketQueue t; uint8_t v = 7;
+        CHECK(t.Push(&v, 1, 123456789012LL) && t.Push(&v, 1));
+        int64_t got[2] = {-1, -1}; int k = 0;
+        t.Drain([&](const uint8_t *, size_t, int64_t us){ if(k < 2) got[k++] = us; });
+        CHECK(k == 2 && got[0] == 123456789012LL && got[1] == 0);
+        CHECK(t.Push(&v, 1));
+        size_t c = 0; t.Drain([&](const uint8_t *, size_t){ c++; });
+        CHECK(c == 1);
+    }
     CHECK(q.Drain([](const uint8_t*, size_t){}) == 0);
 
     // 2 producers, 1 consumer: nothing is corrupted, each producer's packets stay in order

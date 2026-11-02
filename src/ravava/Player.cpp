@@ -193,7 +193,7 @@ void Player::onDeviceData(int16_t *out, uint32_t frames)
     if(m_cur){
         // datagrams that arrived since the last callback (no lock: see PacketQueue). Only packets of the current
         // format go in; if the network thread has just prepared a new format, switch to it first.
-        m_queue.Drain([this](const uint8_t *d, size_t n){
+        m_queue.Drain([this](const uint8_t *d, size_t n, int64_t arrivalUs){
             uint16_t seq; bool marker; uint8_t tx; const uint8_t *opus; size_t opusSize;
             OpusCodec::PacketInfo info;
             if(!VoicePacket::ParseHeader(d, n, seq, marker, tx, opus, opusSize) || !OpusCodec::Inspect(opus, opusSize, info)){
@@ -206,7 +206,10 @@ void Player::onDeviceData(int16_t *out, uint32_t frames)
                 m_formatDropped.fetch_add(1, std::memory_order_relaxed);    // left over from the previous format
                 return;
             }
-            m_cur->jitter->Push(d, n);
+            if(m_cur->adaptive)
+                m_cur->jitter->Push(d, n, arrivalUs);
+            else
+                m_cur->jitter->Push(d, n);
         });
 
         while(done < need){
@@ -252,6 +255,7 @@ void Player::Play(const uint8_t *datagram, size_t size)
 {
     if(!m_ready.load(std::memory_order_acquire))
         return;
+    const int64_t arrivalUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
     // what is this packet? (audio header, then the Opus packet whose first byte tells its duration)
     uint16_t seq; bool marker; uint8_t tx; const uint8_t *opus; size_t opusSize;
@@ -287,6 +291,13 @@ void Player::Play(const uint8_t *datagram, size_t size)
             }
             st->frameMs = info.frameMs;
             st->jitter.reset(new JitterBuffer(&st->codec, m_rate, m_channels, info.frameMs));
+            const int limMin = m_limMinMs.load(std::memory_order_relaxed), limMax = m_limMaxMs.load(std::memory_order_relaxed);
+            if(limMin > 0 || limMax > 0)
+                st->jitter->SetTargetLimitsMs(limMin > 0 ? limMin : st->jitter->MinTarget() * info.frameMs,
+                                              limMax > 0 ? limMax : st->jitter->MaxTarget() * info.frameMs);
+            st->adaptive = m_adaptive.load(std::memory_order_relaxed);
+            if(st->adaptive)
+                st->jitter->SetAdaptive(true);          // before the first Push
             delete m_next.exchange(st.release(), std::memory_order_acq_rel);    // an older one the audio thread never took
             m_netFrameMs = info.frameMs;
             m_candidateMs = 0;
@@ -296,7 +307,7 @@ void Player::Play(const uint8_t *datagram, size_t size)
         m_candidateCount = 0;
     }
 
-    if(!m_queue.Push(datagram, size))
+    if(!m_queue.Push(datagram, size, arrivalUs))
         m_ingestDropped.fetch_add(1, std::memory_order_relaxed);
 }
 
