@@ -64,7 +64,7 @@ class Player
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
     std::atomic<uint32_t> m_ingestDropped;  // datagrams dropped because the queue was full
-    std::atomic<bool> m_adaptive{true};     // see SetAdaptivePlayout()
+    std::atomic<bool> m_adaptive{false};     // see SetAdaptivePlayout()
     std::atomic<int> m_limMinMs{0}, m_limMaxMs{0};
 
     // stats for the GUI: the audio thread publishes a copy (never blocks: try_lock), GetStats() reads it
