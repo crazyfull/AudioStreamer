@@ -49,6 +49,8 @@ speaker clock drift +-300 ppm. Prints delay (avg/p95/max), bad%, underrun / PLC 
 --check turns the limits into the exit code. "legacy" = reactive buffer (no arrival time), "timed" = adaptive playout (what Player uses):
   g++ -std=c++17 -O2 -pthread -I/usr/include/opus -Isrc tests/net_sim_test.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o net_sim_test
   ./net_sim_test legacy --check ; ./net_sim_test timed --check ; ./net_sim_test timed "3G"   (a name filter runs one scenario)
+  add "speech" for a speech-like signal (words, pauses with faint noise) instead of a steady tone: the quiet frames the playout control
+  slips on exist then, and "forced" shows how many slips had to happen on a loud frame anyway. A steady tone is the worst case.
 
 The whole receive path in REAL time (~75 s): simulated network -> Player::Play (arrival stamp) -> PacketQueue -> audio thread -> JitterBuffer -> Opus -> fake speaker,
 legacy vs adaptive, clean / jitter 30 ms / loss 5%. Checks that the arrival times really reach the jitter buffer (jitter is measured only when adaptive),

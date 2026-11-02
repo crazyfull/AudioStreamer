@@ -58,12 +58,13 @@ JitterBuffer::JitterBuffer(OpusCodec *codec, int decoderRate, int channels, int 
     // adaptive playout (only used after SetAdaptive(true)), all in TIME so 20 ms and 60 ms frames behave the same
     m_frameUs      = int64_t(frameMs) * 1000;
     m_leakUs       = std::max<int64_t>(1, m_frameUs / 2000);        // 500 ppm: faster than any real clock drift
-    const int perPeak = std::max(2, 5000 / frameMs);                // the peak forgets over ~5 s
+    const int perPeak = std::max(2, 15000 / frameMs);               // the peak forgets over ~15 s (stalls on 3G come back within seconds)
     m_envShift     = 1;
     while((1 << m_envShift) < perPeak)
         m_envShift++;
     m_warmPackets  = std::max(10, 500 / frameMs);                   // ~0.5 s of samples before the estimate is trusted
     m_slipGap      = std::max(2, 100 / frameMs);                    // at most one dropped / inserted frame per ~100 ms
+    m_winLen       = std::max(5, 600 / frameMs);                    // the fill is judged by its peak over ~0.6 s
     m_maxWait      = std::max(3, 240 / frameMs);                    // no quiet frame within ~240 ms: do it anyway
 }
 
@@ -123,16 +124,25 @@ void JitterBuffer::trackArrival(int64_t ext, int64_t arrivalUs)
 // at a quiet frame (or after waiting m_maxWait frames for one). 0 = no, 1 = drop a frame, 2 = repeat a frame.
 int JitterBuffer::playoutWant(const Slot *p)
 {
+    const int span = int(std::min<int64_t>(m_highest - m_next + 1, 100000));        // frames from the one to play up to the newest
+    if(span > m_winMax)
+        m_winMax = span;
+    if(++m_winCnt >= m_winLen){                 // a window is complete: its peak is the delay the network leaves us
+        m_spanPeak = m_winMax;
+        m_winCnt = 0;
+        m_winMax = 0;
+    }
     if(m_sinceSlip < m_slipGap){
         m_sinceSlip++;
         return 0;
     }
-    const int64_t span = m_highest - m_next + 1;        // frames from the one to play up to the newest
+    if(m_spanPeak < 0)
+        return 0;                               // no complete window since the last change: nothing is known yet
     const int want = depth();
-    if(span > want + 2 && !p->marker && hasSlot(m_next + 1))
-        return 1;                                       // too much delay
-    if(span < want)
-        return 2;                                       // cushion thinner than the jitter needs
+    if(m_spanPeak > want + 2 && !p->marker && hasSlot(m_next + 1))
+        return 1;                               // too much delay
+    if(m_spanPeak < want)
+        return 2;                               // cushion thinner than the jitter needs
     return 0;
 }
 
@@ -394,6 +404,7 @@ bool JitterBuffer::popFrame(Pcm &out)
         m_sinceSlip = 0;
         m_wait = 0;
         m_insertPending = false;
+        m_spanPeak = -1; m_winCnt = 0; m_winMax = 0;
     }
 
     // ---- normal case
@@ -421,6 +432,9 @@ bool JitterBuffer::popFrame(Pcm &out)
                     m_stats.slipForced++;
                 m_wait = 0;
                 m_sinceSlip = 0;
+                m_spanPeak = -1;                // judge the next change by a window that started after this one
+                m_winCnt = 0;
+                m_winMax = 0;
                 if(want == 1){
                     // too far behind: this frame goes unplayed (it was decoded, so the decoder state stays continuous) and
                     // the next one takes its place; playoutWant() made sure that one is here
