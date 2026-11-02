@@ -56,3 +56,21 @@ The whole receive path in REAL time (~75 s): simulated network -> Player::Play (
 legacy vs adaptive, clean / jitter 30 ms / loss 5%. Checks that the arrival times really reach the jitter buffer (jitter is measured only when adaptive),
 that the depth follows the network and that the speaker keeps playing. (net_sim_test above feeds the JitterBuffer directly, on a virtual clock.)
   g++ -std=c++17 -O2 -pthread -I/usr/include/opus -Isrc tests/player_sim_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o player_sim_test
+
+More net_sim_test modes:
+  fixed burst lengths 3 / 5 / 10 / 20 / 30 packets (columns plc, silent, rebuf show what each length costs);
+  ./net_sim_test compare [speech]   legacy and adaptive side by side; fails if adaptive is much worse than legacy anywhere
+                                    (bad% <= legacy*1.25+0.5, underrun <= legacy*2+30, delay <= legacy*1.8+20 ms). Guard rail, not tuning.
+  ./net_sim_test compare dtx        (also "timed dtx") the sender skips silent frames like Recorder does. NOT part of ctest: it fails today.
+                                    With DTX the adaptive playout (default limits 40..200 ms) is clearly worse than the plain buffer: about twice
+                                    the underruns / PLC frames and hundreds of late packets when the speaker clock drifts. The plain buffer's
+                                    deeper cushion bridges the short silences inside words; the shallow adaptive one runs dry before the next packet.
+                                    Setting the minimum depth to ~100 ms (Player::SetJitterLimitsMs(100, 200)) brings the underruns back to the plain
+                                    buffer's level but not the late packets. => with DTX keep SetAdaptivePlayout(false). (Counted PLC frames in the
+                                    natural silence are not audible damage, so bad% is pessimistic here; the late packets are real losses.)
+
+Audio callback time (real Player, fake speaker thread that times every callback; bursts of up to 256 datagrams = a full PacketQueue,
+plus a GUI thread polling GetStats() / SetVolume() at ~3 kHz; ~30 s):
+  g++ -std=c++17 -O2 -pthread -I/usr/include/opus -Isrc tests/callback_time_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o callback_time_test
+  Reports longest / count / over half the period / over the deadline; fails when one callback takes 5 ms or more, or one misses the 10 ms deadline.
+
