@@ -298,8 +298,10 @@ void Player::Play(const uint8_t *datagram, size_t size)
                 st->jitter->SetTargetLimitsMs(limMin > 0 ? limMin : st->jitter->MinTarget() * info.frameMs,
                                               limMax > 0 ? limMax : st->jitter->MaxTarget() * info.frameMs);
             st->adaptive = m_adaptive.load(std::memory_order_relaxed);
-            if(st->adaptive)
+            if(st->adaptive){
                 st->jitter->SetAdaptive(true);          // before the first Push
+                st->jitter->SetDredFloorMs(m_dredFloorMs.load(std::memory_order_relaxed));
+            }
             delete m_next.exchange(st.release(), std::memory_order_acq_rel);    // an older one the audio thread never took
             m_netFrameMs = info.frameMs;
             m_candidateMs = 0;

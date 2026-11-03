@@ -52,6 +52,9 @@ struct Result {
     uint32_t plcInSilence = 0;          // DTX only: concealment of a frame the sender never sent (a pause), nobody is harmed
     int finalTarget = 0;
     double kbps = 0;                    // payload bitrate the encoder really produced (shows what DRED costs)
+    double e2eAvgMs = 0, e2eP95Ms = 0, queueAvgMs = 0;   // REAL delays of the played packets: mouth-to-ear (send -> play) and jitter-buffer residence (arrival -> play)
+    uint32_t oppHow[6] = {0, 0, 0, 0, 0, 0};            // of the in-time ones: what the first pop did (see outcome)
+    uint32_t oppTot = 0, oppOk = 0; double oppLeadMs = 0; // DRED opportunity: lost frames a DRED carrier could cover; how many had the carrier buffered by their deadline; mean lead
     double popMeanUs = 0, popP99Us = 0, popMaxUs = 0;     // PopFrame() = jitter buffer + Opus decode (+ DRED), what the audio callback pays
 };
 
@@ -87,6 +90,8 @@ static void speechFrames(int fs, int frames, std::vector<Pcm> &out)
 
 
 // ---- real speech: .wav files (8/16/24/32-bit PCM or 32-bit float, any rate, mono or more channels) -> 48 kHz mono 20 ms frames
+static bool g_detail = false;                        // "detail": a second line per scenario with the real delays and the DRED opportunity
+static int g_floorMs = 0;                            // "floor <ms>": burst-aware depth floor (JitterBuffer::SetDredFloorMs), adaptive + DRED
 static int g_minMs = 0;                              // "minms <ms>": lower limit of the adaptive depth (DRED can only repair what the buffer can still see)
 static int g_br = 16000, g_dredMs = 0, g_plp = 10;   // "plp <%>": the packet loss the encoder is told to expect (DRED starts at ~20)       // "br <bps>", "dred <ms>" (needs libopus with DRED and -DRAVAVA_ENABLE_DRED)
 static std::vector<Pcm> g_wavFrames;        // "wav <file|folder>": the sender plays these (all files one after another, 0.5 s apart), looping
@@ -239,10 +244,14 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     OpusCodec dec; dec.InitDecoder(48000, 1);
     if(g_dredMs > 0) dec.InitDredDecoder();
     JitterBuffer jb(&dec, 48000, 1, 20);
-    if(timed){ if(g_minMs > 0) jb.SetTargetLimitsMs(g_minMs, std::max(200, g_minMs)); jb.SetAdaptive(true); }
+    if(timed){ if(g_minMs > 0) jb.SetTargetLimitsMs(g_minMs, std::max(200, g_minMs)); jb.SetAdaptive(true); if(g_floorMs > 0) jb.SetDredFloorMs(g_floorMs); }
     const double pullUs = frameUs / (1.0 + sc.driftPpm * 1e-6);
     std::vector<int> delays;
     std::vector<float> popUs;
+    std::vector<int64_t> arrivalOf(size_t(total), -1), firstPop(size_t(total), -1);
+    for(const Arrival &a : arr) if(arrivalOf[size_t(a.idx)] < 0) arrivalOf[size_t(a.idx)] = a.atUs;
+    std::vector<float> e2e, queue;
+    std::vector<uint8_t> outcome(size_t(total), 0);       // what the first pop at each position did: 1 DRED, 2 FEC, 3 PLC, 4 played a real packet, 5 other (skipped / dropped / jumped)
     delays.reserve(size_t(total));
     Result r;
     Pcm pcm;
@@ -260,14 +269,33 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
             ai++;
         }
         const uint32_t plcBefore = jb.GetStats().plc;
+        const uint32_t concBefore = jb.GetStats().plc + jb.GetStats().fec + jb.GetStats().dred;
+        const JitterBuffer::Stats sBefore = jb.GetStats();
+        bool firstHere = false;
+        {
+            const int64_t pi = jb.PlayoutPosition() - seq0;
+            if(pi >= 0 && pi < total && firstPop[size_t(pi)] < 0){ firstPop[size_t(pi)] = nowUs; firstHere = true; }
+        }
         const int64_t posBefore = jb.PlayoutPosition();
         const auto t0 = std::chrono::steady_clock::now();
         const bool got = jb.PopFrame(pcm);
         popUs.push_back(float(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count()));
+        if(firstHere){
+            const JitterBuffer::Stats &sa = jb.GetStats();
+            const int64_t pi = posBefore - seq0;
+            outcome[size_t(pi)] = sa.dred != sBefore.dred ? 1 : sa.fec != sBefore.fec ? 2 : sa.plc != sBefore.plc ? 3 : jb.PlayoutPosition() == posBefore + 1 ? 4 : 5;
+        }
         if(g_dtx && jb.GetStats().plc != plcBefore){
             const int64_t idx = posBefore - seq0;                // first packet's extended sequence = seq0
             if(idx >= 0 && idx < total && wire[size_t(idx)].empty())
                 r.plcInSilence += jb.GetStats().plc - plcBefore;
+        }
+        if(got && jb.GetStats().plc + jb.GetStats().fec + jb.GetStats().dred == concBefore){
+            const int64_t pi = posBefore - seq0;                   // a real packet was played
+            if(pi >= 0 && pi < total && arrivalOf[size_t(pi)] >= 0){
+                e2e.push_back(float(double(nowUs - pi * int64_t(frameUs)) / 1000.0));
+                queue.push_back(float(double(nowUs - arrivalOf[size_t(pi)]) / 1000.0));
+            }
         }
         if(got){
             started = true;
@@ -286,6 +314,23 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
         r.popMeanUs = s / double(popUs.size()); r.popP99Us = popUs[size_t(double(popUs.size() - 1) * 0.99)]; r.popMaxUs = popUs.back();
     }
     r.finalTarget = jb.TargetDepth();
+    if(!e2e.empty()){
+        double s = 0, q = 0; for(float v : e2e) s += v; for(float v : queue) q += v;
+        std::sort(e2e.begin(), e2e.end());
+        r.e2eAvgMs = s / double(e2e.size()); r.e2eP95Ms = e2e[size_t(double(e2e.size() - 1) * 0.95)]; r.queueAvgMs = q / double(queue.size());
+    }
+    // DRED opportunity: a frame the network lost, whose carrier (the next packet that arrived) could rebuild it (within dred ms)
+    // and was it buffered by the moment that frame was due?
+    for(int L = 0; L < total; L++){
+        if(wire[size_t(L)].empty() || arrivalOf[size_t(L)] >= 0 || firstPop[size_t(L)] < 0) continue;
+        int c = L + 1; while(c < total && (wire[size_t(c)].empty() || arrivalOf[size_t(c)] < 0)) c++;
+        if(c >= total || (c - L) * 20 > std::max(g_dredMs, 20)) continue;
+        const bool lostBefore = L > 0 && !wire[size_t(L - 1)].empty() && arrivalOf[size_t(L - 1)] < 0;
+        if(!lostBefore && c == L + 1) continue;                  // a single lost packet: inband FEC's job, not DRED's
+        r.oppTot++;
+        const double lead = double(firstPop[size_t(L)] - arrivalOf[size_t(c)]) / 1000.0;
+        if(lead > 0){ r.oppOk++; r.oppLeadMs += lead; r.oppHow[outcome[size_t(L)]]++; }
+    }
     if(!delays.empty()){
         double sum = 0; int mx = 0;
         for(int d : delays){ sum += d; mx = std::max(mx, d); }
@@ -302,7 +347,9 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
 }
 
 struct Agg {
-    double avg = 0, p95 = 0, max = 0, bad = 0, target = 0, kbps = 0, popMean = 0, popP99 = 0, popMax = 0;
+    double avg = 0, p95 = 0, max = 0, bad = 0, target = 0, kbps = 0, e2e = 0, e2eP95 = 0, queue = 0, oppLead = 0, popMean = 0, popP99 = 0, popMax = 0;
+    uint32_t how[6] = {0, 0, 0, 0, 0, 0};
+    uint32_t oppTot = 0, oppOk = 0, dredWait = 0, dredNoData = 0, floorMax = 0;
     uint32_t dred = 0, underrun = 0, plc = 0, fec = 0, silent = 0, skipped = 0, stretched = 0, forced = 0, late = 0, rebuffer = 0;
 };
 
@@ -313,11 +360,11 @@ static Agg aggregate(const Scenario &s, bool timed)
     Agg g;
     for(int sd = 1; sd <= seeds; sd++){
         const Result r = run(s, timed, unsigned(sd));
-        g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget; g.kbps += r.kbps; g.popMean += r.popMeanUs; g.popP99 += r.popP99Us; g.popMax = std::max(g.popMax, r.popMaxUs);
-        g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.dred += r.st.dred; g.silent += r.silent; g.skipped += r.st.skipped;
+        g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget; g.kbps += r.kbps; g.popMean += r.popMeanUs; g.popP99 += r.popP99Us; g.popMax = std::max(g.popMax, r.popMaxUs); g.e2e += r.e2eAvgMs; g.e2eP95 += r.e2eP95Ms; g.queue += r.queueAvgMs; g.oppTot += r.oppTot; g.oppOk += r.oppOk; g.oppLead += r.oppLeadMs; for(int q = 0; q < 6; q++) g.how[q] += r.oppHow[q];
+        g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.dred += r.st.dred; g.dredWait += r.st.dredWaiting; g.dredNoData += r.st.dredNoData; g.floorMax = std::max(g.floorMax, r.st.burstFloor); g.silent += r.silent; g.skipped += r.st.skipped;
         g.stretched += r.st.stretched; g.forced += r.st.slipForced; g.late += r.st.late; g.rebuffer += r.st.rebuffer;
     }
-    g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds; g.kbps /= seeds; g.popMean /= seeds; g.popP99 /= seeds;
+    g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds; g.kbps /= seeds; g.e2e /= seeds; g.e2eP95 /= seeds; g.queue /= seeds; g.oppLead = g.oppOk ? g.oppLead / g.oppOk : 0; g.oppTot /= seeds; g.oppOk /= seeds; g.dredWait /= seeds; g.dredNoData /= seeds; g.popMean /= seeds; g.popP99 /= seeds;
     g.underrun /= seeds; g.plc /= seeds; g.fec /= seeds; g.dred /= seeds; g.silent /= seeds; g.skipped /= seeds; g.stretched /= seeds;
     g.forced /= seeds; g.late /= seeds; g.rebuffer /= seeds;
     return g;
@@ -335,6 +382,8 @@ int main(int argc, char **argv)
         else if(!std::strcmp(argv[i], "dtx")) { g_dtx = true; g_speech = true; }     // DTX only makes sense with pauses
         else if(!std::strcmp(argv[i], "compare")) compare = true;
         else if(!std::strcmp(argv[i], "br") && i + 1 < argc) g_br = std::atoi(argv[++i]);
+        else if(!std::strcmp(argv[i], "detail")) g_detail = true;
+        else if(!std::strcmp(argv[i], "floor") && i + 1 < argc) g_floorMs = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "minms") && i + 1 < argc) g_minMs = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "plp") && i + 1 < argc) g_plp = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "dred") && i + 1 < argc) g_dredMs = std::atoi(argv[++i]);
@@ -398,6 +447,11 @@ int main(int argc, char **argv)
         std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %4u %5u %5u %6u %7u %6u %4u | %4.1f  | %5.1f %5.0f %5.0f %6.0f %s\n", s.name, g.avg, g.p95, g.max, g.bad,
                     g.underrun, g.plc, g.fec, g.dred, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target, g.kbps, g.popMean, g.popP99, g.popMax,
                     check ? (ok ? "ok" : "FAIL") : "");
+        if(g_detail)
+            std::printf("    real delay ms: mouth-to-ear avg %.0f p95 %.0f, buffer residence (arrival->play) avg %.0f | DRED opportunity: carrier in time for %u of %u lost frames (mean lead %.0f ms), "
+                        "waiting-for-carrier PLC %u, carrier without data %u | burst floor max %u frames\n"
+                        "    in-time lost frames were: DRED %u, FEC %u, PLC %u, a packet played %u, skipped/other %u (5 seeds summed)\n",
+                        g.e2e, g.e2eP95, g.queue, g.oppOk, g.oppTot, g.oppLead, g.dredWait, g.dredNoData, g.floorMax, g.how[1], g.how[2], g.how[3], g.how[4], g.how[5]);
         if(!ok) fails++;
     }
     if(check){

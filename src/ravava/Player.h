@@ -67,6 +67,7 @@ class Player
     std::atomic<bool> m_adaptive{false};     // see SetAdaptivePlayout()
     std::atomic<int> m_limMinMs{0}, m_limMaxMs{0};
     std::atomic<bool> m_dred{false};
+    std::atomic<int> m_dredFloorMs{0};
 
     // stats for the GUI: the audio thread publishes a copy (never blocks: try_lock), GetStats() reads it
     mutable std::mutex m_statsMutex;
@@ -131,6 +132,10 @@ public:
     // Use Opus DRED data (deep redundancy, Opus 1.5+) to rebuild runs of lost packets. Needs libopus built with --enable-dred and
     // RAVAVA_ENABLE_DRED; otherwise it does nothing. The sender must send DRED (AudioConfig::dredMs). Call BEFORE the first Play().
     void SetDredPlayback(bool on) { m_dred.store(on, std::memory_order_relaxed); }
+    // With adaptive playout + DRED: after a loss burst of n packets keep at least n+1 frames (at most maxMs) buffered, so the packet that
+    // carries the DRED data has arrived when the lost frames are due; the floor falls back after ~10 s without bursts. 0 = off (default).
+    // Costs delay: measured on real speech, ~60 ms extra mouth-to-ear for about half of DRED's gain. Before the first Play().
+    void SetDredFloorMs(int maxMs) { m_dredFloorMs.store(maxMs, std::memory_order_relaxed); }
     // limits of the jitter buffer depth in ms (default 40 .. 200); 0 = leave that limit at its default.
     void SetJitterLimitsMs(int minMs, int maxMs) { m_limMinMs.store(minMs, std::memory_order_relaxed); m_limMaxMs.store(maxMs, std::memory_order_relaxed); }
 
