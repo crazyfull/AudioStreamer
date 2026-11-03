@@ -61,6 +61,9 @@ More net_sim_test modes:
   fixed burst lengths 3 / 5 / 10 / 20 / 30 packets (columns plc, silent, rebuf show what each length costs);
   ./net_sim_test compare [speech]   legacy and adaptive side by side; fails if adaptive is much worse than legacy anywhere
                                     (bad% <= legacy*1.25+0.5, underrun <= legacy*2+30, delay <= legacy*1.8+20 ms). Guard rail, not tuning.
+  ./net_sim_test compare dtx wav voice-sample    REAL speech: "wav <file|folder>" loads .wav files (PCM 8/16/24/32 or float, any rate, any
+                                    channel count -> 48 kHz mono, peak-normalised, 0.5 s apart, looped) instead of the synthetic signal.
+                                    Combine with timed / legacy / compare / dtx. Prefer short clips (a few MB), not 100 MB files.
   ./net_sim_test compare dtx        (also "timed dtx") the sender skips silent frames like Recorder does (Opus DTX sends 1-byte frames, which
                                     Recorder drops, and a real packet at least every 400 ms). bad% does not count concealment of the frames the
                                     sender skipped (a pause: nobody is harmed). In ctest too.
