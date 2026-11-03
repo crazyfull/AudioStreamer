@@ -82,11 +82,18 @@ private slots:
 
     void on_btnTalk_clicked(bool checked);
 
+    // music: separate Play / Pause / Resume / Stop, mixed into the stream (talk can be on at the same time)
+    void on_btnMusicPlay_clicked();
+    void on_btnMusicPause_clicked();
+    void on_btnMusicResume_clicked();
+    void on_btnMusicStop_clicked();
+
 
     void on_LoopBack_checkBox_stateChanged(int arg1);
 
 private:
     Ui::MainWindow *ui;
+    void updateMusicButtons();
     void initTCP();
     void setupRouter();
     void onAudioPacket(const ravava::Packet::Header &hdr, const uint8_t *payload, size_t size);

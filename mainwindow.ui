@@ -519,11 +519,48 @@
      <item>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
-        <widget class="QCheckBox" name="playMusic_checkBox">
-         <property name="text">
-          <string>PlayMusic</string>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="horizontalLayout_music">
+         <item>
+          <widget class="QPushButton" name="btnMusicPlay">
+           <property name="toolTip">
+            <string>Play the file from the beginning. It is mixed into the stream, so you can talk over it (Talk button).</string>
+           </property>
+           <property name="text">
+            <string>Play</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnMusicPause">
+           <property name="toolTip">
+            <string>Pause: keeps the position.</string>
+           </property>
+           <property name="text">
+            <string>Pause</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnMusicResume">
+           <property name="toolTip">
+            <string>Resume from where it was paused.</string>
+           </property>
+           <property name="text">
+            <string>Resume</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnMusicStop">
+           <property name="toolTip">
+            <string>Stop: ends the music and forgets the position.</string>
+           </property>
+           <property name="text">
+            <string>Stop</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QLineEdit" name="txtMusicPath">

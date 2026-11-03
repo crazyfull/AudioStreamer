@@ -11,6 +11,7 @@
 #define RAVAVA_RECORDER_H
 
 #include <atomic>
+#include <mutex>
 #include <functional>
 #include <memory>
 #include "AudioTypes.h"
@@ -53,7 +54,19 @@ private:
     uint8_t m_tx;                     // counts transmitted packets (loss statistics on the receiver)
     bool m_marker;                    // next packet follows a silence gap
 
-    AudioFileReader m_file;           // music file, decoded on a background thread (playMusic)
+    AudioFileReader m_file;           // music file, decoded on a background thread (playMusic / MusicPlay)
+
+    // ---- music that is mixed into the stream at run time (MusicPlay / MusicPause / MusicResume / MusicStop) ----
+    // The audio thread only reads m_musicMode and the ring buffer; the GUI thread changes the file only while the audio thread is NOT inside
+    // m_file.Read() (m_musicInRead handshake), so nothing on the audio thread ever waits.
+    std::mutex m_musicCtl;                    // GUI thread: Music*() calls among themselves
+    std::atomic<int> m_musicMode{0};          // 0 stopped, 1 playing, 2 paused
+    std::atomic<bool> m_musicInRead{false};   // the audio thread is inside m_file.Read()
+    GainRamp m_musicGain;                     // music level 0..200 %, GUI -> audio thread
+    std::atomic<bool> m_micOn{true};          // SetMicEnabled(): the "talk" gate
+    Pcm m_music;                              // music samples for the current device chunk
+    Pcm m_mix;                                // mic + music
+    bool m_idle = false;                      // audio thread: this chunk has neither microphone nor music: nothing is encoded or sent
 
     std::string m_deviceChoice;       // the device id the user chose (GUI thread)
     int64_t m_lastKeepMs = 0;         // GUI thread: when KeepDevice() last re-opened the device
@@ -90,6 +103,25 @@ public:
     // Any thread. Without a readable file the recorder sends silence.
     std::string MusicError() const { return m_file.Error(); }
     bool IsMusicFinished() const { return m_file.IsFinished(); }
+    // ---- music ---------------------------------------------------------------------------------------------------------------------
+    // A file (wav / mp3 / flac) that is MIXED into the stream together with the microphone: the speaker can talk over it. The four
+    // operations are separate (there is no toggle): Play starts from the beginning, Stop ends and forgets the position, Pause keeps the
+    // position, Resume continues from it. All from the GUI thread, all return at once (the file is decoded on a background thread).
+    // The recorder must be started (the microphone is the clock); the config's playMusic must be off (that mode is "music INSTEAD of the
+    // microphone", fixed at Start). The sender needs a music-friendly Opus setup (AudioConfig::musicMode, a higher bitrate) to sound good.
+    enum class MusicState { Stopped, Playing, Paused, Finished };
+    bool MusicPlay(const std::string &path);    // false: not started, playMusic mode, or the file is rejected right away (details: MusicError())
+    bool MusicPause();                          // false unless Playing
+    bool MusicResume();                         // false unless Paused
+    void MusicStop();
+    MusicState GetMusicState() const;
+    void SetMusicVolume(int percent) { m_musicGain.Set(percent); }     // 0..200, default 100; takes effect within ~10 ms without clicks
+    int  GetMusicVolume() const { return m_musicGain.Get(); }
+    // The "talk" gate. false = the microphone is NOT sent (and not processed); music keeps going. When neither the microphone nor music is
+    // active nothing is sent at all (a pause for the receiver, like DTX), so a push-to-talk button should just call this and send every packet.
+    // Default true: the microphone is always sent (the old behaviour). Any thread.
+    void SetMicEnabled(bool on) { m_micOn.store(on, std::memory_order_relaxed); }
+    bool IsMicEnabled() const { return m_micOn.load(std::memory_order_relaxed); }
     // Switch the microphone while recording (no Stop / Start needed). "" = system default. The switch runs on a worker
     // thread, so this returns at once and never freezes the GUI; several quick calls are merged (the last one wins). It is
     // a short gap in the stream (longer for Bluetooth); the next packet carries the "marker" flag. If the device can't be

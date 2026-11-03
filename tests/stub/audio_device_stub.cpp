@@ -74,27 +74,31 @@ std::string AudioOutput::ActiveDevice() const { return "Stub speaker"; }
 bool AudioOutput::IsRunning() const { return d->running; }
 Pcm DecodeAudioFile(const std::string&, int, int, std::string *err){ if(err)*err="stub"; return Pcm(); }
 
-// fake music file: path "tone" = an endless 440 Hz sine (amplitude 8000), anything else = "cannot open"
+// fake music file: path "tone" = an endless 440 Hz sine (amplitude 8000), "tone880" = the same at 880 Hz (differs from the fake
+// microphone, so mixing the two is measurable), "short" = 440 Hz for 0.3 s and then the end of the file, anything else = "cannot open"
 #include <cmath>
-struct AudioFileReader::Impl { bool tone = false; int rate = 48000, ch = 1; uint64_t pos = 0; std::string err; };
+struct AudioFileReader::Impl { bool tone = false; double hz = 440; std::atomic<uint64_t> limit{~0ull}; int rate = 48000, ch = 1; std::atomic<uint64_t> pos{0}; std::string err; };   // (the real reader keeps its positions in atomics too)
 AudioFileReader::AudioFileReader() : d(new Impl) {}
 AudioFileReader::~AudioFileReader() {}
 void AudioFileReader::Open(const std::string &path, int sampleRate, int channels)
 {
-    d->tone = (path == "tone"); d->rate = sampleRate; d->ch = channels < 1 ? 1 : channels; d->pos = 0;
+    d->tone = (path == "tone" || path == "tone880" || path == "short"); d->rate = sampleRate; d->ch = channels < 1 ? 1 : channels; d->pos = 0;
+    d->hz = path == "tone880" ? 880.0 : 440.0;
+    d->limit.store(path == "short" ? uint64_t(sampleRate) * 3 / 10 : ~0ull);
     d->err = d->tone ? std::string() : std::string("cannot open '") + path + "' (stub)";
 }
 void AudioFileReader::Close() {}
 size_t AudioFileReader::Read(int16_t *dst, size_t samples)
 {
     if(!d->tone) return 0;
-    for(size_t i = 0; i < samples; i += size_t(d->ch)){
-        const int16_t v = int16_t(8000.0 * std::sin(2.0 * 3.14159265358979 * 440.0 * double(d->pos++) / d->rate));
+    size_t i = 0;
+    for(; i + size_t(d->ch) <= samples && d->pos.load() < d->limit.load(); i += size_t(d->ch)){
+        const int16_t v = int16_t(8000.0 * std::sin(2.0 * 3.14159265358979 * d->hz * double(d->pos.fetch_add(1)) / d->rate));
         for(int c = 0; c < d->ch; ++c) dst[i + size_t(c)] = v;
     }
-    return samples;
+    return i;
 }
-bool AudioFileReader::IsFinished() const { return false; }
+bool AudioFileReader::IsFinished() const { return d->pos.load() >= d->limit.load(); }
 std::string AudioFileReader::Error() const { return d->err; }
 
 } // namespace ravava
