@@ -18,6 +18,7 @@
 #include "ravava/VoicePacket.h"
 #include "ravava/AudioConfig.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <dirent.h>
@@ -50,6 +51,8 @@ struct Result {
     uint32_t silent = 0;                // PopFrame() returned false after the first frame was played
     uint32_t plcInSilence = 0;          // DTX only: concealment of a frame the sender never sent (a pause), nobody is harmed
     int finalTarget = 0;
+    double kbps = 0;                    // payload bitrate the encoder really produced (shows what DRED costs)
+    double popMeanUs = 0, popP99Us = 0, popMaxUs = 0;     // PopFrame() = jitter buffer + Opus decode (+ DRED), what the audio callback pays
 };
 
 struct Arrival { int64_t atUs; int idx; bool operator<(const Arrival &o) const { return atUs < o.atUs || (atUs == o.atUs && idx < o.idx); } };
@@ -84,6 +87,7 @@ static void speechFrames(int fs, int frames, std::vector<Pcm> &out)
 
 
 // ---- real speech: .wav files (8/16/24/32-bit PCM or 32-bit float, any rate, mono or more channels) -> 48 kHz mono 20 ms frames
+static int g_minMs = 0;                              // "minms <ms>": lower limit of the adaptive depth (DRED can only repair what the buffer can still see)
 static int g_br = 16000, g_dredMs = 0, g_plp = 10;   // "plp <%>": the packet loss the encoder is told to expect (DRED starts at ~20)       // "br <bps>", "dred <ms>" (needs libopus with DRED and -DRAVAVA_ENABLE_DRED)
 static std::vector<Pcm> g_wavFrames;        // "wav <file|folder>": the sender plays these (all files one after another, 0.5 s apart), looping
 static std::string g_wavNames;
@@ -205,10 +209,12 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     uint32_t txc = 0; bool dtxMarker = false;
     double nextStall = sc.stallEverySec > 0 ? -std::log(1.0 - uni(rng)) * sc.stallEverySec : 1e18;
     double stallEnd = -1;
+    size_t payloadBytes = 0;
     for(int i = 0; i < total; i++){
         const double sendS = i * frameUs / 1e6;
         const Bytes &pk = pool[size_t(i) % pool.size()];
         if(g_dtx && pk.size() <= 2){ dtxMarker = true; continue; }        // silence: nothing is sent (see Recorder.cpp)
+        payloadBytes += pk.size();
         wire[size_t(i)] = VoicePacket::Wrap(uint16_t(seq0 + i), i == 0 || dtxMarker, uint8_t(txc++ & 127), pk);
         dtxMarker = false;
         if(burstLeft > 0){ burstLeft--; continue; }
@@ -233,9 +239,10 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     OpusCodec dec; dec.InitDecoder(48000, 1);
     if(g_dredMs > 0) dec.InitDredDecoder();
     JitterBuffer jb(&dec, 48000, 1, 20);
-    if(timed) jb.SetAdaptive(true);
+    if(timed){ if(g_minMs > 0) jb.SetTargetLimitsMs(g_minMs, std::max(200, g_minMs)); jb.SetAdaptive(true); }
     const double pullUs = frameUs / (1.0 + sc.driftPpm * 1e-6);
     std::vector<int> delays;
+    std::vector<float> popUs;
     delays.reserve(size_t(total));
     Result r;
     Pcm pcm;
@@ -254,7 +261,9 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
         }
         const uint32_t plcBefore = jb.GetStats().plc;
         const int64_t posBefore = jb.PlayoutPosition();
+        const auto t0 = std::chrono::steady_clock::now();
         const bool got = jb.PopFrame(pcm);
+        popUs.push_back(float(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count()));
         if(g_dtx && jb.GetStats().plc != plcBefore){
             const int64_t idx = posBefore - seq0;                // first packet's extended sequence = seq0
             if(idx >= 0 && idx < total && wire[size_t(idx)].empty())
@@ -270,6 +279,12 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
         (void)playedPrev;
     }
     r.st = jb.GetStats();
+    r.kbps = double(payloadBytes) * 8.0 / (double(total) * frameUs / 1e6) / 1000.0;
+    if(!popUs.empty()){
+        std::sort(popUs.begin(), popUs.end());
+        double s = 0; for(float v : popUs) s += v;
+        r.popMeanUs = s / double(popUs.size()); r.popP99Us = popUs[size_t(double(popUs.size() - 1) * 0.99)]; r.popMaxUs = popUs.back();
+    }
     r.finalTarget = jb.TargetDepth();
     if(!delays.empty()){
         double sum = 0; int mx = 0;
@@ -287,7 +302,7 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
 }
 
 struct Agg {
-    double avg = 0, p95 = 0, max = 0, bad = 0, target = 0;
+    double avg = 0, p95 = 0, max = 0, bad = 0, target = 0, kbps = 0, popMean = 0, popP99 = 0, popMax = 0;
     uint32_t dred = 0, underrun = 0, plc = 0, fec = 0, silent = 0, skipped = 0, stretched = 0, forced = 0, late = 0, rebuffer = 0;
 };
 
@@ -298,11 +313,11 @@ static Agg aggregate(const Scenario &s, bool timed)
     Agg g;
     for(int sd = 1; sd <= seeds; sd++){
         const Result r = run(s, timed, unsigned(sd));
-        g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget;
+        g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget; g.kbps += r.kbps; g.popMean += r.popMeanUs; g.popP99 += r.popP99Us; g.popMax = std::max(g.popMax, r.popMaxUs);
         g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.dred += r.st.dred; g.silent += r.silent; g.skipped += r.st.skipped;
         g.stretched += r.st.stretched; g.forced += r.st.slipForced; g.late += r.st.late; g.rebuffer += r.st.rebuffer;
     }
-    g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds;
+    g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds; g.kbps /= seeds; g.popMean /= seeds; g.popP99 /= seeds;
     g.underrun /= seeds; g.plc /= seeds; g.fec /= seeds; g.dred /= seeds; g.silent /= seeds; g.skipped /= seeds; g.stretched /= seeds;
     g.forced /= seeds; g.late /= seeds; g.rebuffer /= seeds;
     return g;
@@ -320,6 +335,7 @@ int main(int argc, char **argv)
         else if(!std::strcmp(argv[i], "dtx")) { g_dtx = true; g_speech = true; }     // DTX only makes sense with pauses
         else if(!std::strcmp(argv[i], "compare")) compare = true;
         else if(!std::strcmp(argv[i], "br") && i + 1 < argc) g_br = std::atoi(argv[++i]);
+        else if(!std::strcmp(argv[i], "minms") && i + 1 < argc) g_minMs = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "plp") && i + 1 < argc) g_plp = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "dred") && i + 1 < argc) g_dredMs = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "wav") && i + 1 < argc){
@@ -372,15 +388,15 @@ int main(int argc, char **argv)
 
     std::printf("mode: %s, signal: %s%s\n", timed ? "timed (arrival time given)" : "legacy (no arrival time)",
                 !g_wavFrames.empty() ? "real speech" : g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
-    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec dred silent rebuf skipped stretch forced late | target\n", "scenario");
+    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec dred silent rebuf skipped stretch forced late | target | kbps  pop us mean/p99/max\n", "scenario");
     int fails = 0;
     for(const Scenario &s : sc){
         if(only && !std::strstr(s.name, only))
             continue;
         const Agg g = aggregate(s, timed);
         const bool ok = g.bad <= s.maxBadPct && g.p95 <= s.maxP95Ms;
-        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %4u %5u %5u %6u %7u %6u %4u | %4.1f  %s\n", s.name, g.avg, g.p95, g.max, g.bad,
-                    g.underrun, g.plc, g.fec, g.dred, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target,
+        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %4u %5u %5u %6u %7u %6u %4u | %4.1f  | %5.1f %5.0f %5.0f %6.0f %s\n", s.name, g.avg, g.p95, g.max, g.bad,
+                    g.underrun, g.plc, g.fec, g.dred, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target, g.kbps, g.popMean, g.popP99, g.popMax,
                     check ? (ok ? "ok" : "FAIL") : "");
         if(!ok) fails++;
     }
