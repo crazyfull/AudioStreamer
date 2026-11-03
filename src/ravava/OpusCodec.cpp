@@ -56,6 +56,12 @@ OpusCodec::~OpusCodec()
         opus_encoder_destroy(m_pEncoder);
     if(m_pDecoder)
         opus_decoder_destroy(m_pDecoder);
+#ifdef RAVAVA_ENABLE_DRED
+    if(m_pDred)
+        opus_dred_free(m_pDred);
+    if(m_pDredDec)
+        opus_dred_decoder_destroy(m_pDredDec);
+#endif
 }
 
 bool OpusCodec::InitEncoder(const AudioConfig &cfg)
@@ -92,6 +98,11 @@ bool OpusCodec::InitEncoder(const AudioConfig &cfg)
         opus_encoder_destroy(enc);
         return false;
     }
+#ifdef RAVAVA_ENABLE_DRED
+    // not fatal: a libopus built without DRED answers OPUS_UNIMPLEMENTED and the stream is simply sent without it
+    if(cfg.dredMs > 0)
+        ctlOk(opus_encoder_ctl(enc, OPUS_SET_DRED_DURATION(cfg.dredMs / 10)), "DRED_DURATION");
+#endif
 
     m_pEncoder = enc;
     m_encChannels = cfg.channels;
@@ -115,6 +126,7 @@ bool OpusCodec::InitDecoder(int sampleRate, int channels)
     }
 
     m_decChannels = channels;
+    m_decRate = sampleRate;
     m_decScratch.assign(size_t(MAX_SAMPLES) * channels, 0);     // allocated once, here
     return true;
 }
@@ -231,6 +243,66 @@ bool OpusCodec::DecodePlc(int frameSamples, Pcm &out)
     out.assign(m_decScratch.begin(), m_decScratch.begin() + size_t(samples) * m_decChannels);
     return true;
 }
+
+bool OpusCodec::DredCompiled()
+{
+#ifdef RAVAVA_ENABLE_DRED
+    return true;
+#else
+    return false;
+#endif
+}
+
+#ifdef RAVAVA_ENABLE_DRED
+bool OpusCodec::InitDredDecoder()
+{
+    if(m_pDredDec)
+        return true;
+    int err = OPUS_OK;
+    OpusDREDDecoder *d = opus_dred_decoder_create(&err);
+    OpusDRED *s = err == OPUS_OK && d ? opus_dred_alloc(&err) : nullptr;
+    if(err != OPUS_OK || !d || !s){
+        RAVAVA_WARN("DRED decoder not available (libopus built without --enable-dred?): %s", opus_strerror(err));
+        if(s) opus_dred_free(s);
+        if(d) opus_dred_decoder_destroy(d);
+        return false;
+    }
+    m_pDredDec = d;
+    m_pDred = s;
+    return true;
+}
+
+bool OpusCodec::DredReady() const
+{
+    return m_pDredDec && m_pDecoder;
+}
+
+int OpusCodec::DredParse(const uint8_t *packet, size_t size, int maxSamples)
+{
+    if(!DredReady() || !packet || !size || maxSamples <= 0)
+        return 0;
+    int dredEnd = 0;
+    const int avail = opus_dred_parse(m_pDredDec, m_pDred, packet, opus_int32(size), maxSamples, m_decRate, &dredEnd, 0);
+    return avail > 0 ? avail : 0;
+}
+
+bool OpusCodec::DecodeDred(int offsetSamples, int frameSamples, Pcm &out)
+{
+    out.clear();
+    if(!DredReady() || frameSamples <= 0 || frameSamples > MAX_SAMPLES)
+        return false;
+    const int samples = opus_decoder_dred_decode(m_pDecoder, m_pDred, offsetSamples, m_decScratch.data(), frameSamples);
+    if(samples <= 0)
+        return false;
+    out.assign(m_decScratch.begin(), m_decScratch.begin() + size_t(samples) * m_decChannels);
+    return true;
+}
+#else
+bool OpusCodec::InitDredDecoder() { return false; }
+bool OpusCodec::DredReady() const { return false; }
+int OpusCodec::DredParse(const uint8_t *, size_t, int) { return 0; }
+bool OpusCodec::DecodeDred(int, int, Pcm &out) { out.clear(); return false; }
+#endif
 
 Pcm OpusCodec::DecodePlc(int frameSamples)
 {

@@ -13,6 +13,7 @@
 #   RAVAVA_WITH_WEBRTC       AUTO AUTO = use libwebrtc-audio-processing-1 if it is found, ON = required, OFF = never
 #                                 (found = echo cancellation / noise suppression / AGC are compiled in, RAVAVA_WITH_WEBRTC is defined)
 #   RAVAVA_OPUS_ROOT         ""   where libopus is (<root>/include[/opus]/opus.h, <root>/lib[/<android abi>]/libopus.*)
+#   RAVAVA_ENABLE_DRED       OFF  Opus 1.5+ Deep REDundancy; libopus must be built with --enable-dred (default libopus builds do NOT have it)
 #   RAVAVA_WEBRTC_ROOT       ""   where webrtc-audio-processing 1.x is installed (otherwise pkg-config / system paths)
 #   RAVAVA_INSTALL_OPUS_HEADERS ON  also put opus.h & co next to the ravava headers (OpusCodec.h includes "opus.h"), so the
 #                                 installed include/ folder is complete
@@ -36,6 +37,7 @@ option(RAVAVA_STATIC_RUNTIME "MSVC: link the C runtime statically (/MT)" OFF)
 option(RAVAVA_BUILD_TESTS "Build the tests (no sound card needed)" OFF)
 set(RAVAVA_WITH_WEBRTC "AUTO" CACHE STRING "Echo cancellation with webrtc-audio-processing 1.x: AUTO, ON or OFF")
 set_property(CACHE RAVAVA_WITH_WEBRTC PROPERTY STRINGS AUTO ON OFF)
+option(RAVAVA_ENABLE_DRED "Opus 1.5+ Deep REDundancy (AudioConfig::dredMs, Player::SetDredPlayback). libopus MUST be built with --enable-dred" OFF)
 set(RAVAVA_OPUS_ROOT "" CACHE PATH "Opus install prefix")
 set(RAVAVA_WEBRTC_ROOT "" CACHE PATH "webrtc-audio-processing 1.x install prefix")
 
@@ -251,6 +253,9 @@ if(RAVAVA_OPUS_INCLUDE_DIR AND NOT TARGET Opus::opus)
 endif()
 
 target_link_libraries(RavAva PUBLIC Threads::Threads ${RAVAVA_OPUS_LIBS})
+if(RAVAVA_ENABLE_DRED)
+    target_compile_definitions(RavAva PUBLIC RAVAVA_ENABLE_DRED)        # PUBLIC: OpusCodec.h's class layout depends on it
+endif()
 if(RAVAVA_WEBRTC_FOUND)
     target_compile_definitions(RavAva PRIVATE RAVAVA_WITH_WEBRTC)       # only AudioProcessor.cpp looks at it
     target_include_directories(RavAva PRIVATE ${RAVAVA_WEBRTC_INCLUDES} ${RAVAVA_PC_WEBRTC_INCLUDE_DIRS})
@@ -318,6 +323,9 @@ if(RAVAVA_BUILD_TESTS)
         add_executable(${name} ${srcs})
         target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/.." "${RAVAVA_OPUS_INCLUDE_DIR}")
         target_link_libraries(${name} PRIVATE Threads::Threads ${RAVAVA_OPUS_LIBS})
+        if(RAVAVA_ENABLE_DRED)
+            target_compile_definitions(${name} PRIVATE RAVAVA_ENABLE_DRED)
+        endif()
         if(RAVAVA_WEBRTC_FOUND)
             target_compile_definitions(${name} PRIVATE RAVAVA_WITH_WEBRTC)
             target_include_directories(${name} PRIVATE ${RAVAVA_WEBRTC_INCLUDES} ${RAVAVA_PC_WEBRTC_INCLUDE_DIRS})

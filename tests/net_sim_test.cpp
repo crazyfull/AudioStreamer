@@ -84,6 +84,7 @@ static void speechFrames(int fs, int frames, std::vector<Pcm> &out)
 
 
 // ---- real speech: .wav files (8/16/24/32-bit PCM or 32-bit float, any rate, mono or more channels) -> 48 kHz mono 20 ms frames
+static int g_br = 16000, g_dredMs = 0, g_plp = 10;   // "plp <%>": the packet loss the encoder is told to expect (DRED starts at ~20)       // "br <bps>", "dred <ms>" (needs libopus with DRED and -DRAVAVA_ENABLE_DRED)
 static std::vector<Pcm> g_wavFrames;        // "wav <file|folder>": the sender plays these (all files one after another, 0.5 s apart), looping
 static std::string g_wavNames;
 
@@ -175,7 +176,7 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     std::normal_distribution<double> gauss(0.0, 1.0);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
 
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 16000; cfg.useDtx = g_dtx; cfg.useFec = true; cfg.expectedLossPerc = 10;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = g_br; cfg.dredMs = g_dredMs; cfg.useDtx = g_dtx; cfg.useFec = true; cfg.expectedLossPerc = g_plp;
     OpusCodec enc; enc.InitEncoder(cfg);
     const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;
@@ -230,6 +231,7 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
 
     // ---- the receiver: speaker pulls one frame per frame period of ITS clock
     OpusCodec dec; dec.InitDecoder(48000, 1);
+    if(g_dredMs > 0) dec.InitDredDecoder();
     JitterBuffer jb(&dec, 48000, 1, 20);
     if(timed) jb.SetAdaptive(true);
     const double pullUs = frameUs / (1.0 + sc.driftPpm * 1e-6);
@@ -286,7 +288,7 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
 
 struct Agg {
     double avg = 0, p95 = 0, max = 0, bad = 0, target = 0;
-    uint32_t underrun = 0, plc = 0, fec = 0, silent = 0, skipped = 0, stretched = 0, forced = 0, late = 0, rebuffer = 0;
+    uint32_t dred = 0, underrun = 0, plc = 0, fec = 0, silent = 0, skipped = 0, stretched = 0, forced = 0, late = 0, rebuffer = 0;
 };
 
 // average over a few seeds so one lucky run doesn't decide
@@ -297,11 +299,11 @@ static Agg aggregate(const Scenario &s, bool timed)
     for(int sd = 1; sd <= seeds; sd++){
         const Result r = run(s, timed, unsigned(sd));
         g.avg += r.avgMs; g.p95 += r.p95Ms; g.max = std::max(g.max, r.maxMs); g.bad += r.badPct; g.target += r.finalTarget;
-        g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.silent += r.silent; g.skipped += r.st.skipped;
+        g.underrun += r.st.underrun; g.plc += r.st.plc; g.fec += r.st.fec; g.dred += r.st.dred; g.silent += r.silent; g.skipped += r.st.skipped;
         g.stretched += r.st.stretched; g.forced += r.st.slipForced; g.late += r.st.late; g.rebuffer += r.st.rebuffer;
     }
     g.avg /= seeds; g.p95 /= seeds; g.bad /= seeds; g.target /= seeds;
-    g.underrun /= seeds; g.plc /= seeds; g.fec /= seeds; g.silent /= seeds; g.skipped /= seeds; g.stretched /= seeds;
+    g.underrun /= seeds; g.plc /= seeds; g.fec /= seeds; g.dred /= seeds; g.silent /= seeds; g.skipped /= seeds; g.stretched /= seeds;
     g.forced /= seeds; g.late /= seeds; g.rebuffer /= seeds;
     return g;
 }
@@ -317,6 +319,9 @@ int main(int argc, char **argv)
         else if(!std::strcmp(argv[i], "speech")) g_speech = true;
         else if(!std::strcmp(argv[i], "dtx")) { g_dtx = true; g_speech = true; }     // DTX only makes sense with pauses
         else if(!std::strcmp(argv[i], "compare")) compare = true;
+        else if(!std::strcmp(argv[i], "br") && i + 1 < argc) g_br = std::atoi(argv[++i]);
+        else if(!std::strcmp(argv[i], "plp") && i + 1 < argc) g_plp = std::atoi(argv[++i]);
+        else if(!std::strcmp(argv[i], "dred") && i + 1 < argc) g_dredMs = std::atoi(argv[++i]);
         else if(!std::strcmp(argv[i], "wav") && i + 1 < argc){
             if(!loadWavs(argv[++i], 960)){ std::fprintf(stderr, "no usable .wav in %s\n", argv[i]); return 2; }
             g_speech = true;
@@ -367,15 +372,15 @@ int main(int argc, char **argv)
 
     std::printf("mode: %s, signal: %s%s\n", timed ? "timed (arrival time given)" : "legacy (no arrival time)",
                 !g_wavFrames.empty() ? "real speech" : g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
-    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec silent rebuf skipped stretch forced late | target\n", "scenario");
+    std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec dred silent rebuf skipped stretch forced late | target\n", "scenario");
     int fails = 0;
     for(const Scenario &s : sc){
         if(only && !std::strstr(s.name, only))
             continue;
         const Agg g = aggregate(s, timed);
         const bool ok = g.bad <= s.maxBadPct && g.p95 <= s.maxP95Ms;
-        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %5u %5u %6u %7u %6u %4u | %4.1f  %s\n", s.name, g.avg, g.p95, g.max, g.bad,
-                    g.underrun, g.plc, g.fec, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target,
+        std::printf("%-26s | %6.0f %6.0f %6.0f   | %5.2f | %6u %5u %5u %4u %5u %5u %6u %7u %6u %4u | %4.1f  %s\n", s.name, g.avg, g.p95, g.max, g.bad,
+                    g.underrun, g.plc, g.fec, g.dred, g.silent, g.rebuffer, g.skipped, g.stretched, g.forced, g.late, g.target,
                     check ? (ok ? "ok" : "FAIL") : "");
         if(!ok) fails++;
     }

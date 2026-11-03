@@ -62,7 +62,7 @@ std::string StubOutputDevice();     // from tests/stub/audio_device_stub.cpp (th
 int main()
 {
     g_stubSpeakerTap = tap;
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 32000; cfg.useDtx = false;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 32000; cfg.useDtx = false;
     OpusCodec enc; enc.InitEncoder(cfg);
     Player play;
     cfg.outputDeviceId = "dd";                              // the config choice must reach the device layer

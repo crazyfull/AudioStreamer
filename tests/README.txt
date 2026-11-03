@@ -80,3 +80,9 @@ plus a GUI thread polling GetStats() / SetVolume() at ~3 kHz; ~30 s):
   g++ -std=c++17 -O2 -pthread -I/usr/include/opus -Isrc tests/callback_time_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o callback_time_test
   Reports longest / count / over half the period / over the deadline; fails when one callback takes 5 ms or more, or one misses the 10 ms deadline.
 
+
+DRED (Opus 1.5+ Deep REDundancy):
+  Needs libopus built with --enable-dred (NOT in default builds / distro packages / the prebuilt libs of libs/opus) and the cmake option
+  -DRAVAVA_ENABLE_DRED=ON (or -DRAVAVA_ENABLE_DRED for your own build lines). Sender: AudioConfig::dredMs, receiver: Player::SetDredPlayback(true).
+  The encoder only emits DRED from ~32 kbps up and with expectedLossPerc >= ~20; below that nothing is sent.
+  ./net_sim_test legacy wav voice-sample br 48000 plp 20 dred 500      (br = bitrate bps, plp = expected loss % for the encoder, dred = ms)

@@ -10,7 +10,7 @@
 using namespace ravava;
 
 int main(){
-    AudioConfig cfg; cfg.frameMs=20; cfg.opusBitrate=16000; cfg.expectedLossPerc=20; cfg.useDtx=false;
+    AudioConfig cfg; cfg.frameMs=20; cfg.Bitrate=16000; cfg.expectedLossPerc=20; cfg.useDtx=false;
     Recorder rec; Player play;
     std::mt19937 rng(1); std::mutex mx; int sent=0, dropped=0, swapped=0;
     std::deque<Bytes> held;

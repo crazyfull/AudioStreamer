@@ -41,7 +41,7 @@ static Result run(const Scenario &sc, bool adaptive)
     player.SetAdaptivePlayout(adaptive);
     player.SetConfig(&spk);
 
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 16000; cfg.useDtx = false; cfg.useFec = true; cfg.expectedLossPerc = 10;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 16000; cfg.useDtx = false; cfg.useFec = true; cfg.expectedLossPerc = 10;
     OpusCodec enc; enc.InitEncoder(cfg);
     const int fs = cfg.FrameSamples();
     Pcm pcm(static_cast<size_t>(fs), int16_t(0));

@@ -44,7 +44,7 @@ bool AudioProcessor::GetStats(Stats&) const { return false; }
 
 static long runCase(bool useAec, int frameMs, bool dtx)
 {
-    AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
+    AudioConfig cfg; cfg.frameMs = frameMs; cfg.Bitrate = 16000; cfg.useDtx = dtx;
     Recorder rec;
     std::atomic<long> packets{0};
     rec.SetPacketHandler([&](const Bytes &d){ if(!d.empty()) packets++; });
@@ -70,7 +70,7 @@ static long runCase(bool useAec, int frameMs, bool dtx)
 // Allocations anywhere in the process while it runs; also checks that the router hands only audio to the audio layer.
 static long runPlayerCase(int frameMs, bool dtx)
 {
-    AudioConfig cfg; cfg.frameMs = frameMs; cfg.opusBitrate = 16000; cfg.useDtx = dtx;
+    AudioConfig cfg; cfg.frameMs = frameMs; cfg.Bitrate = 16000; cfg.useDtx = dtx;
     Recorder rec; Player play;
     PacketRouter router;
     const uint16_t streamId = 0x1234;

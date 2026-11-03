@@ -40,7 +40,7 @@ static std::pair<double,double> run(bool withAec, int *outLostPackets)
     g_echoDelayMs = 60;
 
     AudioConfig cfg;
-    cfg.frameMs = 20; cfg.opusBitrate = 24000; cfg.expectedLossPerc = 0; cfg.useDtx = false;
+    cfg.frameMs = 20; cfg.Bitrate = 24000; cfg.expectedLossPerc = 0; cfg.useDtx = false;
     cfg.useEchoCancel = withAec;
 
     auto rec  = std::make_unique<Recorder>();

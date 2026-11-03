@@ -29,6 +29,11 @@ private:
     int m_encChannels;
     int m_decChannels;
     int m_frameSamples;     // per channel
+    int m_decRate = 48000;
+#ifdef RAVAVA_ENABLE_DRED
+    OpusDREDDecoder *m_pDredDec = nullptr;
+    OpusDRED *m_pDred = nullptr;
+#endif
 
     unsigned char m_encBuf[1500];   // encoder output scratch
     Pcm m_decScratch;               // decoder output scratch (the biggest possible Opus packet)
@@ -67,6 +72,17 @@ public:
     bool DecodeFec(const uint8_t *nextPacket, size_t size, int frameSamples, Pcm &out);
     bool DecodeFec(const Bytes &nextPacket, int frameSamples, Pcm &out);
     Pcm DecodeFec(const Bytes &nextPacket, int frameSamples);
+    // ---- Deep REDundancy (Opus 1.5+, libopus built with --enable-dred, RAVAVA_ENABLE_DRED defined; otherwise these do nothing) ----
+    // The receiver needs no setting: packets without DRED data simply give nothing. Not for the audio thread (allocates).
+    static bool DredCompiled();
+    bool InitDredDecoder();
+    bool DredReady() const;
+    // how many samples (per channel, at the decoder rate) before the START of `packet` its DRED data can rebuild, looking back at most
+    // maxSamples. <= 0: none. Audio thread safe (no allocation); the result is kept for DecodeDred()
+    int DredParse(const uint8_t *packet, size_t size, int maxSamples);
+    // the frame that ENDS `offsetSamples` before the start of the packet given to the last DredParse() (offset >= frameSamples,
+    // <= its result). Call for the lost frames oldest first, then Decode() the packet. false = nothing produced (use PLC)
+    bool DecodeDred(int offsetSamples, int frameSamples, Pcm &out);
     // packet lost and no FEC: let Opus extrapolate the signal
     bool DecodePlc(int frameSamples, Pcm &out);
     Pcm DecodePlc(int frameSamples);

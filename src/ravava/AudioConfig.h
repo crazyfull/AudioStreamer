@@ -45,6 +45,9 @@ struct AudioConfig
     bool playMusic = false;
     std::string musicPath;      // UTF-8
     int expectedLossPerc = 20;  //tells the encoder how much redundancy to spend (0..100)
+    int dredMs = 0;             //Opus 1.5+ Deep REDundancy (needs libopus built with --enable-dred and RAVAVA_ENABLE_DRED): how many ms of the
+                                //PAST audio every packet carries in a neural, very compact form (0 = off, 10 ms steps, max 1000). Recovers
+                                //bursts of lost packets far better than inband FEC, but it only turns on from ~32 kbps and costs bitrate and CPU.
     int maxBandwidth = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
     // ---- echo cancellation (webrtc-audio-processing, see AudioProcessor.h) ----
@@ -81,6 +84,8 @@ struct AudioConfig
             return fail("opusBitrate (500..512000 bps)", Bitrate);
         if(expectedLossPerc < 0 || expectedLossPerc > 100)
             return fail("expectedLossPerc (0..100)", expectedLossPerc);
+        if(dredMs < 0 || dredMs > 1000)
+            return fail("dredMs (0..1000)", dredMs);
         if(maxBandwidth < 1101 || maxBandwidth > 1105)
             return fail("maxBandwidth (1101..1105)", maxBandwidth);
         return true;

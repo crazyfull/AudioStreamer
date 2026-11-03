@@ -66,6 +66,7 @@ class Player
     std::atomic<uint32_t> m_ingestDropped;  // datagrams dropped because the queue was full
     std::atomic<bool> m_adaptive{false};     // see SetAdaptivePlayout()
     std::atomic<int> m_limMinMs{0}, m_limMaxMs{0};
+    std::atomic<bool> m_dred{false};
 
     // stats for the GUI: the audio thread publishes a copy (never blocks: try_lock), GetStats() reads it
     mutable std::mutex m_statsMutex;
@@ -127,6 +128,9 @@ public:
     // delay near what the network needs by dropping / repeating single frames at quiet moments. OFF = the plain reactive
     // buffer (grows only after an underrun). Both calls apply to streams created afterwards: call them BEFORE the first Play().
     void SetAdaptivePlayout(bool on) { m_adaptive.store(on, std::memory_order_relaxed); }
+    // Use Opus DRED data (deep redundancy, Opus 1.5+) to rebuild runs of lost packets. Needs libopus built with --enable-dred and
+    // RAVAVA_ENABLE_DRED; otherwise it does nothing. The sender must send DRED (AudioConfig::dredMs). Call BEFORE the first Play().
+    void SetDredPlayback(bool on) { m_dred.store(on, std::memory_order_relaxed); }
     // limits of the jitter buffer depth in ms (default 40 .. 200); 0 = leave that limit at its default.
     void SetJitterLimitsMs(int minMs, int maxMs) { m_limMinMs.store(minMs, std::memory_order_relaxed); m_limMaxMs.store(maxMs, std::memory_order_relaxed); }
 

@@ -41,7 +41,7 @@ static int g_fail = 0;
 struct Sender {
     AudioConfig cfg; OpusCodec enc; uint16_t seq = 0; double ph = 0; Bytes wire;
     Sender(int rate, int ch, int frameMs, int bitrate, int bandwidth, bool dtx = false) {
-        cfg.inputRate = rate; cfg.channels = ch; cfg.frameMs = frameMs; cfg.opusBitrate = bitrate;
+        cfg.inputRate = rate; cfg.channels = ch; cfg.frameMs = frameMs; cfg.Bitrate = bitrate;
         cfg.maxBandwidth = bandwidth; cfg.useDtx = dtx;
         if(!enc.InitEncoder(cfg)){ std::printf("encoder init failed\n"); std::exit(2); }
     }
