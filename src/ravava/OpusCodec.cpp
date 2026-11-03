@@ -96,6 +96,8 @@ bool OpusCodec::InitEncoder(const AudioConfig &cfg)
     m_pEncoder = enc;
     m_encChannels = cfg.channels;
     m_frameSamples = cfg.FrameSamples();
+
+    RAVAVA_INFO("opus_version: [%s]", opus_get_version_string());
     return true;
 }
 
