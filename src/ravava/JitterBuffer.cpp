@@ -81,6 +81,13 @@ void JitterBuffer::SetAdaptive(bool on)
     }
 }
 
+void JitterBuffer::SetDredFloorMs(int maxMs)
+{
+    m_dredFloorMax = maxMs > 0 ? std::max(1, (maxMs + m_frameMs - 1) / m_frameMs) : 0;
+    if(!m_dredFloorMax)
+        m_burstFloor = 0;
+}
+
 void JitterBuffer::SetTargetLimitsMs(int minMs, int maxMs)
 {
     auto frames = [this](int ms){ return std::max(1, (ms + m_frameMs - 1) / m_frameMs); };
@@ -302,8 +309,14 @@ void JitterBuffer::pushImpl(const uint8_t *datagram, size_t size, int64_t arriva
             holes += ((holesMax - holesMod) / (VoicePacket::TxMask + 1)) * (VoicePacket::TxMask + 1);
         m_stats.lost += holes;
         m_stats.lostEvents += holes;
-        if(holes >= 2)
+        if(holes >= 2){
             m_stats.burstLoss++;
+            if(m_adaptive && m_dredFloorMax > 0 && m_pCodec->DredReady()){
+                m_burstFloor = std::max(m_burstFloor, int(std::min<uint32_t>(uint32_t(m_dredFloorMax), holes + 1)));
+                m_floorQuiet = 0;
+                m_stats.burstFloor = uint32_t(m_burstFloor);
+            }
+        }
         m_lastTx = tx;
         seenMark(ext);
     }else if(!seenTest(ext)){
@@ -417,6 +430,11 @@ bool JitterBuffer::popFrame(Pcm &out)
             return m_pCodec->DecodePlc(m_frameSamples, out);
         }
         const int want = m_adaptive ? playoutWant(p) : 0;
+        if(m_burstFloor > 0 && ++m_floorQuiet > m_shrinkAfter){
+            m_burstFloor--;
+            m_floorQuiet = 0;
+            m_stats.burstFloor = uint32_t(m_burstFloor);
+        }
         if(++m_goodRun > m_shrinkAfter && m_target > m_minTarget){   // ~10s without trouble: shrink latency
             m_target--;
             m_goodRun = 0;
@@ -468,6 +486,8 @@ bool JitterBuffer::popFrame(Pcm &out)
             return false;
         }
         m_plcRun++;
+        if(m_pCodec->DredReady())
+            m_stats.dredWaiting++;
         // Adaptive: nothing newer is queued, so there is no sign that frame m_next is LOST, only that it has not come YET (late
         // packet, link stall, a pause of a DTX sender). Conceal, but keep waiting for it: when it arrives it is played (the stream
         // is one frame later, the trim brings the delay back) instead of being thrown away as "late" after concealment took its
@@ -502,9 +522,10 @@ bool JitterBuffer::popFrame(Pcm &out)
             return takeNext(out);
         }
     }
-    if(first > m_next + 1 && m_pCodec->DredReady()){
+    if((first > m_next + 1 || (m_dredKey == first && m_dredAvail > 0)) && m_pCodec->DredReady()){
         // several packets in a row are missing: the packet we have may carry a neural, compact copy of the last frames before it
-        // (DRED, Opus 1.5+). A single loss is left to the inband FEC below, which is cheaper and good enough there.
+        // (DRED, Opus 1.5+). A single loss is left to the inband FEC below, which is cheaper and good enough there; the last frame of a
+        // run stays with DRED (its data is already parsed).
         if(m_dredKey != first){
             m_dredKey = first;
             m_dredAvail = m_pCodec->DredParse(slotData(fp), fp->len, int(std::min<int64_t>(first - m_next, 100)) * m_frameSamples);
@@ -515,6 +536,7 @@ bool JitterBuffer::popFrame(Pcm &out)
             m_stats.dred++;
             return true;
         }
+        m_stats.dredNoData++;
     }
     if(first == m_next + 1){
         // next packet carries a low-bitrate copy of the lost frame (inband FEC)

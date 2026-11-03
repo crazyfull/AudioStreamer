@@ -29,6 +29,9 @@ class JitterBuffer
 public:
     struct Stats {
         uint32_t received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
+        uint32_t dredWaiting = 0; // DRED opportunity: lost frames concealed by PLC because nothing newer (= no DRED carrier) was buffered yet
+        uint32_t dredNoData = 0;  // DRED opportunity: the carrier was here but held nothing (or too little) for the frame: PLC / FEC instead
+        uint32_t burstFloor = 0;  // depth floor (frames) the adaptive playout currently holds because of recent loss bursts (SetDredFloorMs)
         uint32_t dred = 0;       // frames rebuilt from DRED (Opus 1.5+ deep redundancy), also counted in nothing else
         uint32_t lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted).
                                   // Net value: goes DOWN again when a packet that was counted lost arrives late.
@@ -60,6 +63,11 @@ public:
     void SetAdaptive(bool on);
     // limits of the target depth in ms (defaults 40 .. 200). Before the first Push.
     void SetTargetLimitsMs(int minMs, int maxMs);
+    // Adaptive + DRED only (needs the codec's DRED decoder, see OpusCodec::InitDredDecoder): after a loss burst of n packets the depth
+    // floor goes up to n+1 frames (at most maxMs) and falls back one frame per ~10 s without a burst. DRED can only rebuild frames
+    // whose carrier packet is already buffered when they are due, so this buys it the time it needs exactly where bursts happen, instead
+    // of a permanent high minimum. 0 = off (default). Before the first Push.
+    void SetDredFloorMs(int maxMs);
     int MinTarget() const { return m_minTarget; }
     int MaxTarget() const { return m_maxTarget; }
     // Returns exactly one frame of PCM, or an empty vector when there is nothing to
@@ -135,6 +143,9 @@ private:
     Stats m_stats;
 
     // all limits are derived from frameMs so 20ms and 60ms frames behave the same in TIME
+    int m_dredFloorMax = 0;           // frames, 0 = off (SetDredFloorMs)
+    int m_burstFloor = 0;             // frames: the floor learned from loss bursts
+    int m_floorQuiet = 0;             // frames played since the last burst / the last floor decrease
     int m_minTarget;
     int m_maxTarget;
     int m_maxPlcRun;
@@ -149,7 +160,7 @@ private:
     int depth() const {                         // frames to hold back: what Push/PopFrame use instead of m_target
         if(!m_adaptive)
             return m_target;
-        const int d = m_trN < m_warmPackets ? m_startFrames : std::max(m_target, m_jitFrames);
+        const int d = m_trN < m_warmPackets ? m_startFrames : std::max(std::max(m_target, m_jitFrames), m_burstFloor);
         return std::min(m_maxTarget, std::max(m_minTarget, d));
     }
     void trackArrival(int64_t ext, int64_t arrivalUs);

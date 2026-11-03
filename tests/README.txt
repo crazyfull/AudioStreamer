@@ -86,3 +86,6 @@ DRED (Opus 1.5+ Deep REDundancy):
   -DRAVAVA_ENABLE_DRED=ON (or -DRAVAVA_ENABLE_DRED for your own build lines). Sender: AudioConfig::dredMs, receiver: Player::SetDredPlayback(true).
   The encoder only emits DRED from ~32 kbps up and with expectedLossPerc >= ~20; below that nothing is sent.
   ./net_sim_test legacy wav voice-sample br 48000 plp 20 dred 500      (br = bitrate bps, plp = expected loss % for the encoder, dred = ms)
+  More arguments: minms <ms> (adaptive depth minimum), floor <ms> (burst-aware depth floor, JitterBuffer::SetDredFloorMs), detail (a 2nd line per
+  scenario: real mouth-to-ear delay, buffer residence, and the DRED opportunity = how many lost frames of a burst had their carrier buffered by
+  the time they were due, and what happened to them). The last columns are the real payload kbps and the PopFrame() time in us (mean/p99/max).
