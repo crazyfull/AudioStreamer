@@ -28,12 +28,12 @@ struct AudioConfig
     //opus support: 8000 12000 16000 24000 48000 Hz
     int inputRate = 48000;      //samplerate recording (encoder rate)
     int outputRate = 48000;     //samplerate play (decoder rate)
-    int bitRate = 16;
+    //int bitRate = 16;
     int channels = 1;
 
     // ---- Opus (most compressed voice profile) ----
     int frameMs = 20;           //2.5 5 10 20 40 60 (bigger = less overhead, more latency)
-    int opusBitrate = 8000;      //bps
+    int Bitrate = 8000;         //bps
     bool useDtx = false;        //silence -> no packets
     bool useFec = true;         //inband FEC
     bool musicMode = false;     //true: Opus is tuned for music (OPUS_APPLICATION_AUDIO + OPUS_SIGNAL_MUSIC) instead of speech
@@ -77,8 +77,8 @@ struct AudioConfig
             return fail("channels (1 or 2)", channels);
         if(!(frameMs == 5 || frameMs == 10 || frameMs == 20 || frameMs == 40 || frameMs == 60 || frameMs == 80 || frameMs == 100 || frameMs == 120))
             return fail("frameMs (5/10/20/40/60/80/100/120)", frameMs);
-        if(opusBitrate < 500 || opusBitrate > 512000)
-            return fail("opusBitrate (500..512000 bps)", opusBitrate);
+        if(Bitrate < 500 || Bitrate > 512000)
+            return fail("opusBitrate (500..512000 bps)", Bitrate);
         if(expectedLossPerc < 0 || expectedLossPerc > 100)
             return fail("expectedLossPerc (0..100)", expectedLossPerc);
         if(maxBandwidth < 1101 || maxBandwidth > 1105)

@@ -79,7 +79,7 @@ bool OpusCodec::InitEncoder(const AudioConfig &cfg)
     // ---- most compressed profile (speech, or music with cfg.musicMode) ---- every setting is checked: a rejected one means a wrong config
     bool ok = true;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_SIGNAL(cfg.musicMode ? OPUS_SIGNAL_MUSIC : OPUS_SIGNAL_VOICE)), "SIGNAL") && ok;
-    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_BITRATE(cfg.opusBitrate)), "BITRATE") && ok;
+    ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_BITRATE(cfg.Bitrate)), "BITRATE") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR(1)), "VBR") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_VBR_CONSTRAINT(0)), "VBR_CONSTRAINT") && ok;
     ok = ctlOk(opus_encoder_ctl(enc, OPUS_SET_MAX_BANDWIDTH(cfg.maxBandwidth)), "MAX_BANDWIDTH") && ok;
