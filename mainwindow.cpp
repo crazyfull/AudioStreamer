@@ -161,7 +161,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     //qDebug() << "UDP bind?: " << ret;
 
 
-    m_AudioConfig.bitRate = 16;
+
     m_AudioConfig.channels = 1; //3840 1, 7680 2
     m_AudioConfig.inputRate = 48000;
     m_AudioConfig.outputRate = 48000;   //decoder/speaker rate (8000 12000 16000 24000 48000)
@@ -333,6 +333,8 @@ void MainWindow::initAudio()
     m_pAudioPlayer = new Player();
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
     m_pAudioRecorder->SetInputGain(ui->MicGainSlider->value());
+    m_pAudioPlayer->SetAdaptivePlayout(ui->Adaptive_checkBox->checkState()); // behtar ine m_AudioConfig bashe
+
 
     // The handler runs on the miniaudio capture thread -> hop to the GUI thread
     // (UDP socket and player are used from there).
@@ -341,7 +343,7 @@ void MainWindow::initAudio()
         QMetaObject::invokeMethod(this, [this, b]{ onReadEncodedBuffer(b); }, Qt::QueuedConnection);
     });
 
-    m_AudioConfig.opusBitrate = ui->BitRate_comboBox->currentText().toInt();    //ui->BitRate_comboBox(ui->BitRate_comboBox->currentIndex());
+    m_AudioConfig.Bitrate = ui->BitRate_comboBox->currentText().toInt();    //ui->BitRate_comboBox(ui->BitRate_comboBox->currentIndex());
     m_AudioConfig.frameMs  = ui->frameMS_comboBox->currentText().toInt();
     m_AudioConfig.useDtx = ui->useDtx_checkBox->checkState();
     m_AudioConfig.musicMode = ui->musicMode_checkBox->isChecked();
