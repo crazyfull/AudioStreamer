@@ -6,7 +6,8 @@
 //   events  : underruns, PLC frames, FEC frames, silent pops after start, skipped (dropped) frames, late packets
 // Build:
 //   g++ -std=c++17 -O2 -pthread -Ilibs/opus/win32/include -Isrc tests/net_sim_test.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o net_sim_test
-// Run:  ./net_sim_test [legacy|timed] [speech|dtx] [--check] [name-filter]   |   ./net_sim_test compare [speech|dtx] [name-filter]
+// Run:  ./net_sim_test [legacy|timed] [speech|dtx|wav <file|folder>] [--check] [name-filter]   |   ./net_sim_test compare [speech|dtx] [name-filter]
+//   wav = real speech from .wav files (any rate / channels; the folder voice-sample/ of the repo), combine with dtx
 //   dtx = speech-like signal AND the sender skips the silent frames (Opus DTX, as Recorder does); "silent" is then not counted as bad
 //   compare = legacy and adaptive side by side, fails if adaptive is much worse than legacy anywhere (guard rail, see main())   (speech = speech-like signal with pauses instead of a steady tone)
 //   legacy = Push(datagram, size) (no arrival time: the old reactive buffer),
@@ -18,6 +19,10 @@
 #include "ravava/AudioConfig.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <dirent.h>
+#include <fstream>
+#include <string>
 #include <cstdio>
 #include <cstring>
 #include <random>
@@ -77,6 +82,93 @@ static void speechFrames(int fs, int frames, std::vector<Pcm> &out)
     }
 }
 
+
+// ---- real speech: .wav files (8/16/24/32-bit PCM or 32-bit float, any rate, mono or more channels) -> 48 kHz mono 20 ms frames
+static std::vector<Pcm> g_wavFrames;        // "wav <file|folder>": the sender plays these (all files one after another, 0.5 s apart), looping
+static std::string g_wavNames;
+
+static bool readWav(const std::string &path, std::vector<float> &mono48)
+{
+    std::ifstream f(path, std::ios::binary);
+    if(!f) return false;
+    std::vector<uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    auto u16 = [&](size_t o){ return unsigned(b[o]) | unsigned(b[o + 1]) << 8; };
+    auto u32 = [&](size_t o){ return u16(o) | u16(o + 2) << 16; };
+    if(b.size() < 44 || std::memcmp(b.data(), "RIFF", 4) || std::memcmp(b.data() + 8, "WAVE", 4)) return false;
+    unsigned fmt = 0, ch = 0, rate = 0, bits = 0; size_t dataOff = 0, dataLen = 0;
+    for(size_t o = 12; o + 8 <= b.size();){
+        const size_t len = u32(o + 4);
+        if(!std::memcmp(b.data() + o, "fmt ", 4) && o + 8 + 16 <= b.size()){
+            fmt = u16(o + 8); ch = u16(o + 10); rate = u32(o + 12); bits = u16(o + 22);
+            if(fmt == 0xFFFE && len >= 26 && o + 8 + 26 <= b.size()) fmt = u16(o + 8 + 24);      // extensible: the sub-format
+        }else if(!std::memcmp(b.data() + o, "data", 4)){
+            dataOff = o + 8; dataLen = std::min(len, b.size() - dataOff); break;                 // (len may be wrong for streamed files)
+        }
+        o += 8 + len + (len & 1);
+    }
+    if(!ch || !rate || !dataLen || !((fmt == 1 && (bits == 8 || bits == 16 || bits == 24 || bits == 32)) || (fmt == 3 && bits == 32))) return false;
+    const size_t bps = bits / 8, frames = dataLen / (bps * ch);
+    std::vector<float> mono(frames);
+    for(size_t i = 0; i < frames; i++){
+        double s = 0;
+        for(unsigned c = 0; c < ch; c++){
+            const uint8_t *q = b.data() + dataOff + (i * ch + c) * bps;
+            double v;
+            if(fmt == 3){ float x; std::memcpy(&x, q, 4); v = x; }
+            else if(bits == 8) v = (int(q[0]) - 128) / 128.0;
+            else if(bits == 16) v = int16_t(q[0] | q[1] << 8) / 32768.0;
+            else if(bits == 24) v = (int32_t(q[0] << 8 | q[1] << 16 | q[2] << 24) >> 8) / 8388608.0;
+            else v = int32_t(uint32_t(q[0]) | uint32_t(q[1]) << 8 | uint32_t(q[2]) << 16 | uint32_t(q[3]) << 24) / 2147483648.0;
+            s += v;
+        }
+        mono[i] = float(s / ch);
+    }
+    // to 48 kHz by linear interpolation (speech sits far below the Nyquist of the source rates that matter: 8..44.1 kHz; when going
+    // DOWN from 96/192 kHz a short box average first keeps the worst aliasing out)
+    const double step = double(rate) / 48000.0;
+    const size_t outN = size_t(double(frames) / step);
+    const int box = step > 1.5 ? int(step) : 1;
+    for(size_t i = 0; i < outN; i++){
+        const double pos = double(i) * step; const size_t i0 = size_t(pos); const double fr = pos - double(i0);
+        double v;
+        if(box > 1){ double a = 0; int n = 0; for(int k = 0; k < box && i0 + size_t(k) < frames; k++, n++) a += mono[i0 + size_t(k)]; v = n ? a / n : 0; }
+        else v = i0 + 1 < frames ? mono[i0] * (1 - fr) + mono[i0 + 1] * fr : mono[i0];
+        mono48.push_back(float(v));
+    }
+    return true;
+}
+
+// a file, or every *.wav in a folder (sorted)
+static bool loadWavs(const std::string &path, int fs)
+{
+    std::vector<std::string> files;
+    if(DIR *d = opendir(path.c_str())){
+        while(dirent *e = readdir(d)){
+            const std::string n = e->d_name;
+            if(n.size() > 4 && (n.compare(n.size() - 4, 4, ".wav") == 0 || n.compare(n.size() - 4, 4, ".WAV") == 0)) files.push_back(path + "/" + n);
+        }
+        closedir(d);
+        std::sort(files.begin(), files.end());
+    }else files.push_back(path);
+    std::vector<float> all;
+    for(const std::string &fn : files){
+        std::vector<float> m;
+        if(!readWav(fn, m)){ std::fprintf(stderr, "cannot read %s (not a PCM/float WAV?)\n", fn.c_str()); continue; }
+        // peak-normalise to ~-6 dBFS: recordings differ a lot in level, the DTX / quiet-frame logic should see comparable material
+        float pk = 0; for(float x : m) pk = std::max(pk, std::fabs(x));
+        const float g = pk > 1e-4f ? 0.5f / pk : 1.0f;
+        for(float x : m) all.push_back(x * g);
+        all.insert(all.end(), 24000, 0.0f);                              // 0.5 s of silence between the files
+        g_wavNames += (g_wavNames.empty() ? "" : ", ") + fn.substr(fn.find_last_of('/') + 1) + " (" + std::to_string(int(m.size() / 48000)) + " s)";
+    }
+    for(size_t o = 0; o + size_t(fs) <= all.size(); o += size_t(fs)){
+        Pcm p(static_cast<size_t>(fs), int16_t(0));
+        for(int k = 0; k < fs; k++) p[size_t(k)] = int16_t(std::max(-1.0f, std::min(1.0f, all[o + size_t(k)])) * 32000.0f);
+        g_wavFrames.push_back(std::move(p));
+    }
+    return !g_wavFrames.empty();
+}
+
 static Result run(const Scenario &sc, bool timed, unsigned seed)
 {
     std::mt19937 rng(seed);
@@ -87,7 +179,9 @@ static Result run(const Scenario &sc, bool timed, unsigned seed)
     OpusCodec enc; enc.InitEncoder(cfg);
     const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;
-    if(g_speech){
+    if(!g_wavFrames.empty()){
+        for(const Pcm &pcm : g_wavFrames){ Bytes b; enc.Encode(pcm.data(), fs, b); pool.push_back(b); }
+    }else if(g_speech){
         std::vector<Pcm> sp; speechFrames(fs, 500, sp);
         for(Pcm &pcm : sp){ Bytes b; enc.Encode(pcm.data(), fs, b); pool.push_back(b); }
     }else{
@@ -223,6 +317,10 @@ int main(int argc, char **argv)
         else if(!std::strcmp(argv[i], "speech")) g_speech = true;
         else if(!std::strcmp(argv[i], "dtx")) { g_dtx = true; g_speech = true; }     // DTX only makes sense with pauses
         else if(!std::strcmp(argv[i], "compare")) compare = true;
+        else if(!std::strcmp(argv[i], "wav") && i + 1 < argc){
+            if(!loadWavs(argv[++i], 960)){ std::fprintf(stderr, "no usable .wav in %s\n", argv[i]); return 2; }
+            g_speech = true;
+        }
         else only = argv[i];
     }
 
@@ -251,7 +349,7 @@ int main(int argc, char **argv)
         // Guard rail: the adaptive playout may not be much WORSE than the plain buffer in any scenario. Limits (generous, they catch
         // a broken change, not tuning noise): bad% <= legacy * 1.25 + 0.5 (1.0 with dtx: a pause makes the figure noisier), underruns <= legacy * 2 + 30 (cheap: a loss the buffer could not hide is concealed either way, bad% is the
         // audible figure), average delay <= legacy * 1.8 + 20 ms.
-        std::printf("signal: %s%s | adaptive vs legacy (legacy -> adaptive)\n", g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
+        std::printf("signal: %s%s | adaptive vs legacy (legacy -> adaptive)\n", !g_wavFrames.empty() ? "real speech" : g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
         std::printf("%-26s | delay ms        | bad%%          | underrun   | rebuffer  | late\n", "scenario");
         int fails = 0;
         for(const Scenario &s : sc){
@@ -268,7 +366,7 @@ int main(int argc, char **argv)
     }
 
     std::printf("mode: %s, signal: %s%s\n", timed ? "timed (arrival time given)" : "legacy (no arrival time)",
-                g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
+                !g_wavFrames.empty() ? "real speech" : g_speech ? "speech-like" : "steady tone", g_dtx ? " + DTX" : "");
     std::printf("%-26s | delay ms avg/p95/max | bad%%  | underrun  plc  fec silent rebuf skipped stretch forced late | target\n", "scenario");
     int fails = 0;
     for(const Scenario &s : sc){
