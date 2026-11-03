@@ -11,10 +11,11 @@
 #include "VoicePacket.h"
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 namespace ravava {
 
-Recorder::Recorder() : m_inputGain(200)
+Recorder::Recorder() : m_inputGain(200), m_musicGain(200)
 {
     m_pConfig = nullptr;
     m_seq = 0;
@@ -64,6 +65,11 @@ void Recorder::Start()
     m_scratch.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
     m_gained.clear();
     m_gained.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_music.clear();
+    m_music.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_mix.clear();
+    m_mix.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_idle = false;
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
@@ -147,10 +153,61 @@ void Recorder::Stop()
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
     m_switching = false;
     m_input.Stop();         // returns when the callback is guaranteed to be finished
+    MusicStop();
     m_file.Close();
     m_cache.clear();
     m_scratch.clear();
     m_gained.clear();
+}
+
+// ---- music (GUI thread) -------------------------------------------------------------------------------------------------------
+// Takes the file away from the audio thread: mode = stopped first, then wait until it is not inside Read() (at most one device chunk)
+static void musicDetach(std::atomic<int> &mode, std::atomic<bool> &inRead)
+{
+    mode.store(0, std::memory_order_seq_cst);
+    while(inRead.load(std::memory_order_seq_cst))
+        std::this_thread::yield();
+}
+
+bool Recorder::MusicPlay(const std::string &path)
+{
+    std::lock_guard<std::mutex> lk(m_musicCtl);
+    if(!m_pConfig || !m_deviceWanted || m_pConfig->playMusic)
+        return false;
+    musicDetach(m_musicMode, m_musicInRead);
+    m_file.Open(path, m_pConfig->inputRate, m_pConfig->channels);        // from the beginning; the file is opened by the background thread
+    m_musicMode.store(1, std::memory_order_release);
+    return true;
+}
+
+bool Recorder::MusicPause()
+{
+    int expect = 1;
+    return m_musicMode.compare_exchange_strong(expect, 2);               // the ring keeps its content: Resume() goes on where it stopped
+}
+
+bool Recorder::MusicResume()
+{
+    int expect = 2;
+    return m_musicMode.compare_exchange_strong(expect, 1);
+}
+
+void Recorder::MusicStop()
+{
+    std::lock_guard<std::mutex> lk(m_musicCtl);
+    if(m_pConfig && m_pConfig->playMusic)
+        return;                                                          // that mode belongs to Start() / Stop()
+    musicDetach(m_musicMode, m_musicInRead);
+    m_file.Close();
+}
+
+Recorder::MusicState Recorder::GetMusicState() const
+{
+    switch(m_musicMode.load(std::memory_order_acquire)){
+    case 1:  return m_file.IsFinished() ? MusicState::Finished : MusicState::Playing;
+    case 2:  return MusicState::Paused;
+    default: return MusicState::Stopped;
+    }
 }
 
 // audio thread
@@ -171,20 +228,47 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
         std::fill(m_scratch.begin() + take, m_scratch.end(), int16_t(0));   // still buffering / file ended -> silence
         src = m_scratch.data();
     }else{
-        // microphone gain first, on a copy (the device buffer is read-only); at 100 % nothing is copied
-        if(m_inputGain.Active()){
-            m_gained.assign(pcm, pcm + count);
-            m_inputGain.Process(m_gained.data(), frames, m_pConfig->channels);
-            pcm = m_gained.data();
-            src = pcm;
-        }
-        if(m_aec && m_aec->IsReady()){
-            // echo-free samples (less than 10 ms can stay inside the canceller)
-            m_scratch.clear();
-            m_aec->Capture(pcm, frames, m_scratch);
+        const bool micOn = m_micOn.load(std::memory_order_relaxed);
+        if(!micOn){
+            // "talk" is off: the microphone is not sent, so it is not processed either (no gain, no echo canceller)
+            m_scratch.assign(count, int16_t(0));
             src = m_scratch.data();
-            n = m_scratch.size();
+        }else{
+            // microphone gain first, on a copy (the device buffer is read-only); at 100 % nothing is copied
+            if(m_inputGain.Active()){
+                m_gained.assign(pcm, pcm + count);
+                m_inputGain.Process(m_gained.data(), frames, m_pConfig->channels);
+                pcm = m_gained.data();
+                src = pcm;
+            }
+            if(m_aec && m_aec->IsReady()){
+                // echo-free samples (less than 10 ms can stay inside the canceller)
+                m_scratch.clear();
+                m_aec->Capture(pcm, frames, m_scratch);
+                src = m_scratch.data();
+                n = m_scratch.size();
+            }
         }
+
+        // music from MusicPlay(): mixed into whatever the microphone gives (saturating add, no wrap-around)
+        const bool musicOn = m_musicMode.load(std::memory_order_acquire) == 1 && !m_file.IsFinished();
+        if(musicOn){
+            m_music.resize(n);
+            size_t take = 0;
+            m_musicInRead.store(true, std::memory_order_seq_cst);
+            if(m_musicMode.load(std::memory_order_seq_cst) == 1)
+                take = m_file.Read(m_music.data(), n);
+            m_musicInRead.store(false, std::memory_order_release);
+            std::fill(m_music.begin() + take, m_music.end(), int16_t(0));       // still buffering -> silence
+            m_musicGain.Process(m_music.data(), uint32_t(n / size_t(m_pConfig->channels)), m_pConfig->channels);
+            m_mix.resize(n);
+            for(size_t i = 0; i < n; ++i){
+                const int v = int(src[i]) + int(m_music[i]);
+                m_mix[i] = int16_t(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+            }
+            src = m_mix.data();
+        }
+        m_idle = !micOn && !musicOn;
     }
 
     m_level.Feed(src, uint32_t(n / size_t(m_pConfig->channels)), int(m_pConfig->inputRate), int(m_pConfig->channels));
@@ -198,6 +282,11 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
 void Recorder::onFrame(const int16_t *frame)
 {
     const uint16_t seq = m_seq++;     // every frame consumes a number, even silent ones
+
+    if(m_idle){                       // no microphone (talk off) and no music: nothing to send, the receiver sees a pause (marker on the next packet)
+        m_marker = true;
+        return;
+    }
 
     if(!m_pOpus->Encode(frame, m_pConfig->FrameSamples(), m_encoded)){
         m_marker = true;

@@ -119,6 +119,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 {
 
     ui->setupUi(this);
+    updateMusicButtons();           // no recorder yet: the music buttons start disabled
 
 #ifdef Q_OS_ANDROID
     QWidget *central = ui->centralwidget;
@@ -349,7 +350,7 @@ void MainWindow::initAudio()
     m_AudioConfig.musicMode = ui->musicMode_checkBox->isChecked();
     m_AudioConfig.expectedLossPerc = ui->LossPrec_comboBox->currentText().toInt();
     m_AudioConfig.maxBandwidth = ui->BandWith_comboBox->currentData().toInt();
-    m_AudioConfig.playMusic = ui->playMusic_checkBox->checkState();
+    m_AudioConfig.playMusic = false;        // the music buttons mix the file into the stream at run time (Recorder::MusicPlay)
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
     m_AudioConfig.useEchoCancel = ui->echoLevel_comboBox->currentIndex() == 0 ? false: true;
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
@@ -432,18 +433,16 @@ void MainWindow::on_btnStartRecording_clicked()
 #endif
 
 
-#ifdef Q_OS_ANDROID
-    if(ui->playMusic_checkBox->isChecked())
-        RequestAndroidMusicPermission();        // reading the music file by its path needs it (the answer arrives later: Start again)
-#endif
     refreshAudioDevices();      // devices may have been plugged in since the last Start
     initAudio();
     m_statHistory.clear();      // new player = new counters
+    m_pAudioRecorder->SetMicEnabled(ui->btnTalk->isChecked());     // the Talk button is the microphone gate (music is not affected)
     m_pAudioRecorder->Start();
     //m_PlayerTimer.start();
 
     ui->btnStartRecording->setDisabled(true);
     ui->btnStopRecording->setDisabled(false);
+    updateMusicButtons();
 }
 
 
@@ -455,10 +454,11 @@ void MainWindow::on_btnStopRecording_clicked()
 #endif
 
     if(m_pAudioRecorder)
-        m_pAudioRecorder->Stop();
+        m_pAudioRecorder->Stop();       // also stops the music
     //m_PlayerTimer.stop();
     ui->btnStartRecording->setDisabled(false);
     ui->btnStopRecording->setDisabled(true);
+    updateMusicButtons();
 }
 
 // audio packet body (from the recorder) -> UDP packet (envelope + body) -> network
@@ -469,9 +469,7 @@ void MainWindow::onReadEncodedBuffer(const QByteArray &encodedBuffer)
     qDebug( "Ekhtelaf: [%d]", aTime.time().msecsTo( currentTime.time() ) );
 */
 
-    if(!ui->btnTalk->isChecked()){
-        return;
-    }
+    // (no Talk check here: the recorder itself sends nothing while Talk is off and no music plays, and sends the music while Talk is off)
 
     /**/
     // envelope: packet type + stream id in front of the audio body
@@ -562,11 +560,17 @@ void MainWindow::OnStatsTimer()
                       .arg(spk.isEmpty() ? "(not running / unknown)" : spk);
     }
 
-    // PlayMusic: the file is decoded in the background; say clearly when it can't be read (path, permission) or has ended
-    if(m_pAudioRecorder && m_AudioConfig.playMusic){
-        const QString merr = QString::fromStdString(m_pAudioRecorder->MusicError());
-        devices += merr.isEmpty() ? (m_pAudioRecorder->IsMusicFinished() ? QString("Music    : finished\n") : QString("Music    : playing\n"))
-                                  : QString("Music    : ERROR - %1\n").arg(merr);
+    // Music: the file is decoded in the background; say clearly when it can't be read (path, permission) or has ended
+    if(m_pAudioRecorder){
+        using MS = ravava::Recorder::MusicState;
+        const MS ms = m_pAudioRecorder->GetMusicState();
+        if(ms != MS::Stopped){
+            const QString merr = QString::fromStdString(m_pAudioRecorder->MusicError());
+            devices += !merr.isEmpty() ? QString("Music    : ERROR - %1\n").arg(merr)
+                     : ms == MS::Finished ? QString("Music    : finished\n")
+                     : ms == MS::Paused   ? QString("Music    : paused\n") : QString("Music    : playing\n");
+        }
+        updateMusicButtons();
     }
 
     if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
@@ -785,6 +789,8 @@ void MainWindow::on_btnCopyLog_clicked()
 
 void MainWindow::on_btnTalk_clicked(bool checked)
 {
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->SetMicEnabled(checked);       // music is not affected: it plays with Talk on or off
     if(checked){
         ui->btnTalk->setIcon(QIcon(":/icons/resource/icon/mic-on.png"));
     }else{
@@ -798,3 +804,46 @@ void MainWindow::on_LoopBack_checkBox_stateChanged(int arg1)
      ui->server_comboBox->setDisabled(arg1);
 }
 
+// ---- music (separate buttons, mixed into the stream; Talk may be on at the same time) ----
+void MainWindow::updateMusicButtons()
+{
+    using MS = ravava::Recorder::MusicState;
+    const bool rec = m_pAudioRecorder && ui->btnStopRecording->isEnabled();        // recording started: the microphone is the music's clock
+    const MS ms = rec ? m_pAudioRecorder->GetMusicState() : MS::Stopped;
+    ui->btnMusicPlay->setEnabled(rec);                                  // Play always (re)starts from the beginning
+    ui->btnMusicPause->setEnabled(rec && ms == MS::Playing);
+    ui->btnMusicResume->setEnabled(rec && ms == MS::Paused);
+    ui->btnMusicStop->setEnabled(rec && ms != MS::Stopped);
+}
+
+void MainWindow::on_btnMusicPlay_clicked()
+{
+    if(!m_pAudioRecorder)
+        return;
+#ifdef Q_OS_ANDROID
+    RequestAndroidMusicPermission();            // reading the file by its path needs it (the answer arrives later: press Play again)
+#endif
+    m_pAudioRecorder->MusicPlay(ui->txtMusicPath->text().toUtf8().toStdString());
+    updateMusicButtons();
+}
+
+void MainWindow::on_btnMusicPause_clicked()
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->MusicPause();
+    updateMusicButtons();
+}
+
+void MainWindow::on_btnMusicResume_clicked()
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->MusicResume();
+    updateMusicButtons();
+}
+
+void MainWindow::on_btnMusicStop_clicked()
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->MusicStop();
+    updateMusicButtons();
+}

@@ -89,3 +89,7 @@ DRED (Opus 1.5+ Deep REDundancy):
   More arguments: minms <ms> (adaptive depth minimum), floor <ms> (burst-aware depth floor, JitterBuffer::SetDredFloorMs), detail (a 2nd line per
   scenario: real mouth-to-ear delay, buffer residence, and the DRED opportunity = how many lost frames of a burst had their carrier buffered by
   the time they were due, and what happened to them). The last columns are the real payload kbps and the PopFrame() time in us (mean/p99/max).
+
+mic_gain_test also covers the music controls (Play / Pause / Resume / Stop, a file that ends, music + talk mixed, talk gate): the fake music
+files are "tone" (440 Hz), "tone880" and "short" (0.3 s). Run it with -fsanitize=thread too: the audio thread and the GUI thread hand the file over
+with a handshake (Recorder::m_musicInRead) instead of a lock.

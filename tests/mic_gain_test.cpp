@@ -174,6 +174,84 @@ int main()
         brec.Stop();
     }
 
+    // music mixed in at run time: Play / Pause / Resume / Stop are separate, and the microphone can talk over the music
+    {
+        std::printf("music + talk\n");
+        AudioConfig xc = cfg;                                           // playMusic stays off: the file is MIXED with the microphone
+        Recorder mx;
+        std::atomic<int> pk{0};
+        std::mutex m2; double sq = 0; long cnt = 0;
+        OpusCodec d2; d2.InitDecoder(xc.inputRate, 1);
+        mx.SetPacketHandler([&](const Bytes &body){
+            uint16_t seq; bool marker; uint8_t tx; Bytes opus; Pcm pcm;
+            if(!VoicePacket::Parse(body.data(), body.size(), seq, marker, tx, opus) || !d2.Decode(opus, pcm)) return;
+            pk++;
+            std::lock_guard<std::mutex> lk(m2);
+            for(int16_t v : pcm){ sq += double(v) * v; } cnt += long(pcm.size());
+        });
+        mx.SetConfig(&xc);
+        CHECK(!mx.MusicPlay("tone880"));                                // not started yet
+        mx.Start();
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        auto settle = [&](int ms){ std::this_thread::sleep_for(std::chrono::milliseconds(ms)); { std::lock_guard<std::mutex> lk(m2); sq = 0; cnt = 0; } pk = 0;
+                                   std::this_thread::sleep_for(std::chrono::milliseconds(500)); };
+        auto rms = [&]{ std::lock_guard<std::mutex> lk(m2); return cnt ? std::sqrt(sq / double(cnt)) : 0.0; };
+
+        settle(300); const double micOnly = rms();                      // talk on, no music
+        std::printf("  mic only: rms %.0f, %d packets\n", micOnly, pk.load());
+        CHECK(micOnly > 5000 && pk > 15);
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Stopped);
+
+        mx.SetMicEnabled(false);                                        // talk off, no music: nothing is sent at all
+        settle(300);
+        std::printf("  talk off, no music: %d packets\n", pk.load());
+        CHECK(pk == 0);
+
+        CHECK(mx.MusicPlay("tone880"));                                 // music alone (talk still off)
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Playing);
+        settle(300); const double musicOnly = rms();
+        std::printf("  music only: rms %.0f, %d packets\n", musicOnly, pk.load());
+        CHECK(musicOnly > 4500 && musicOnly < 6800 && pk > 15);
+
+        mx.SetMicEnabled(true);                                         // talk + music: both are in the stream
+        settle(300); const double both = rms();
+        std::printf("  talk + music: rms %.0f (expected ~%.0f = both tones)\n", both, std::sqrt(micOnly * micOnly + musicOnly * musicOnly));
+        CHECK(both > micOnly * 1.25 && both > musicOnly * 1.25);
+
+        mx.SetMicEnabled(false);
+        CHECK(mx.MusicPause());                                         // Pause: nothing is sent (talk off), position is kept
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Paused);
+        CHECK(!mx.MusicPause());                                        // already paused
+        settle(300);
+        std::printf("  paused: %d packets\n", pk.load());
+        CHECK(pk == 0);
+        CHECK(mx.MusicPlay("tone880") && mx.MusicPause());              // keep the state paused for the Resume check
+        CHECK(mx.MusicResume());                                        // Resume: music again
+        CHECK(!mx.MusicResume());
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Playing);
+        settle(300);
+        CHECK(pk > 15 && rms() > 4500);
+
+        mx.MusicStop();                                                 // Stop: state stopped, nothing sent, Resume has nothing to resume
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Stopped);
+        CHECK(!mx.MusicResume() && !mx.MusicPause());
+        settle(300);
+        CHECK(pk == 0);
+
+        CHECK(mx.MusicPlay("short"));                                   // a file that ends: Finished, and the stream goes quiet again
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        CHECK(mx.GetMusicState() == Recorder::MusicState::Finished);
+        settle(200);
+        CHECK(pk == 0);
+
+        CHECK(mx.MusicPlay("/no/such/file.mp3"));                       // accepted (opened in the background) ...
+        CHECK(!mx.MusicError().empty());                                // ... and the failure is reported, not silently ignored
+        mx.MusicStop();
+        mx.SetMusicVolume(300); CHECK(mx.GetMusicVolume() == 200);
+        mx.Stop();
+        CHECK(!mx.MusicPlay("tone"));                                   // stopped recorder: refused
+    }
+
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);
     return g_fail ? 1 : 0;
 }
