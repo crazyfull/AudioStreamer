@@ -502,6 +502,20 @@ bool JitterBuffer::popFrame(Pcm &out)
             return takeNext(out);
         }
     }
+    if(first > m_next + 1 && m_pCodec->DredReady()){
+        // several packets in a row are missing: the packet we have may carry a neural, compact copy of the last frames before it
+        // (DRED, Opus 1.5+). A single loss is left to the inband FEC below, which is cheaper and good enough there.
+        if(m_dredKey != first){
+            m_dredKey = first;
+            m_dredAvail = m_pCodec->DredParse(slotData(fp), fp->len, int(std::min<int64_t>(first - m_next, 100)) * m_frameSamples);
+        }
+        const int64_t offset = (first - m_next) * m_frameSamples;       // distance from the start of that packet back to the END of frame m_next
+        if(offset <= m_dredAvail && m_pCodec->DecodeDred(int(offset), m_frameSamples, out)){
+            m_next++;
+            m_stats.dred++;
+            return true;
+        }
+    }
     if(first == m_next + 1){
         // next packet carries a low-bitrate copy of the lost frame (inband FEC)
         const bool ok = m_pCodec->DecodeFec(slotData(fp), fp->len, m_frameSamples, out);

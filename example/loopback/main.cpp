@@ -90,7 +90,7 @@ int main(int argc, char **argv)
     cfg.inputRate = cfg.outputRate = 48000;     // fixed: 48000 Hz, mono, fullband
     cfg.channels = 1;
     cfg.maxBandwidth = 1105;                    // OPUS_BANDWIDTH_FULLBAND
-    cfg.opusBitrate = 64000;
+    cfg.Bitrate = 64000;
     cfg.frameMs = 20;
     cfg.useEchoCancel = false;
     cfg.expectedLossPerc = 0;
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
         else if(a == "-l" || a == "--list"){ listDevices(); return 0; }
         else if(a == "-i" || a == "--in")       inIndex = std::atoi(argValue(argc, argv, i));
         else if(a == "-o" || a == "--out")      outIndex = std::atoi(argValue(argc, argv, i));
-        else if(a == "-b" || a == "--bitrate")  cfg.opusBitrate = std::atoi(argValue(argc, argv, i));
+        else if(a == "-b" || a == "--bitrate")  cfg.Bitrate = std::atoi(argValue(argc, argv, i));
         else if(a == "-f" || a == "--frame")    cfg.frameMs = std::atoi(argValue(argc, argv, i));
         else if(a == "--music")                 cfg.musicMode = true;
         else if(a == "--dtx")                   cfg.useDtx = true;
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
     rec.Start();
 
     std::printf("loopback: 48000 Hz mono fullband, Opus %d bps, %d ms frames%s%s%s, loss %.1f%%%s\n",
-                cfg.opusBitrate, cfg.frameMs, cfg.musicMode ? ", music mode" : "", cfg.useDtx ? ", DTX" : "",
+                cfg.Bitrate, cfg.frameMs, cfg.musicMode ? ", music mode" : "", cfg.useDtx ? ", DTX" : "",
                 cfg.useFec ? ", FEC" : "", lossPct, aec ? (cfg.useEchoCancel ? ", echo cancellation on" : ", webrtc processing on") : "");
     if(!aec)
         std::printf("use headphones, the speaker would howl into the microphone.   Ctrl+C stops.\n");

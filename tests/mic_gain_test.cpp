@@ -36,7 +36,7 @@ std::string StubInputDevice();      // from tests/stub/audio_device_stub.cpp (th
 
 int main()
 {
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 64000; cfg.useDtx = false;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 64000; cfg.useDtx = false;
     OpusCodec dec; dec.InitDecoder(cfg.inputRate, 1);
     Recorder rec;
     rec.SetPacketHandler([&](const Bytes &body){

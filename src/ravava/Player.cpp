@@ -285,6 +285,8 @@ void Player::Play(const uint8_t *datagram, size_t size)
 
             // new decoder + jitter buffer for this format, built HERE (allocates), adopted by the audio thread
             std::unique_ptr<Stream> st(new Stream);
+            if(m_dred.load(std::memory_order_relaxed))
+                st->codec.InitDredDecoder();            // optional (needs libopus with DRED); frames without DRED data are not affected
             if(!st->codec.InitDecoder(m_rate, m_channels)){
                 m_formatDropped.fetch_add(1, std::memory_order_relaxed);
                 return;

@@ -32,7 +32,7 @@ static int run(bool adaptive, int seconds)
     player.SetAdaptivePlayout(adaptive);
     player.SetConfig(&spk);
 
-    AudioConfig cfg; cfg.frameMs = 20; cfg.opusBitrate = 24000; cfg.useDtx = false; cfg.useFec = true; cfg.expectedLossPerc = 10;
+    AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 24000; cfg.useDtx = false; cfg.useFec = true; cfg.expectedLossPerc = 10;
     OpusCodec enc; enc.InitEncoder(cfg);
     const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;

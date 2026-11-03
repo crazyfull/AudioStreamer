@@ -28,7 +28,7 @@ static int runCase(const Case &c, unsigned seed, long &pushes, long &pops)
     auto chance = [&](int pct){ return int(rng() % 100) < pct; };
 
     // a pool of real Opus packets (the decoder state evolves, so decoding must really agree)
-    AudioConfig cfg; cfg.frameMs = c.frameMs; cfg.opusBitrate = 12000; cfg.useDtx = false;
+    AudioConfig cfg; cfg.frameMs = c.frameMs; cfg.Bitrate = 12000; cfg.useDtx = false;
     OpusCodec enc; if(!enc.InitEncoder(cfg)){ std::printf("encoder init failed\n"); return 1; }
     const int fs = cfg.FrameSamples();
     std::vector<Bytes> pool;

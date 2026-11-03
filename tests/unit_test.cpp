@@ -132,8 +132,8 @@ static void testConfigAndEncoder()
     { AudioConfig c; c.channels = 3;           bad("channels 3", c); }
     { AudioConfig c; c.frameMs = 25;           bad("frameMs 25", c); }
     { AudioConfig c; c.frameMs = 0;            bad("frameMs 0", c); }
-    { AudioConfig c; c.opusBitrate = 100;      bad("bitrate 100", c); }
-    { AudioConfig c; c.opusBitrate = 600000;   bad("bitrate 600000", c); }
+    { AudioConfig c; c.Bitrate = 100;      bad("bitrate 100", c); }
+    { AudioConfig c; c.Bitrate = 600000;   bad("bitrate 600000", c); }
     { AudioConfig c; c.expectedLossPerc = 101; bad("loss 101", c); }
     { AudioConfig c; c.expectedLossPerc = -1;  bad("loss -1", c); }
     { AudioConfig c; c.maxBandwidth = 3002;     bad("bandwidth 3002 (the old default)", c); }
@@ -143,7 +143,7 @@ static void testConfigAndEncoder()
     for(int ms : {10, 20, 40, 60})
         for(int rate : {8000, 16000, 48000})
             for(int ch : {1, 2}){
-                AudioConfig c; c.frameMs = ms; c.inputRate = rate; c.channels = ch; c.opusBitrate = 6000;
+                AudioConfig c; c.frameMs = ms; c.inputRate = rate; c.channels = ch; c.Bitrate = 6000;
                 OpusCodec codec;
                 if(!codec.InitEncoder(c)){ std::printf("  FAIL: valid config rejected %dms %dHz %dch\n", ms, rate, ch); g_fail++; continue; }
                 Pcm pcm(size_t(c.FrameSamples()) * ch, 0);
@@ -184,7 +184,7 @@ static void testMusicMode()
         CHECK(app == OPUS_APPLICATION_AUDIO);
         CHECK(sig == OPUS_SIGNAL_MUSIC);
 
-        c.opusBitrate = 96000;      // low bitrates may legitimately code stereo as mono; 96k keeps real stereo
+        c.Bitrate = 96000;      // low bitrates may legitimately code stereo as mono; 96k keeps real stereo
         OpusCodec music2; CHECK(music2.InitEncoder(c));
         // the channel count still comes from the config: encoded packets carry exactly cfg.channels
         std::vector<int16_t> pcm(size_t(c.FrameSamples()) * ch, 0);

@@ -40,7 +40,7 @@ static void playerStress()
     static const int msList[] = {10, 20, 40, 60};
     std::vector<std::unique_ptr<Fmt>> fm;
     for(int ms : msList){
-        auto f = std::make_unique<Fmt>(); f->ms = ms; f->cfg.frameMs = ms; f->cfg.opusBitrate = 24000;
+        auto f = std::make_unique<Fmt>(); f->ms = ms; f->cfg.frameMs = ms; f->cfg.Bitrate = 24000;
         CHECK(f->enc.InitEncoder(f->cfg));
         fm.push_back(std::move(f));
     }
@@ -93,7 +93,7 @@ static void playerStress()
     // (the chaos above mixes three unrelated sequence numbers into one stream, so what was played during it means little)
     const uint32_t playedBefore = st.played;
     {
-        AudioConfig c; c.frameMs = 20; c.opusBitrate = 24000;
+        AudioConfig c; c.frameMs = 20; c.Bitrate = 24000;
         OpusCodec enc; enc.InitEncoder(c);
         double ph = 0; uint16_t seq = 40000;
         play.TakePeakLevel();
@@ -116,7 +116,7 @@ static void jitterFuzz()
     for(int ms : {10, 20, 60}){
         for(int seed = 1; seed <= 10; seed++){
             std::mt19937 rng(unsigned(seed * 7919 + ms));
-            AudioConfig cfg; cfg.frameMs = ms; cfg.opusBitrate = 24000; cfg.useDtx = true;
+            AudioConfig cfg; cfg.frameMs = ms; cfg.Bitrate = 24000; cfg.useDtx = true;
             OpusCodec enc, dec; enc.InitEncoder(cfg); dec.InitDecoder(rate, 1);
             JitterBuffer jb(&dec, rate, 1, ms);
             const int N = rate * ms / 1000;

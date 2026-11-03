@@ -29,6 +29,7 @@ class JitterBuffer
 public:
     struct Stats {
         uint32_t received = 0, played = 0, fec = 0, plc = 0, late = 0, skipped = 0, underrun = 0, dtxJump = 0;
+        uint32_t dred = 0;       // frames rebuilt from DRED (Opus 1.5+ deep redundancy), also counted in nothing else
         uint32_t lost = 0;        // packets that were sent but never arrived (DTX silence is NOT counted).
                                   // Net value: goes DOWN again when a packet that was counted lost arrives late.
         uint32_t reordered = 0;   // arrived out of order (first counted as lost, then taken back)
@@ -120,6 +121,8 @@ private:
     int m_frameSamples;
 
     uint8_t m_lastTx;                 // tx counter of the newest packet
+    int64_t m_dredKey = -1;           // the packet whose DRED data was parsed last (once per gap, not once per lost frame)
+    int m_dredAvail = 0;              // samples before that packet its DRED data can rebuild
     bool m_dtxSeen;                   // the sender skips silent frames (DTX): sequence gaps are then NOT losses
     bool m_playing;
     bool m_haveSeq;
