@@ -23,83 +23,45 @@ jobs:
       # --------------------------------------------------
       # Locate Qt, qmake and MSVC mkspec
       # --------------------------------------------------
-      - name: Locate Qt and MSVC mkspec
-        id: qt
+            - name: Debug Qt installation
         shell: pwsh
         run: |
           $qmake = (Get-Command qmake -ErrorAction Stop).Source
-          $qtBin = Split-Path $qmake -Parent
+          $qtRoot = Split-Path (Split-Path $qmake -Parent) -Parent
 
-          Write-Host "======================================"
-          Write-Host "QMAKE: $qmake"
-          Write-Host "QT BIN: $qtBin"
-          Write-Host "======================================"
+          Write-Host "========== QMAKE =========="
+          Write-Host $qmake
 
-          $dataPaths = @(
-              (& $qmake -query QT_INSTALL_DATA).Trim(),
-              (& $qmake -query QT_INSTALL_ARCHDATA).Trim(),
-              (& $qmake -query QT_HOST_DATA).Trim()
-          ) | Where-Object { $_ } | Select-Object -Unique
+          Write-Host "========== QT ROOT =========="
+          Write-Host $qtRoot
 
-          Write-Host "Qt data paths:"
-          foreach ($path in $dataPaths) {
-              Write-Host "  $path"
-          }
-
-          $specDir = $null
-
-          foreach ($root in $dataPaths) {
-              $mkspecs = Join-Path $root "mkspecs"
-
-              if (-not (Test-Path $mkspecs)) {
-                  continue
-              }
-
-              Write-Host "Searching: $mkspecs"
-
-              $spec = Get-ChildItem $mkspecs -Directory |
-                  Where-Object { $_.Name -like "win32-msvc*" } |
-                  Select-Object -First 1
-
-              if ($spec) {
-                  $candidate = Join-Path $spec.FullName "qmake.conf"
-
-                  if (Test-Path $candidate) {
-                      $specDir = $spec.FullName
-                      break
-                  }
-              }
-          }
-
-          if (-not $specDir) {
-              Write-Host "Available mkspecs:"
-              foreach ($root in $dataPaths) {
-                  $mkspecs = Join-Path $root "mkspecs"
-                  if (Test-Path $mkspecs) {
-                      Get-ChildItem $mkspecs -Directory |
-                          Select-Object -ExpandProperty Name
-                  }
-              }
-
-              throw "Could not locate win32-msvc mkspec"
-          }
-
-          Write-Host "======================================"
-          Write-Host "Selected mkspec: $specDir"
-          Write-Host "======================================"
-
-          "qmake=$qmake" >> $env:GITHUB_OUTPUT
-          "qt_bin=$qtBin" >> $env:GITHUB_OUTPUT
-          "spec_path=$specDir" >> $env:GITHUB_OUTPUT
-
-          & $qmake -v
-          if ($LASTEXITCODE -ne 0) {
-              throw "qmake -v failed"
-          }
-
+          Write-Host "========== QMAKE QUERY =========="
           & $qmake -query
-          if ($LASTEXITCODE -ne 0) {
-              throw "qmake -query failed"
+
+          Write-Host "========== QT ROOT CONTENTS =========="
+          Get-ChildItem $qtRoot -Force |
+              Select-Object Name, FullName
+
+          Write-Host "========== BIN CONTENTS =========="
+          Get-ChildItem (Join-Path $qtRoot "bin") -Force |
+              Select-Object -First 30 Name
+
+          Write-Host "========== SEARCH MKSPECS =========="
+          Get-ChildItem $qtRoot -Directory -Recurse -Filter mkspecs -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+
+          Write-Host "========== SEARCH QMAKE.CONF =========="
+          Get-ChildItem $qtRoot -File -Recurse -Filter qmake.conf -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+
+          Write-Host "========== OTHER QT INSTALL PATH =========="
+          $otherRoot = "D:\a\install-qt-static\install-qt-static\qt_static"
+
+          if (Test-Path $otherRoot) {
+              Get-ChildItem $otherRoot -Force |
+                  Select-Object Name, FullName
+          } else {
+              Write-Host "QT_INSTALL_DATA path does not exist"
           }
 
       # --------------------------------------------------
