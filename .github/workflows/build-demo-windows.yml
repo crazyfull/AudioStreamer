@@ -32,65 +32,43 @@ jobs:
         id: qt
         shell: pwsh
         run: |
-          $qmake = (Get-Command qmake -ErrorAction Stop).Source
-          Write-Host "qmake: $qmake"
+			$qmake = (Get-Command qmake -ErrorAction Stop).Source
 
-          # qt_static/bin/qmake.exe → root = parent of bin
-          $qtRoot = (Resolve-Path (Join-Path (Split-Path $qmake -Parent) "..")).Path
-          Write-Host "QT root: $qtRoot"
+			$qtData = (& $qmake -query QT_INSTALL_DATA).Trim()
 
-          if (-not (Test-Path (Join-Path $qtRoot "mkspecs"))) {
-            Write-Host "Listing around qmake:"
-            Get-ChildItem (Split-Path $qmake -Parent) | Format-Table Name
-            Get-ChildItem $qtRoot | Format-Table Name
-            throw "mkspecs not found under Qt root"
-          }
+			Write-Host "qmake: $qmake"
+			Write-Host "QT data: $qtData"
 
-          Write-Host "mkspecs:"
-          Get-ChildItem (Join-Path $qtRoot "mkspecs") -Directory |
-            Select-Object -ExpandProperty Name
+			$specDir = Join-Path $qtData "mkspecs\win32-msvc"
 
-          $spec = "win32-msvc"
-          $specDir = Join-Path $qtRoot "mkspecs\$spec"
-          if (-not (Test-Path $specDir)) {
-            $alt = Get-ChildItem (Join-Path $qtRoot "mkspecs") -Directory |
-                   Where-Object { $_.Name -like "win32-msvc*" } |
-                   Select-Object -First 1
-            if (-not $alt) { throw "No win32-msvc* mkspec found" }
-            $spec = $alt.Name
-            Write-Host "Using mkspec: $spec"
-          }
+			if (-not (Test-Path (Join-Path $specDir "qmake.conf"))) {
+				throw "MSVC mkspec not found: $specDir"
+			}
 
-          echo "qt_root=$qtRoot" >> $env:GITHUB_OUTPUT
-          echo "qmake=$qmake" >> $env:GITHUB_OUTPUT
-          echo "spec=$spec" >> $env:GITHUB_OUTPUT
+			echo "qt_root=$((Split-Path (Split-Path $qmake -Parent) -Parent))" >> $env:GITHUB_OUTPUT
+			echo "spec_path=$specDir" >> $env:GITHUB_OUTPUT
 
-          & $qmake -v
-          & $qmake -query
+			& $qmake -v
+			& $qmake -query
 
-      - name: Configure
-        shell: cmd
-        env:
-          QTDIR: ${{ steps.qt.outputs.qt_root }}
-          SPEC: ${{ steps.qt.outputs.spec }}
-        run: |
-          if not exist build-demo mkdir build-demo
-          cd build-demo
+		- name: Configure
+		  shell: cmd
+		  env:
+			SPEC_PATH: ${{ steps.qt.outputs.spec_path }}
+			QTDIR: ${{ steps.qt.outputs.qt_root }}
+		  run: |
+			if not exist build-demo mkdir build-demo
+			cd build-demo
 
-          set "PATH=%QTDIR%\bin;%PATH%"
-          set "QMAKEPATH=%QTDIR%"
+			set "PATH=%QTDIR%\bin;%PATH%"
 
-          echo QTDIR=%QTDIR%
-          echo SPEC=%SPEC%
-          qmake -query QT_INSTALL_PREFIX
-          qmake -query QMAKE_XSPEC
+			qmake ..\RavAva-Demo.pro -spec "%SPEC_PATH%" ^
+			  CONFIG+=release ^
+			  CONFIG+=no_webrtc ^
+			  "TARGET=RavAva_Demo" ^
+			  "DESTDIR=$$PWD/out"
 
-          qmake ..\RavAva-Demo.pro -spec %SPEC% ^
-            CONFIG+=release ^
-            CONFIG+=no_webrtc ^
-            "TARGET=RavAva_Demo" ^
-            "DESTDIR=$$PWD/out"
-          if errorlevel 1 exit /b 1
+			if errorlevel 1 exit /b 1
 
       - name: Build
         shell: cmd
