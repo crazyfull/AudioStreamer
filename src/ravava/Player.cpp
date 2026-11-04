@@ -38,6 +38,7 @@ Player::Player()
 
 Player::~Player()
 {
+    m_watchdog.Stop();
     m_ready = false;
     m_switcher.Cancel();    // no device switch may run any more
     m_output.Stop();        // after this the audio callback can no longer touch the streams
@@ -71,6 +72,15 @@ void Player::adoptNextStream()
         old->retiredLink = m_retired.load(std::memory_order_relaxed);
         while(!m_retired.compare_exchange_weak(old->retiredLink, old, std::memory_order_release, std::memory_order_relaxed)) {}
     }
+}
+
+void Player::SetAudioProcessor(std::shared_ptr<AudioProcessor> aec)
+{
+    if(m_ready.load(std::memory_order_acquire)){
+        RAVAVA_WARN("player: SetAudioProcessor() after SetConfig() is ignored (call it before SetConfig(): that starts the speaker)");
+        return;
+    }
+    m_aec = std::move(aec);
 }
 
 void Player::SetConfig(AudioConfig *pConfig)
@@ -118,6 +128,7 @@ void Player::init()
     // torn down) KeepDevice() opens it later, and the received audio must be heard then.
     m_failedOpens = 0;
     m_ready = true;
+    m_watchdog.Start([this]{ if(m_autoKeep.load(std::memory_order_relaxed)) KeepDevice(); });
     m_switching = true;
     requestOpen(m_deviceChoice);
 }
@@ -160,6 +171,7 @@ void Player::requestOpen(const std::string &deviceId)
 
 void Player::KeepDevice()
 {
+    std::lock_guard<std::mutex> lk(m_keepMutex);        // GUI thread and watchdog
     if(!m_deviceWanted || m_switching)
         return;
     const bool running = m_output.IsRunning();

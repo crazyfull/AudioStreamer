@@ -352,3 +352,15 @@ Copyright (c) 2026 **Mojtaba Kahvand**. All rights reserved. RavAva is **not fre
 Nobody may use, copy, modify, distribute or train models on it without a written license from the author; seeing the
 repository gives no such right. Third-party parts (miniaudio, Opus, webrtc) keep their own licenses. Full text: `LICENSE`.
 Licensing contact: mojtaba.kahvand@gmail.com
+
+
+### Lifecycle notes (what changed to make the API harder to misuse)
+
+- **`AudioConfig` lifetime:** `Recorder` copies the config in `Start()` and `Player` reads it in `SetConfig()`, so the config only has to outlive those calls
+  (before: it had to outlive the whole recorder, a dangling pointer crashed the audio thread). Changing it later is still without effect: build new objects.
+- **`SetAudioProcessor()`** after `Start()` (recorder) / `SetConfig()` (player) is refused with a log warning instead of racing with the audio thread.
+- **`KeepDevice()` runs by itself:** both objects start an internal watchdog (about once a second, own thread, never the audio thread) that calls
+  `KeepDevice()`, so an app without the 1 s timer still recovers after a route change / phone call. Calling it yourself too is harmless;
+  `SetAutoKeepDevice(false)` turns the watchdog off. Android Bluetooth SCO set-up and the foreground service remain the app's job.
+- **Sender frame-size change:** the player builds a new stream; measured with the fake speaker the audio is silent for ~60-110 ms at the switch
+  (new jitter buffer prefill). A sender that changes its frame size restarts its own stream anyway, so this was left as it is.

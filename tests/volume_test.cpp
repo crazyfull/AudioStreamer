@@ -30,7 +30,7 @@ extern void (*g_stubSpeakerTap)(const int16_t*, uint32_t, int);
 static std::atomic<double> g_sumSq{0};
 static std::atomic<long>   g_n{0};
 static std::atomic<int>    g_maxJump{0};      // biggest sample-to-sample step: a click shows up here
-static int g_last = 0;
+static std::atomic<int> g_last{0};      // (atomic: two players may run a speaker at the same time in the KeepDevice tests)
 
 static void tap(const int16_t *pcm, uint32_t frames, int ch)
 {
@@ -38,8 +38,8 @@ static void tap(const int16_t *pcm, uint32_t frames, int ch)
     int jump = g_maxJump.load();
     for(uint32_t i = 0; i < frames * ch; i++){
         s += double(pcm[i]) * pcm[i];
-        jump = std::max(jump, std::abs(int(pcm[i]) - g_last));
-        g_last = pcm[i];
+        jump = std::max(jump, std::abs(int(pcm[i]) - g_last.load(std::memory_order_relaxed)));
+        g_last.store(pcm[i], std::memory_order_relaxed);
     }
     g_sumSq = s; g_maxJump = jump; g_n += frames * ch;
 }
@@ -65,6 +65,7 @@ int main()
     AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 32000; cfg.useDtx = false;
     OpusCodec enc; enc.InitEncoder(cfg);
     Player play;
+    play.SetAutoKeepDevice(false);                          // these tests call KeepDevice() themselves, on their own timing
     cfg.outputDeviceId = "dd";                              // the config choice must reach the device layer
     play.SetConfig(&cfg);                                   // the speaker is opened by the device worker
     for(int i = 0; i < 50 && StubOutputDevice() != "dd"; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -175,6 +176,7 @@ int main()
         std::printf("speaker fails to open at start\n");
         AudioConfig c2 = cfg;
         Player p2;
+        p2.SetAutoKeepDevice(false);
         p2.SetKeepIntervalMs(100);
         g_stubOutputFailStarts = 1;
         p2.SetConfig(&c2);                                  // returns at once, the worker's open fails
@@ -192,6 +194,30 @@ int main()
         const double heard = rms();
         std::printf("  heard after the late open: rms %.0f\n", heard);
         CHECK(heard > 1000);
+    }
+
+    // The player repairs its speaker BY ITSELF (no KeepDevice() timer in the app): a failed first open and a system route change
+    {
+        std::printf("automatic KeepDevice\n");
+        AudioConfig c3 = cfg;
+        Player p3;                                          // SetAutoKeepDevice(true) is the default
+        p3.SetKeepIntervalMs(100);
+        const int s0 = g_stubOutputStarts;
+        g_stubOutputFailStarts = 1;
+        p3.SetConfig(&c3);                                  // the open fails, nobody calls KeepDevice()
+        std::this_thread::sleep_for(std::chrono::milliseconds(2600));
+        std::printf("  opens after a failed first open, no KeepDevice() call: %d\n", int(g_stubOutputStarts) - s0);
+        CHECK(g_stubOutputStarts >= s0 + 2);                // the failed one + the watchdog's
+        const int s1 = g_stubOutputStarts;
+        g_stubOutputMoved = true;                           // the system moved the stream
+        std::this_thread::sleep_for(std::chrono::milliseconds(2600));
+        std::printf("  re-opens after the route moved: %d\n", int(g_stubOutputStarts) - s1);
+        CHECK(g_stubOutputStarts == s1 + 1);
+        p3.SetAutoKeepDevice(false);
+        g_stubOutputMoved = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2200));
+        CHECK(g_stubOutputStarts == s1 + 1);                // switched off: nothing happens by itself
+        p3.SetAudioProcessor(nullptr);                      // after SetConfig(): refused (a warning), not a race with the audio thread
     }
 
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);

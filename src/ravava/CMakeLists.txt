@@ -198,7 +198,7 @@ set(RAVAVA_SOURCES
     "${RAVAVA_MINIAUDIO_DIR}/miniaudio.c")
 
 set(RAVAVA_PUBLIC_HEADERS
-    AudioConfig.h AudioDevice.h AudioProcessor.h AudioTypes.h BlockCutter.h DeviceSwitcher.h GainRamp.h
+    AudioConfig.h AudioDevice.h AudioProcessor.h AudioTypes.h BlockCutter.h DeviceSwitcher.h DeviceWatchdog.h GainRamp.h
     JitterBuffer.h LevelMeter.h OpusCodec.h PacketQueue.h Player.h Recorder.h VoicePacket.h)
 set(RAVAVA_NET_HEADERS net/Packet.h net/PacketRouter.h)
 set(RAVAVA_PLATFORM_HEADERS "")

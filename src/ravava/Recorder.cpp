@@ -25,8 +25,18 @@ Recorder::Recorder() : m_inputGain(200), m_musicGain(200)
 
 Recorder::~Recorder()
 {
+    m_watchdog.Stop();
     m_switcher.Cancel();    // no device switch may run any more
     m_input.Stop();
+}
+
+void Recorder::SetAudioProcessor(std::shared_ptr<AudioProcessor> aec)
+{
+    if(m_deviceWanted){
+        RAVAVA_WARN("recorder: SetAudioProcessor() after Start() is ignored (call it before Start())");
+        return;
+    }
+    m_aec = std::move(aec);
 }
 
 void Recorder::SetConfig(AudioConfig *pConfig)
@@ -56,42 +66,44 @@ void Recorder::Start()
     }
     if(m_deviceWanted || m_input.IsRunning())
         return;
+    m_cfg = *m_pConfig;                 // from here on only the copy is used (also by the audio thread)
 
-    const size_t frameChunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
+    const size_t frameChunk = size_t(m_cfg.FrameSamples()) * m_cfg.channels;
     m_cache.clear();
     m_cache.reserve(frameChunk);                    // holds the < 1 frame tail
     // device chunks are 10 ms; 100 ms of room means even odd driver chunk sizes never reallocate
     m_scratch.clear();
-    m_scratch.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_scratch.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
     m_gained.clear();
-    m_gained.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_gained.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
     m_music.clear();
-    m_music.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_music.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
     m_mix.clear();
-    m_mix.reserve(size_t(m_pConfig->inputRate) / 10 * m_pConfig->channels + frameChunk);
+    m_mix.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
     m_idle = false;
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
     m_marker = true;
     const auto t0 = std::chrono::steady_clock::now();
-    if(m_pConfig->playMusic)
-        m_file.Open(m_pConfig->musicPath, m_pConfig->inputRate, m_pConfig->channels);    // from the beginning, decoded in the background
+    if(m_cfg.playMusic)
+        m_file.Open(m_cfg.musicPath, m_cfg.inputRate, m_cfg.channels);    // from the beginning, decoded in the background
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
-    m_input.SetDevice(m_pConfig->inputDeviceId);
-    m_deviceChoice = m_pConfig->inputDeviceId;
+    m_input.SetDevice(m_cfg.inputDeviceId);
+    m_deviceChoice = m_cfg.inputDeviceId;
     m_deviceWanted = true;
     m_failedOpens = 0;
     m_switching = true;
     requestOpen(m_deviceChoice);        // on the device worker: opening the microphone can take seconds (Android)
+    m_watchdog.Start([this]{ if(m_autoKeep.load(std::memory_order_relaxed)) KeepDevice(); });
     RAVAVA_INFO("recorder: Start() took %d ms%s", int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()),
-                m_pConfig->playMusic ? " (music file is opened in the background)" : "");
+                m_cfg.playMusic ? " (music file is opened in the background)" : "");
 }
 
 bool Recorder::startDevice()
 {
     std::string err;
-    const bool ok = m_input.Start(m_pConfig->inputRate, m_pConfig->channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
+    const bool ok = m_input.Start(m_cfg.inputRate, m_cfg.channels, 10,  [this](const int16_t *pcm, uint32_t frames){ onCapture(pcm, frames); }, &err);
     if(!ok)
         RAVAVA_WARN("Recorder: %s", err.c_str());
     return ok;
@@ -125,6 +137,7 @@ void Recorder::requestOpen(const std::string &deviceId)
 
 void Recorder::KeepDevice()
 {
+    std::lock_guard<std::mutex> lk(m_keepMutex);        // GUI thread and watchdog
     if(!m_deviceWanted || m_switching)
         return;
     const bool running = m_input.IsRunning();
@@ -149,6 +162,7 @@ void Recorder::KeepDevice()
 
 void Recorder::Stop()
 {
+    m_watchdog.Stop();      // first: it must not re-open the microphone while we are stopping
     m_deviceWanted = false;
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
     m_switching = false;
@@ -172,10 +186,10 @@ static void musicDetach(std::atomic<int> &mode, std::atomic<bool> &inRead)
 bool Recorder::MusicPlay(const std::string &path)
 {
     std::lock_guard<std::mutex> lk(m_musicCtl);
-    if(!m_pConfig || !m_deviceWanted || m_pConfig->playMusic)
+    if(!m_deviceWanted || m_cfg.playMusic)
         return false;
     musicDetach(m_musicMode, m_musicInRead);
-    m_file.Open(path, m_pConfig->inputRate, m_pConfig->channels);        // from the beginning; the file is opened by the background thread
+    m_file.Open(path, m_cfg.inputRate, m_cfg.channels);        // from the beginning; the file is opened by the background thread
     m_musicMode.store(1, std::memory_order_release);
     return true;
 }
@@ -195,7 +209,7 @@ bool Recorder::MusicResume()
 void Recorder::MusicStop()
 {
     std::lock_guard<std::mutex> lk(m_musicCtl);
-    if(m_pConfig && m_pConfig->playMusic)
+    if(m_cfg.playMusic)
         return;                                                          // that mode belongs to Start() / Stop()
     musicDetach(m_musicMode, m_musicInRead);
     m_file.Close();
@@ -213,14 +227,14 @@ Recorder::MusicState Recorder::GetMusicState() const
 // audio thread
 void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
 {
-    if(!m_pOpus || !m_pConfig)
+    if(!m_pOpus)
         return;
 
-    const size_t count = size_t(frames) * m_pConfig->channels;
+    const size_t count = size_t(frames) * m_cfg.channels;
     const int16_t *src = pcm;       // what goes to the encoder for this device chunk
     size_t n = count;
 
-    if(m_pConfig->playMusic){
+    if(m_cfg.playMusic){
         // the mic only acts as a clock: the same amount of samples is taken from the music file
         // (the file is decoded on a background thread, this only copies ready samples)
         m_scratch.resize(count);
@@ -237,7 +251,7 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
             // microphone gain first, on a copy (the device buffer is read-only); at 100 % nothing is copied
             if(m_inputGain.Active()){
                 m_gained.assign(pcm, pcm + count);
-                m_inputGain.Process(m_gained.data(), frames, m_pConfig->channels);
+                m_inputGain.Process(m_gained.data(), frames, m_cfg.channels);
                 pcm = m_gained.data();
                 src = pcm;
             }
@@ -260,7 +274,7 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
                 take = m_file.Read(m_music.data(), n);
             m_musicInRead.store(false, std::memory_order_release);
             std::fill(m_music.begin() + take, m_music.end(), int16_t(0));       // still buffering -> silence
-            m_musicGain.Process(m_music.data(), uint32_t(n / size_t(m_pConfig->channels)), m_pConfig->channels);
+            m_musicGain.Process(m_music.data(), uint32_t(n / size_t(m_cfg.channels)), m_cfg.channels);
             m_mix.resize(n);
             for(size_t i = 0; i < n; ++i){
                 const int v = int(src[i]) + int(m_music[i]);
@@ -271,10 +285,10 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
         m_idle = !micOn && !musicOn;
     }
 
-    m_level.Feed(src, uint32_t(n / size_t(m_pConfig->channels)), int(m_pConfig->inputRate), int(m_pConfig->channels));
+    m_level.Feed(src, uint32_t(n / size_t(m_cfg.channels)), int(m_cfg.inputRate), int(m_cfg.channels));
 
     // opus needs EXACT frames (e.g. 20ms), device chunks have arbitrary sizes -> cut them
-    const size_t chunk = size_t(m_pConfig->FrameSamples()) * m_pConfig->channels;
+    const size_t chunk = size_t(m_cfg.FrameSamples()) * m_cfg.channels;
     CutBlocks(m_cache, chunk, src, n, [this](const int16_t *frame){ onFrame(frame); });
 }
 
@@ -288,14 +302,14 @@ void Recorder::onFrame(const int16_t *frame)
         return;
     }
 
-    if(!m_pOpus->Encode(frame, m_pConfig->FrameSamples(), m_encoded)){
+    if(!m_pOpus->Encode(frame, m_cfg.FrameSamples(), m_encoded)){
         m_marker = true;
         return;
     }
 
     // DTX: 1-2 byte packets mean "silence", nothing to transmit.
     // The next real packet gets the marker so the receiver knows it was silence, not loss.
-    if(m_pConfig->useDtx && m_encoded.size() <= 2){
+    if(m_cfg.useDtx && m_encoded.size() <= 2){
         m_marker = true;
         return;
     }
