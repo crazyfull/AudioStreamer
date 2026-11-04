@@ -2,7 +2,7 @@
 // Uses the fake devices and a pass-through AudioProcessor defined HERE that cuts 10 ms blocks exactly like the real
 // one (src/ravava/AudioProcessor.cpp), so the "echo canceller ready" branch of the recorder is exercised too.
 // Build (one line):
-//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
+//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
 #include "ravava/Recorder.h"
 #include "ravava/Player.h"
 #include "ravava/net/PacketRouter.h"
@@ -116,6 +116,28 @@ static long runPlayerCase(int frameMs, bool dtx)
     return bad;
 }
 
+// music playing + local monitor on: recorder (mix, monitor write) and player (monitor mix) must not allocate either
+static long runMusicCase(int frameMs)
+{
+    AudioConfig cfg; cfg.frameMs = frameMs; cfg.Bitrate = 16000;
+    Recorder rec; Player play;
+    rec.SetPacketHandler([&](const Bytes &d){ if(!d.empty()) play.Play(d.data(), d.size()); });
+    play.SetMusicMonitor(rec.Music());
+    rec.SetConfig(&cfg); play.SetConfig(&cfg);
+    rec.Music()->SetMonitor(true);
+    rec.Music()->SetMonitorVolume(120);
+    rec.Music()->SetVolume(80);
+    rec.Music()->Play("tone");
+    rec.Start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));      // warm-up
+    g_allocs = 0; g_count = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    g_count = false;
+    rec.Stop();
+    std::printf("  music+monitor frame=%2dms : allocations in steady state: %ld\n", frameMs, g_allocs.load());
+    return g_allocs.load();
+}
+
 int main()
 {
     long bad = 0;
@@ -126,6 +148,8 @@ int main()
     bad += runPlayerCase(20, false);
     bad += runPlayerCase(60, false);
     bad += runPlayerCase(20, true);
+    bad += runMusicCase(20);
+    bad += runMusicCase(60);
     std::printf(bad ? "FAIL: the audio thread allocates\n" : "PASS: no allocation on the audio thread\n");
     return bad ? 1 : 0;
 }

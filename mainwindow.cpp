@@ -334,7 +334,12 @@ void MainWindow::initAudio()
     m_pAudioPlayer = new Player();
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
     m_pAudioRecorder->SetInputGain(ui->MicGainSlider->value());
-    m_pAudioPlayer->SetVolume(ui->musicGainSlider->value());
+    // music: stream volume, and the local copy (monitor) that lets the singer hear the music without the stream delay.
+    // The player mixes the copy into its speaker output, so it must be attached before the player's SetConfig.
+    m_pAudioRecorder->Music()->SetVolume(ui->musicGainSlider->value());
+    m_pAudioRecorder->Music()->SetMonitorVolume(ui->musicMonitorSlider->value());
+    m_pAudioRecorder->Music()->SetMonitor(ui->musicMonitor_checkBox->isChecked());
+    m_pAudioPlayer->SetMusicMonitor(m_pAudioRecorder->Music());
     m_pAudioPlayer->SetAdaptivePlayout(ui->Adaptive_checkBox->checkState()); // behtar ine m_AudioConfig bashe
 
 
@@ -351,7 +356,7 @@ void MainWindow::initAudio()
     m_AudioConfig.musicMode = ui->musicMode_checkBox->isChecked();
     m_AudioConfig.expectedLossPerc = ui->LossPrec_comboBox->currentText().toInt();
     m_AudioConfig.maxBandwidth = ui->BandWith_comboBox->currentData().toInt();
-    m_AudioConfig.playMusic = false;        // the music buttons mix the file into the stream at run time (Recorder::MusicPlay)
+    m_AudioConfig.playMusic = false;        // the music buttons mix the file into the stream at run time (Recorder::Music()->Play)
     m_AudioConfig.musicPath = ui->txtMusicPath->text().toUtf8().toStdString();
     m_AudioConfig.useEchoCancel = ui->echoLevel_comboBox->currentIndex() == 0 ? false: true;
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
@@ -405,7 +410,19 @@ void MainWindow::on_MicGainSlider_valueChanged(int value)
 void MainWindow::on_musicGainSlider_valueChanged(int value)
 {
     if(m_pAudioRecorder)
-        m_pAudioRecorder->SetMusicVolume(value);
+        m_pAudioRecorder->Music()->SetVolume(value);
+}
+
+void MainWindow::on_musicMonitorSlider_valueChanged(int value)
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->Music()->SetMonitorVolume(value);
+}
+
+void MainWindow::on_musicMonitor_checkBox_toggled(bool checked)
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->Music()->SetMonitor(checked);
 }
 
 // A newly connected headset (or a permission that was just granted) shows up without Stop / Start: the list is refreshed
@@ -569,10 +586,10 @@ void MainWindow::OnStatsTimer()
 
     // Music: the file is decoded in the background; say clearly when it can't be read (path, permission) or has ended
     if(m_pAudioRecorder){
-        using MS = ravava::Recorder::MusicState;
-        const MS ms = m_pAudioRecorder->GetMusicState();
+        using MS = ravava::MusicPlayer::State;
+        const MS ms = m_pAudioRecorder->Music()->GetState();
         if(ms != MS::Stopped){
-            const QString merr = QString::fromStdString(m_pAudioRecorder->MusicError());
+            const QString merr = QString::fromStdString(m_pAudioRecorder->Music()->Error());
             devices += !merr.isEmpty() ? QString("Music    : ERROR - %1\n").arg(merr)
                        : ms == MS::Finished ? QString("Music    : finished\n")
                        : ms == MS::Paused   ? QString("Music    : paused\n") : QString("Music    : playing\n");
@@ -814,9 +831,9 @@ void MainWindow::on_LoopBack_checkBox_stateChanged(int arg1)
 // ---- music (separate buttons, mixed into the stream; Talk may be on at the same time) ----
 void MainWindow::updateMusicButtons()
 {
-    using MS = ravava::Recorder::MusicState;
+    using MS = ravava::MusicPlayer::State;
     const bool rec = m_pAudioRecorder && ui->btnStopRecording->isEnabled();        // recording started: the microphone is the music's clock
-    const MS ms = rec ? m_pAudioRecorder->GetMusicState() : MS::Stopped;
+    const MS ms = rec ? m_pAudioRecorder->Music()->GetState() : MS::Stopped;
     ui->btnMusicPlay->setEnabled(rec);                                  // Play always (re)starts from the beginning
     ui->btnMusicPause->setEnabled(rec && ms == MS::Playing);
     ui->btnMusicResume->setEnabled(rec && ms == MS::Paused);
@@ -830,28 +847,28 @@ void MainWindow::on_btnMusicPlay_clicked()
 #ifdef Q_OS_ANDROID
     RequestAndroidMusicPermission();            // reading the file by its path needs it (the answer arrives later: press Play again)
 #endif
-    m_pAudioRecorder->MusicPlay(ui->txtMusicPath->text().toUtf8().toStdString());
+    m_pAudioRecorder->Music()->Play(ui->txtMusicPath->text().toUtf8().toStdString());
     updateMusicButtons();
 }
 
 void MainWindow::on_btnMusicPause_clicked()
 {
     if(m_pAudioRecorder)
-        m_pAudioRecorder->MusicPause();
+        m_pAudioRecorder->Music()->Pause();
     updateMusicButtons();
 }
 
 void MainWindow::on_btnMusicResume_clicked()
 {
     if(m_pAudioRecorder)
-        m_pAudioRecorder->MusicResume();
+        m_pAudioRecorder->Music()->Resume();
     updateMusicButtons();
 }
 
 void MainWindow::on_btnMusicStop_clicked()
 {
     if(m_pAudioRecorder)
-        m_pAudioRecorder->MusicStop();
+        m_pAudioRecorder->Music()->Stop();
     updateMusicButtons();
 }
 

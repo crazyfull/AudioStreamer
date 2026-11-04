@@ -191,6 +191,7 @@ set(RAVAVA_SOURCES
     AudioProcessor.cpp
     AudioDevice.cpp
     Player.cpp
+    MusicPlayer.cpp
     Recorder.cpp
     JitterBuffer.cpp
     OpusCodec.cpp
@@ -199,7 +200,7 @@ set(RAVAVA_SOURCES
 
 set(RAVAVA_PUBLIC_HEADERS
     AudioConfig.h AudioDevice.h AudioProcessor.h AudioTypes.h BlockCutter.h DeviceSwitcher.h DeviceWatchdog.h GainRamp.h
-    JitterBuffer.h LevelMeter.h OpusCodec.h PacketQueue.h Player.h Recorder.h VoicePacket.h)
+    JitterBuffer.h LevelMeter.h MusicPlayer.h OpusCodec.h PacketQueue.h Player.h Recorder.h VoicePacket.h)
 set(RAVAVA_NET_HEADERS net/Packet.h net/PacketRouter.h)
 set(RAVAVA_PLATFORM_HEADERS "")
 
@@ -310,7 +311,7 @@ if(RAVAVA_BUILD_TESTS)
     enable_testing()
     set(_t "${RAVAVA_REPO}/tests")
     # the tests replace the sound card (AudioDevice.cpp / miniaudio) by a fake device, so they compile the sources themselves
-    set(_core JitterBuffer.cpp OpusCodec.cpp AudioProcessor.cpp)
+    set(_core JitterBuffer.cpp OpusCodec.cpp AudioProcessor.cpp MusicPlayer.cpp)
     function(ravava_test name)
         cmake_parse_arguments(T "" "" "SOURCES;STUB" ${ARGN})
         set(srcs "${_t}/${name}.cpp")
@@ -335,7 +336,7 @@ if(RAVAVA_BUILD_TESTS)
     endfunction()
     ravava_test(unit_test SOURCES JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)
     ravava_test(noalloc_test STUB audio_device_stub
-        SOURCES Recorder.cpp Player.cpp JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)   # defines its own AudioProcessor
+        SOURCES Recorder.cpp Player.cpp MusicPlayer.cpp JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)   # defines its own AudioProcessor
     ravava_test(net_sim_test SOURCES JitterBuffer.cpp OpusCodec.cpp)
     ravava_test(player_sim_test STUB audio_device_stub SOURCES Player.cpp ${_core})      # real time, ~75 s
     ravava_test(callback_time_test STUB audio_device_stub SOURCES Player.cpp ${_core})   # real time, ~30 s
@@ -348,5 +349,6 @@ if(RAVAVA_BUILD_TESTS)
     add_test(NAME net_sim_compare_dtx    COMMAND net_sim_test compare dtx)
     ravava_test(volume_test STUB audio_device_stub SOURCES Player.cpp ${_core})
     ravava_test(format_test STUB audio_device_stub SOURCES Player.cpp ${_core})
-    ravava_test(mic_gain_test STUB audio_device_stub SOURCES Recorder.cpp OpusCodec.cpp AudioProcessor.cpp)
+    ravava_test(mic_gain_test STUB audio_device_stub SOURCES Recorder.cpp MusicPlayer.cpp OpusCodec.cpp AudioProcessor.cpp)
+    ravava_test(music_monitor_test STUB audio_device_stub SOURCES Recorder.cpp Player.cpp MusicPlayer.cpp JitterBuffer.cpp OpusCodec.cpp AudioProcessor.cpp)
 endif()

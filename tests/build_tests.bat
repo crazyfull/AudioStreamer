@@ -57,7 +57,7 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\aec_test.exe" tests\aec_test.cpp src\
 echo.
 echo === e2e_aec.exe
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\e2e_aec.exe" tests\e2e_aec.cpp tests\stub\audio_device_room_stub.cpp ^
-   src\ravava\AudioProcessor.cpp src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp ^
+   src\ravava\AudioProcessor.cpp src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp ^
    /link "%OPUS_LIB%" %LIBLIST% %SYSLIBS% || goto fail
 
 echo.
@@ -68,22 +68,22 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp sr
 echo.
 echo === noalloc_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\noalloc_test.exe" tests\noalloc_test.cpp tests\stub\audio_device_stub.cpp ^
-   src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\net\PacketRouter.cpp /link "%OPUS_LIB%" || goto fail
+   src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\net\PacketRouter.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === volume_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\volume_test.exe" tests\volume_test.cpp tests\stub\audio_device_stub.cpp ^
-   src\ravava\Player.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
+   src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === format_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\format_test.exe" tests\format_test.cpp tests\stub\audio_device_stub.cpp ^
-   src\ravava\Player.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
+   src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === mic_gain_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\mic_gain_test.exe" tests\mic_gain_test.cpp tests\stub\audio_device_stub.cpp ^
-   src\ravava\Recorder.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
+   src\ravava\Recorder.cpp src\ravava\MusicPlayer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === jitter_diff_test.exe  (no webrtc needed)
