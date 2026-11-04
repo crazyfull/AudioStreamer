@@ -7,11 +7,26 @@
     <x>0</x>
     <y>0</y>
     <width>459</width>
-    <height>785</height>
+    <height>721</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>RavAva Example</string>
+   <string>RavAva Demo</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"> QSlider::handle:horizontal {
+        width: 28px;
+        height: 28px;
+        margin: -10px 0;
+        background: #2196F3;
+        border-radius: 14px;
+    }
+
+    QSlider::groove:horizontal {
+        height: 8px;
+        background: rgb(120, 120, 120);
+        border-radius: 40px;
+    }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTabWidget" name="tabWidget">
@@ -298,6 +313,153 @@
       </item>
      </layout>
     </widget>
+    <widget class="QWidget" name="tab3">
+     <attribute name="title">
+      <string>Music   </string>
+     </attribute>
+     <layout class="QVBoxLayout" name="verticalLayout_3">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_music">
+          <item>
+           <widget class="QPushButton" name="btnMusicPlay">
+            <property name="toolTip">
+             <string>Play the file from the beginning. It is mixed into the stream, so you can talk over it (Talk button).</string>
+            </property>
+            <property name="text">
+             <string>Play</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMusicPause">
+            <property name="toolTip">
+             <string>Pause: keeps the position.</string>
+            </property>
+            <property name="text">
+             <string>Pause</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMusicResume">
+            <property name="toolTip">
+             <string>Resume from where it was paused.</string>
+            </property>
+            <property name="text">
+             <string>Resume</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnMusicStop">
+            <property name="toolTip">
+             <string>Stop: ends the music and forgets the position.</string>
+            </property>
+            <property name="text">
+             <string>Stop</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string> Music Volume  </string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="musicGainSlider">
+            <property name="maximum">
+             <number>200</number>
+            </property>
+            <property name="pageStep">
+             <number>20</number>
+            </property>
+            <property name="value">
+             <number>100</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="tickPosition">
+             <enum>QSlider::TicksBothSides</enum>
+            </property>
+            <property name="tickInterval">
+             <number>20</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_musicMonitor">
+          <item>
+           <widget class="QCheckBox" name="musicMonitor_checkBox">
+            <property name="toolTip">
+             <string>Hear the music here too, at once and without the network delay (so you can sing in time). Use headphones, or the speaker plays into the microphone.</string>
+            </property>
+            <property name="text">
+             <string>Hear music</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="musicMonitorSlider">
+            <property name="toolTip">
+             <string>Volume of the music you hear here only. The stream's music volume is the other slider.</string>
+            </property>
+            <property name="maximum">
+             <number>200</number>
+            </property>
+            <property name="pageStep">
+             <number>20</number>
+            </property>
+            <property name="value">
+             <number>100</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="txtMusicPath">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <spacer name="verticalSpacer_4">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
     <widget class="QWidget" name="tab2">
      <attribute name="title">
       <string>Logs</string>
@@ -488,23 +650,11 @@
       <x>10</x>
       <y>396</y>
       <width>441</width>
-      <height>371</height>
+      <height>301</height>
      </rect>
     </property>
     <property name="styleSheet">
-     <string notr="true"> QSlider::handle:horizontal {
-        width: 28px;
-        height: 28px;
-        margin: -10px 0;
-        background: #2196F3;
-        border-radius: 14px;
-    }
-
-    QSlider::groove:horizontal {
-        height: 8px;
-        background: rgb(120, 120, 120);
-        border-radius: 40px;
-    }</string>
+     <string notr="true"/>
     </property>
     <property name="title">
      <string>Audio</string>
@@ -516,122 +666,6 @@
      <property name="bottomMargin">
       <number>3</number>
      </property>
-     <item>
-      <layout class="QVBoxLayout" name="verticalLayout_2">
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_music">
-         <item>
-          <widget class="QPushButton" name="btnMusicPlay">
-           <property name="toolTip">
-            <string>Play the file from the beginning. It is mixed into the stream, so you can talk over it (Talk button).</string>
-           </property>
-           <property name="text">
-            <string>Play</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMusicPause">
-           <property name="toolTip">
-            <string>Pause: keeps the position.</string>
-           </property>
-           <property name="text">
-            <string>Pause</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMusicResume">
-           <property name="toolTip">
-            <string>Resume from where it was paused.</string>
-           </property>
-           <property name="text">
-            <string>Resume</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMusicStop">
-           <property name="toolTip">
-            <string>Stop: ends the music and forgets the position.</string>
-           </property>
-           <property name="text">
-            <string>Stop</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QSlider" name="musicGainSlider">
-           <property name="maximum">
-            <number>200</number>
-           </property>
-           <property name="pageStep">
-            <number>20</number>
-           </property>
-           <property name="value">
-            <number>100</number>
-           </property>
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="tickPosition">
-            <enum>QSlider::TicksBothSides</enum>
-           </property>
-           <property name="tickInterval">
-            <number>20</number>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_musicMonitor">
-         <item>
-          <widget class="QCheckBox" name="musicMonitor_checkBox">
-           <property name="toolTip">
-            <string>Hear the music here too, at once and without the network delay (so you can sing in time). Use headphones, or the speaker plays into the microphone.</string>
-           </property>
-           <property name="text">
-            <string>Hear music</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QSlider" name="musicMonitorSlider">
-           <property name="toolTip">
-            <string>Volume of the music you hear here only. The stream's music volume is the other slider.</string>
-           </property>
-           <property name="maximum">
-            <number>200</number>
-           </property>
-           <property name="pageStep">
-            <number>20</number>
-           </property>
-           <property name="value">
-            <number>100</number>
-           </property>
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <widget class="QLineEdit" name="txtMusicPath">
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>0</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>G:\desktop2\sdcard\Download\Music\93\gerye nakon.mp3</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
      <item>
       <layout class="QHBoxLayout" name="horizontalLayout_volume">
        <item>
@@ -999,7 +1033,11 @@ QPushButton:checked {
     </layout>
    </widget>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QStatusBar" name="statusbar">
+   <property name="sizeGripEnabled">
+    <bool>false</bool>
+   </property>
+  </widget>
  </widget>
  <resources>
   <include location="resource.qrc"/>

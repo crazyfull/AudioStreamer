@@ -140,8 +140,8 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     layout->addItem(ui->verticalSpacer_2);
 
 #else
-    ui->groupBox_3->setStyleSheet("");
-
+    this->setStyleSheet("");
+    setWindowFlags(Qt::Window | Qt::MSWindowsFixedSizeDialogHint);
 #endif
 
 
