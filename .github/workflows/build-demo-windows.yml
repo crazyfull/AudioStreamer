@@ -1,3 +1,4 @@
+
 name: Build Demo Windows (static)
 
 on:
@@ -5,15 +6,20 @@ on:
 
 jobs:
   windows-x64-static:
-    name: Windows x64 static (no WebRTC)
+    name: Windows x64 static
     runs-on: windows-latest
 
     steps:
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install static Qt
-        uses: AllanChain/install-qt-static@v6.12.0-1
+      # --------------------------------------------------
+      # Setup MSVC
+      # --------------------------------------------------
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -21,194 +27,155 @@ jobs:
           arch: x64
 
       # --------------------------------------------------
-      # Locate Qt, qmake and MSVC mkspec
+      # Install static Qt 6.12
       # --------------------------------------------------
-            - name: Debug Qt installation
+
+      - name: Install static Qt
+        uses: AllanChain/install-qt-static@v6.12.0-1
+
+      # --------------------------------------------------
+      # Verify build environment
+      # --------------------------------------------------
+
+      - name: Verify build environment
         shell: pwsh
         run: |
-          $qmake = (Get-Command qmake -ErrorAction Stop).Source
-          $qtRoot = Split-Path (Split-Path $qmake -Parent) -Parent
+          Write-Host "========== MSVC =========="
 
-          Write-Host "========== QMAKE =========="
-          Write-Host $qmake
+          cl
 
-          Write-Host "========== QT ROOT =========="
-          Write-Host $qtRoot
+          Write-Host "========== CMAKE =========="
 
-          Write-Host "========== QMAKE QUERY =========="
-          & $qmake -query
+          cmake --version
 
-          Write-Host "========== QT ROOT CONTENTS =========="
-          Get-ChildItem $qtRoot -Force |
-              Select-Object Name, FullName
+          Write-Host "========== QT CMAKE =========="
 
-          Write-Host "========== BIN CONTENTS =========="
-          Get-ChildItem (Join-Path $qtRoot "bin") -Force |
-              Select-Object -First 30 Name
+          $qtCmake = Get-Command qt-cmake -ErrorAction Stop
 
-          Write-Host "========== SEARCH MKSPECS =========="
-          Get-ChildItem $qtRoot -Directory -Recurse -Filter mkspecs -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
+          Write-Host $qtCmake.Source
 
-          Write-Host "========== SEARCH QMAKE.CONF =========="
-          Get-ChildItem $qtRoot -File -Recurse -Filter qmake.conf -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
+          Write-Host "========== OPUS =========="
 
-          Write-Host "========== OTHER QT INSTALL PATH =========="
-          $otherRoot = "D:\a\install-qt-static\install-qt-static\qt_static"
+          $opus = "libs/opus/win32/libopus_x64.lib"
 
-          if (Test-Path $otherRoot) {
-              Get-ChildItem $otherRoot -Force |
-                  Select-Object Name, FullName
-          } else {
-              Write-Host "QT_INSTALL_DATA path does not exist"
+          if (!(Test-Path $opus)) {
+              throw "Opus x64 library not found: $opus"
           }
+
+          Write-Host "Found: $opus"
+
+          Write-Host "========== QT VERSION =========="
+
+          qt-cmake --version
 
       # --------------------------------------------------
       # Configure
       # --------------------------------------------------
+
       - name: Configure
-        shell: cmd
-        env:
-          QMAKE_EXE: ${{ steps.qt.outputs.qmake }}
-          SPEC_PATH: ${{ steps.qt.outputs.spec_path }}
-          QT_BIN: ${{ steps.qt.outputs.qt_bin }}
+        shell: pwsh
         run: |
-          echo ======================================
-          echo QMAKE_EXE=%QMAKE_EXE%
-          echo SPEC_PATH=%SPEC_PATH%
-          echo QT_BIN=%QT_BIN%
-          echo ======================================
+          qt-cmake `
+            -S . `
+            -B build-demo `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
-          if not exist "%QMAKE_EXE%" (
-              echo ERROR: qmake.exe not found
-              exit /b 1
-          )
-
-          if not exist "%SPEC_PATH%\qmake.conf" (
-              echo ERROR: qmake.conf not found
-              exit /b 1
-          )
-
-          if not exist build-demo mkdir build-demo
-
-          cd build-demo
-
-          set "PATH=%QT_BIN%;%PATH%"
-          set "QMAKESPEC=%SPEC_PATH%"
-
-          "%QMAKE_EXE%" ..\RavAva-Demo.pro ^
-            -spec "%SPEC_PATH%" ^
-            CONFIG+=release ^
-            CONFIG+=no_webrtc ^
-            "TARGET=RavAva_Demo" ^
-            "DESTDIR=$$PWD/out"
-
-          if errorlevel 1 exit /b 1
+          if ($LASTEXITCODE -ne 0) {
+              throw "CMake configuration failed"
+          }
 
       # --------------------------------------------------
       # Build
       # --------------------------------------------------
+
       - name: Build
-        shell: cmd
-        env:
-          QT_BIN: ${{ steps.qt.outputs.qt_bin }}
-        run: |
-          set "PATH=%QT_BIN%;%PATH%"
-
-          cd build-demo
-
-          nmake /nologo
-
-          if errorlevel 1 exit /b 1
-
-      # --------------------------------------------------
-      # Locate and verify executable
-      # --------------------------------------------------
-      - name: Locate and verify single EXE
-        id: find_exe
         shell: pwsh
         run: |
-          $candidates = @(
-              "build-demo/out/RavAva_Demo.exe",
-              "build-demo/release/RavAva_Demo.exe",
-              "build-demo/RavAva_Demo.exe",
-              "RavAva_Demo.exe"
-          )
+          cmake --build build-demo `
+            --config Release `
+            --parallel
 
-          $found = $null
-
-          foreach ($path in $candidates) {
-              if (Test-Path $path) {
-                  $found = (Resolve-Path $path).Path
-                  break
-              }
+          if ($LASTEXITCODE -ne 0) {
+              throw "Build failed"
           }
 
-          if (-not $found) {
-              Write-Host "Searching for any EXE..."
+      # --------------------------------------------------
+      # Verify executable
+      # --------------------------------------------------
 
-              Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+      - name: Verify executable
+        id: verify
+        shell: pwsh
+        run: |
+          $exe = "build-demo/out/RavAva_Demo.exe"
+
+          if (!(Test-Path $exe)) {
+              Write-Host "Searching for generated executables..."
+
+              Get-ChildItem build-demo -Recurse -Filter "*.exe" |
                   Select-Object -ExpandProperty FullName
 
-              throw "Demo executable not found"
+              throw "RavAva_Demo.exe was not generated"
           }
 
-          Write-Host "Found: $found"
+          $file = Get-Item $exe
 
-          $sizeMB = [math]::Round(
-              (Get-Item $found).Length / 1MB, 2
-          )
+          Write-Host "========== EXECUTABLE =========="
+          Write-Host "Path: $($file.FullName)"
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
 
-          Write-Host "Size: $sizeMB MB"
+          Write-Host "========== DLL DEPENDENCIES =========="
 
-          $dump = & dumpbin /dependents $found 2>$null
+          $dump = & dumpbin /dependents $exe
 
-          if ($dump) {
-              Write-Host "========== DLL Dependencies =========="
-
-              $dump |
-                  Select-String -Pattern "\.dll" |
-                  ForEach-Object { Write-Host $_.Line }
-
-              if ($dump -match "Qt6") {
-                  throw "Qt DLLs still linked - static Qt was not used"
-              }
+          if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin failed"
           }
 
-          "exe=$found" >> $env:GITHUB_OUTPUT
+          $dump | ForEach-Object {
+              Write-Host $_
+          }
+
+          if ($dump -match "Qt6(Core|Gui|Widgets|Network)\.dll") {
+              throw "Dynamic Qt dependency detected"
+          }
+
+          "exe=$($file.FullName)" >> $env:GITHUB_OUTPUT
 
       # --------------------------------------------------
       # Package
       # --------------------------------------------------
+
       - name: Package
         shell: pwsh
         run: |
-          $exe = "${{ steps.find_exe.outputs.exe }}"
+          $exe = "${{ steps.verify.outputs.exe }}"
 
           $dist = "dist/RavAva_Demo-windows-x64-static"
 
-          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          New-Item -ItemType Directory -Force -Path $dist |
+              Out-Null
 
-          Copy-Item $exe (Join-Path $dist "RavAva_Demo.exe")
+          Copy-Item $exe "$dist/RavAva_Demo.exe"
 
           @"
           RavAva Demo - Windows x64 STATIC
           --------------------------------
 
-          Qt: static (AllanChain/install-qt-static)
-          Opus: static (libs/opus/win32)
+          Architecture: x64
+          Qt: Static Qt 6.12
+          Opus: Static x64
           CRT: /MT
-          WebRTC / AEC: OFF
+          WebRTC: OFF
 
-          Single executable.
-          No Qt installation or additional Qt DLLs required.
+          No Qt DLLs required.
 
           Run: RavAva_Demo.exe
-          "@ | Set-Content (Join-Path $dist "README.txt") -Encoding UTF8
+          "@ | Set-Content "$dist/README.txt" -Encoding UTF8
 
           Compress-Archive `
-              -Path $dist `
+              -Path "$dist/*" `
               -DestinationPath "RavAva_Demo-windows-x64-static.zip" `
               -Force
 
@@ -216,8 +183,9 @@ jobs:
               Format-List Name, Length
 
       # --------------------------------------------------
-      # Upload artifact
+      # Upload
       # --------------------------------------------------
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -225,17 +193,3 @@ jobs:
           path: RavAva_Demo-windows-x64-static.zip
           retention-days: 30
           if-no-files-found: error
-          
-      - name: Debug Qt installation
-        shell: pwsh
-        run: |
-          Write-Host "GITHUB_WORKSPACE=$env:GITHUB_WORKSPACE"
-          Write-Host "GITHUB_ACTION_PATH=$env:GITHUB_ACTION_PATH"
-
-          Write-Host "Searching qmake.exe:"
-          Get-ChildItem D:\a -Filter qmake.exe -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
-
-          Write-Host "Searching mkspecs:"
-          Get-ChildItem D:\a -Directory -Filter mkspecs -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
