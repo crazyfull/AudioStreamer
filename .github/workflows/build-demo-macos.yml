@@ -34,15 +34,36 @@ jobs:
       # Opus: built natively for this CPU (its SIMD detection must see the real target, so no "universal" build here)
       - name: Build Opus (static)
         run: |
-          curl -fsSL -o opus.tar.gz "https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz"
+          OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
+
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+              --connect-timeout 20 --max-time 180 \
+              -o opus.tar.gz \
+              "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
+
+            echo "Primary server failed. Trying mirror..."
+
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+                --connect-timeout 20 --max-time 180 \
+                -o opus.tar.gz \
+                "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+          fi
+
           tar xf opus.tar.gz
-          cmake -S "opus-${OPUS_VERSION}" -B opus-build -DCMAKE_BUILD_TYPE=Release \
+
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build \
+                -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
                 -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
-                -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-                -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+                -DBUILD_SHARED_LIBS=OFF \
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DOPUS_BUILD_PROGRAMS=OFF \
+                -DOPUS_BUILD_TESTING=OFF \
+                -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+
           cmake --build opus-build --parallel 4
           cmake --install opus-build
+
           lipo -info opus-install/lib/libopus.a
 
       # The macOS static Qt is a universal build (x86_64 + arm64); we link only the slice of this CPU
