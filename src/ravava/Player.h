@@ -23,6 +23,7 @@
 #include "AudioProcessor.h"
 #include "PacketQueue.h"
 #include "DeviceWatchdog.h"
+#include "MusicPlayer.h"
 
 namespace ravava {
 
@@ -61,6 +62,7 @@ class Player
     int m_candidateMs;                      // a different duration that is currently being seen ...
     int m_candidateCount;                   // ... this many packets in a row
     std::shared_ptr<AudioProcessor> m_aec;   // shared with Recorder (we feed it what the speaker plays)
+    std::shared_ptr<MusicPlayer> m_musicMon; // the recorder's music: its local copy is added to what the speaker plays (SetMusicMonitor)
 
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
@@ -131,6 +133,11 @@ public:
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
     // Ignored (with a warning) once the speaker runs (after SetConfig()): the audio thread is already using it.
     void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec);
+    // The local copy of the music the recorder sends (Recorder::Music()): the one who plays it hears exactly what is being sent, e.g. to sing
+    // along. Off until MusicPlayer::SetMonitor(true); its volume is MusicPlayer::SetMonitorVolume(), separate from SetVolume() here (which only
+    // scales the received voice) and from the volume of what is sent. It goes through the echo canceller reference, like everything the speaker
+    // plays. Call BEFORE SetConfig() (that starts the speaker); refused afterwards.
+    void SetMusicMonitor(std::shared_ptr<MusicPlayer> music);
 
     // Adaptive playout (default ON): the player stamps every datagram when Play() gets it and the jitter buffer follows the
     // measured network jitter (deeper BEFORE the audio breaks up, shallower again when the network is calm), and keeps the

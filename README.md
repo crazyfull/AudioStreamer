@@ -180,7 +180,8 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in 
 | Class | Purpose and key calls |
 |---|---|
 | `AudioConfig` | all settings, `Validate(&err)`, `FrameSamples()`, `RenderRate()` |
-| `Recorder` | `SetConfig`, `SetPacketHandler`, `SetAudioProcessor`, `Start`, `Stop`, `SetInputGain`, `GetLevel`, `SetInputDevice(id)`, `KeepDevice`, `ActiveInputDevice`, `MusicError`, `IsMusicFinished` (playMusic), `MusicPlay` / `MusicPause` / `MusicResume` / `MusicStop`, `GetMusicState`, `SetMusicVolume`, `SetMicEnabled` (music mixed with the microphone) |
+| `Recorder` | `SetConfig`, `SetPacketHandler`, `SetAudioProcessor`, `Start`, `Stop`, `SetInputGain`, `GetLevel`, `SetInputDevice(id)`, `KeepDevice`, `ActiveInputDevice`, `MusicError`, `IsMusicFinished` (playMusic), `Music()` (the `MusicPlayer`), `SetMicEnabled` |
+| `MusicPlayer` | `Play` / `Pause` / `Resume` / `Stop`, `GetState`, `Error`, `SetVolume` (stream), `SetMonitor` / `SetMonitorVolume` (local copy; attach with `Player::SetMusicMonitor` before `SetConfig`) |
 | `Player` | `SetConfig`, `SetAudioProcessor`, `Play(datagram)`, `SetVolume`, `GetLevel`, `GetStats(stats, depthFrames, frameMs)`, `SetOutputDevice(id)`, `KeepDevice`, `ActiveOutputDevice` |
 | `AudioProcessor` | `IsAvailable()`, `Init(captureRate, renderRate, channels, Options, &err)`, used through `SetAudioProcessor` |
 | `ListInputDevices()` / `ListOutputDevices()` | `vector<AudioDeviceInfo>{name, id, isDefault}` |
@@ -209,23 +210,43 @@ Loss figures: `lost` is a net number (goes down when a late packet arrives); for
 | `musicMode` | Opus AUDIO + MUSIC instead of VOIP + VOICE; keeps treble at low bitrates |
 | `useEchoCancel`, `aecNearendProtection` (0-3), `noiseSuppression` (0-4), `autoGain`, `aecDelayMs` | webrtc features, only with the webrtc build |
 | `inputDeviceId`, `outputDeviceId` | `""` = system default |
-| `playMusic`, `musicPath` | send a file INSTEAD of the microphone from `Start()` on (microphone is only the clock). For a player with controls use `Recorder::MusicPlay()` below |
+| `playMusic`, `musicPath` | send a file INSTEAD of the microphone from `Start()` on (microphone is only the clock). For a player with controls use `Recorder::Music()->Play()` below |
 
-### Music with Play / Pause / Resume / Stop, mixed with the microphone
+### Music (class `MusicPlayer`): Play / Pause / Resume / Stop, mixed with the microphone, and a local copy
+
+The music lives in its own class; `Recorder::Music()` returns it (a `shared_ptr`, valid also before `Start()`).
 
 ```cpp
-rec.Start();                              // the microphone is the clock, playMusic stays false
+rec.SetConfig(&cfg);  rec.Start();        // the microphone is the clock, playMusic stays false
+auto music = rec.Music();
 rec.SetMicEnabled(false);                 // "talk" gate: push-to-talk off (default is true = always send the microphone)
-rec.MusicPlay("/path/song.mp3");          // from the beginning, mixed into the stream; returns at once
-rec.MusicPause();  rec.MusicResume();     // separate calls: Pause keeps the position, Resume continues from it
-rec.MusicStop();                          // ends, forgets the position (Play starts again from 0)
+music->Play("/path/song.mp3");            // from the beginning, mixed into the stream; returns at once
+music->Pause();  music->Resume();         // separate calls: Pause keeps the position, Resume continues from it
+music->Stop();                            // ends, forgets the position (Play starts again from 0)
 rec.SetMicEnabled(true);                  // talk over the music: both are in the stream (saturating mix, no wrap-around)
-rec.SetMusicVolume(60);                   // 0..200 %
-rec.GetMusicState();                      // Stopped / Playing / Paused / Finished
+music->SetVolume(60);                     // 0..200 %: the music IN THE STREAM (what the listeners hear)
+music->GetState();  music->Error();       // Stopped / Playing / Paused / Finished; the reason when the file can't be read
 ```
+
+**Hear the music yourself (e.g. to sing in time).** The stream reaches the listener late, so the singer can't follow it. The same
+samples can be played on the local speaker at once, with their own volume (independent of the stream's, and of `Player::SetVolume`,
+which scales only the received voice):
+
+```cpp
+player.SetMusicMonitor(rec.Music());      // once, BEFORE player.SetConfig(); the player mixes the copy into its output
+music->SetMonitor(true);                  // default OFF
+music->SetMonitorVolume(80);              // 0..200 %, only the local copy
+```
+
+Use headphones: the copy goes through the echo canceller's reference, but a loud speaker next to an open microphone still leaks.
+The copy follows Pause / Resume / Stop with the stream. The microphone and speaker clocks are independent, so the copy keeps
+~30 ms of latency and rarely skips a few ms to stay in sync. It allocates nothing on the audio threads.
 
 With the talk gate off and no music playing (or paused / finished) nothing is sent at all, so a push-to-talk app just calls `SetMicEnabled()`
 and forwards every packet. Use `musicMode` and a higher bitrate (96000+) when the music should sound good. The receiver needs nothing.
+
+**API change:** `Recorder::MusicPlay/MusicPause/MusicResume/MusicStop/GetMusicState/SetMusicVolume` became `Recorder::Music()->Play/...`
+(`Recorder::MusicState` is now `MusicPlayer::State`).
 
 ## 7. Build
 

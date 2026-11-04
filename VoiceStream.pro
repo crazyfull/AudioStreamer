@@ -177,6 +177,7 @@ SOURCES += \
     src/ravava/AudioProcessor.cpp \
     src/ravava/AudioDevice.cpp \
     src/ravava/Player.cpp \
+    src/ravava/MusicPlayer.cpp \
     src/ravava/Recorder.cpp \
     src/ravava/JitterBuffer.cpp \
     src/ravava/net/PacketRouter.cpp \
@@ -190,6 +191,7 @@ HEADERS += \
     src/ravava/AudioDevice.h \
     src/ravava/BlockCutter.h \
     src/ravava/Player.h \
+    src/ravava/MusicPlayer.h \
     src/ravava/Recorder.h \
     src/ravava/DeviceWatchdog.h \
     src/ravava/GainRamp.h \

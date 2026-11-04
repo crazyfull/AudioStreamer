@@ -20,6 +20,7 @@
 #include "OpusCodec.h"
 #include "AudioProcessor.h"
 #include "DeviceWatchdog.h"
+#include "MusicPlayer.h"
 #include "BlockCutter.h"
 #include "GainRamp.h"
 #include "LevelMeter.h"
@@ -56,18 +57,11 @@ private:
     uint8_t m_tx;                     // counts transmitted packets (loss statistics on the receiver)
     bool m_marker;                    // next packet follows a silence gap
 
-    AudioFileReader m_file;           // music file, decoded on a background thread (playMusic / MusicPlay)
+    AudioFileReader m_file;           // music file of the playMusic config mode, decoded on a background thread
 
-    // ---- music that is mixed into the stream at run time (MusicPlay / MusicPause / MusicResume / MusicStop) ----
-    // The audio thread only reads m_musicMode and the ring buffer; the GUI thread changes the file only while the audio thread is NOT inside
-    // m_file.Read() (m_musicInRead handshake), so nothing on the audio thread ever waits.
-    std::mutex m_musicCtl;                    // GUI thread: Music*() calls among themselves
-    std::atomic<int> m_musicMode{0};          // 0 stopped, 1 playing, 2 paused
-    std::atomic<bool> m_musicInRead{false};   // the audio thread is inside m_file.Read()
-    GainRamp m_musicGain;                     // music level 0..200 %, GUI -> audio thread
+    // music mixed into the stream at run time: its own class (MusicPlayer), shared with the Player for the local copy
+    std::shared_ptr<MusicPlayer> m_musicPlayer;
     std::atomic<bool> m_micOn{true};          // SetMicEnabled(): the "talk" gate
-    Pcm m_music;                              // music samples for the current device chunk
-    Pcm m_mix;                                // mic + music
     bool m_idle = false;                      // audio thread: this chunk has neither microphone nor music: nothing is encoded or sent
 
     std::string m_deviceChoice;       // the device id the user chose (GUI thread)
@@ -105,24 +99,16 @@ public:
     static int MaxInputGain() { return 200; }
     void Start();
     void Stop();
-    // playMusic: why the music file could not be opened / decoded ("" = fine), and whether it was played to the end.
-    // Any thread. Without a readable file the recorder sends silence.
+    // playMusic (config) mode only: why the music file could not be opened / decoded ("" = fine), and whether it was played to the end.
+    // Any thread. Without a readable file the recorder sends silence. (For Music() use its own Error() / GetState().)
     std::string MusicError() const { return m_file.Error(); }
     bool IsMusicFinished() const { return m_file.IsFinished(); }
     // ---- music ---------------------------------------------------------------------------------------------------------------------
-    // A file (wav / mp3 / flac) that is MIXED into the stream together with the microphone: the speaker can talk over it. The four
-    // operations are separate (there is no toggle): Play starts from the beginning, Stop ends and forgets the position, Pause keeps the
-    // position, Resume continues from it. All from the GUI thread, all return at once (the file is decoded on a background thread).
-    // The recorder must be started (the microphone is the clock); the config's playMusic must be off (that mode is "music INSTEAD of the
-    // microphone", fixed at Start). The sender needs a music-friendly Opus setup (AudioConfig::musicMode, a higher bitrate) to sound good.
-    enum class MusicState { Stopped, Playing, Paused, Finished };
-    bool MusicPlay(const std::string &path);    // false: not started, playMusic mode, or the file is rejected right away (details: MusicError())
-    bool MusicPause();                          // false unless Playing
-    bool MusicResume();                         // false unless Paused
-    void MusicStop();
-    MusicState GetMusicState() const;
-    void SetMusicVolume(int percent) { m_musicGain.Set(percent); }     // 0..200, default 100; takes effect within ~10 ms without clicks
-    int  GetMusicVolume() const { return m_musicGain.Get(); }
+    // A file (wav / mp3 / flac) MIXED into the stream together with the microphone, so the speaker can talk over it: Play / Pause / Resume /
+    // Stop as separate calls, a volume for what is sent and a separate one for the local copy. See MusicPlayer.h. The recorder must be started
+    // (the microphone is the clock) and the config's playMusic must be off (that mode is "music INSTEAD of the microphone", fixed at Start).
+    // For the local copy give the same object to the player: Player::SetMusicMonitor(recorder.Music()).
+    std::shared_ptr<MusicPlayer> Music() const { return m_musicPlayer; }
     // The "talk" gate. false = the microphone is NOT sent (and not processed); music keeps going. When neither the microphone nor music is
     // active nothing is sent at all (a pause for the receiver, like DTX), so a push-to-talk button should just call this and send every packet.
     // Default true: the microphone is always sent (the old behaviour). Any thread.

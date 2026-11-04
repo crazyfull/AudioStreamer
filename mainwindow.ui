@@ -585,6 +585,39 @@
         </layout>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_musicMonitor">
+         <item>
+          <widget class="QCheckBox" name="musicMonitor_checkBox">
+           <property name="toolTip">
+            <string>Hear the music here too, at once and without the network delay (so you can sing in time). Use headphones, or the speaker plays into the microphone.</string>
+           </property>
+           <property name="text">
+            <string>Hear music</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="musicMonitorSlider">
+           <property name="toolTip">
+            <string>Volume of the music you hear here only. The stream's music volume is the other slider.</string>
+           </property>
+           <property name="maximum">
+            <number>200</number>
+           </property>
+           <property name="pageStep">
+            <number>20</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <widget class="QLineEdit" name="txtMusicPath">
          <property name="minimumSize">
           <size>

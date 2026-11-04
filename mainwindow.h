@@ -92,6 +92,8 @@ private slots:
     void on_LoopBack_checkBox_stateChanged(int arg1);
 
     void on_musicGainSlider_valueChanged(int value);
+    void on_musicMonitorSlider_valueChanged(int value);          // local copy of the music: volume (independent of the stream's)
+    void on_musicMonitor_checkBox_toggled(bool checked);         // local copy of the music on / off
 
 private:
     Ui::MainWindow *ui;

@@ -83,6 +83,15 @@ void Player::SetAudioProcessor(std::shared_ptr<AudioProcessor> aec)
     m_aec = std::move(aec);
 }
 
+void Player::SetMusicMonitor(std::shared_ptr<MusicPlayer> music)
+{
+    if(m_ready.load(std::memory_order_acquire)){
+        RAVAVA_WARN("player: SetMusicMonitor() after SetConfig() is ignored (call it before SetConfig(): that starts the speaker)");
+        return;
+    }
+    m_musicMon = std::move(music);
+}
+
 void Player::SetConfig(AudioConfig *pConfig)
 {
     m_pConfig = pConfig;
@@ -98,6 +107,8 @@ void Player::init()
     // real speaker needs, so there is no "format not supported" fallback anymore.
     m_rate = m_pConfig->RenderRate();
     m_channels = m_pConfig->channels;
+    if(m_musicMon)
+        m_musicMon->SetMonitorFormat(m_rate, m_channels);       // before the speaker runs
 
     // the speaker is not running yet, so nothing else touches these. The decoder + jitter buffer are created
     // when the first packet arrives (Play()), because only then is the frame duration known.
@@ -244,6 +255,10 @@ void Player::onDeviceData(int16_t *out, uint32_t frames)
 
     m_level.Feed(out, frames, m_rate, m_channels);
     m_volume.Process(out, frames, m_channels);
+
+    // the local copy of the music that is being sent (its own volume, after the speaker volume of the received voice)
+    if(m_musicMon)
+        m_musicMon->MixMonitor(out, frames);
 
     // the canceller must see EXACTLY what goes to the speaker, silence included.
     if(m_aec)

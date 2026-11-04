@@ -15,7 +15,7 @@
 
 namespace ravava {
 
-Recorder::Recorder() : m_inputGain(200), m_musicGain(200)
+Recorder::Recorder() : m_inputGain(200), m_musicPlayer(std::make_shared<MusicPlayer>())
 {
     m_pConfig = nullptr;
     m_seq = 0;
@@ -76,10 +76,8 @@ void Recorder::Start()
     m_scratch.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
     m_gained.clear();
     m_gained.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
-    m_music.clear();
-    m_music.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
-    m_mix.clear();
-    m_mix.reserve(size_t(m_cfg.inputRate) / 10 * m_cfg.channels + frameChunk);
+    if(!m_cfg.playMusic)
+        m_musicPlayer->Prepare(m_cfg.inputRate, m_cfg.channels);    // Music()->Play() works from now on
     m_idle = false;
     m_encoded.reserve(1500);
     m_datagram.reserve(1500 + VoicePacket::HeaderSize);
@@ -167,61 +165,11 @@ void Recorder::Stop()
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
     m_switching = false;
     m_input.Stop();         // returns when the callback is guaranteed to be finished
-    MusicStop();
+    m_musicPlayer->Release();
     m_file.Close();
     m_cache.clear();
     m_scratch.clear();
     m_gained.clear();
-}
-
-// ---- music (GUI thread) -------------------------------------------------------------------------------------------------------
-// Takes the file away from the audio thread: mode = stopped first, then wait until it is not inside Read() (at most one device chunk)
-static void musicDetach(std::atomic<int> &mode, std::atomic<bool> &inRead)
-{
-    mode.store(0, std::memory_order_seq_cst);
-    while(inRead.load(std::memory_order_seq_cst))
-        std::this_thread::yield();
-}
-
-bool Recorder::MusicPlay(const std::string &path)
-{
-    std::lock_guard<std::mutex> lk(m_musicCtl);
-    if(!m_deviceWanted || m_cfg.playMusic)
-        return false;
-    musicDetach(m_musicMode, m_musicInRead);
-    m_file.Open(path, m_cfg.inputRate, m_cfg.channels);        // from the beginning; the file is opened by the background thread
-    m_musicMode.store(1, std::memory_order_release);
-    return true;
-}
-
-bool Recorder::MusicPause()
-{
-    int expect = 1;
-    return m_musicMode.compare_exchange_strong(expect, 2);               // the ring keeps its content: Resume() goes on where it stopped
-}
-
-bool Recorder::MusicResume()
-{
-    int expect = 2;
-    return m_musicMode.compare_exchange_strong(expect, 1);
-}
-
-void Recorder::MusicStop()
-{
-    std::lock_guard<std::mutex> lk(m_musicCtl);
-    if(m_cfg.playMusic)
-        return;                                                          // that mode belongs to Start() / Stop()
-    musicDetach(m_musicMode, m_musicInRead);
-    m_file.Close();
-}
-
-Recorder::MusicState Recorder::GetMusicState() const
-{
-    switch(m_musicMode.load(std::memory_order_acquire)){
-    case 1:  return m_file.IsFinished() ? MusicState::Finished : MusicState::Playing;
-    case 2:  return MusicState::Paused;
-    default: return MusicState::Stopped;
-    }
 }
 
 // audio thread
@@ -264,24 +212,9 @@ void Recorder::onCapture(const int16_t *pcm, uint32_t frames)
             }
         }
 
-        // music from MusicPlay(): mixed into whatever the microphone gives (saturating add, no wrap-around)
-        const bool musicOn = m_musicMode.load(std::memory_order_acquire) == 1 && !m_file.IsFinished();
-        if(musicOn){
-            m_music.resize(n);
-            size_t take = 0;
-            m_musicInRead.store(true, std::memory_order_seq_cst);
-            if(m_musicMode.load(std::memory_order_seq_cst) == 1)
-                take = m_file.Read(m_music.data(), n);
-            m_musicInRead.store(false, std::memory_order_release);
-            std::fill(m_music.begin() + take, m_music.end(), int16_t(0));       // still buffering -> silence
-            m_musicGain.Process(m_music.data(), uint32_t(n / size_t(m_cfg.channels)), m_cfg.channels);
-            m_mix.resize(n);
-            for(size_t i = 0; i < n; ++i){
-                const int v = int(src[i]) + int(m_music[i]);
-                m_mix[i] = int16_t(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
-            }
-            src = m_mix.data();
-        }
+        // music from Music()->Play(): mixed into whatever the microphone gives (saturating add, no wrap-around)
+        bool musicOn = false;
+        src = m_musicPlayer->Mix(src, n, musicOn);
         m_idle = !micOn && !musicOn;
     }
 
