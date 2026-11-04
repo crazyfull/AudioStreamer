@@ -21,16 +21,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-            - arch: arm64
-              runner: macos-latest
-            - arch: x86_64
-              runner: macos-latest
+          - arch: arm64
+            runner: macos-26
+          - arch: x86_64
+            runner: macos-26
     runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+        
+      - name: Check macOS SDK
+        run: |
+          echo "== Xcode =="
+          xcodebuild -version
+      
+          echo "== macOS SDK =="
+          xcrun --sdk macosx --show-sdk-version
+      
+          echo "== SDK Path =="
+          xcrun --sdk macosx --show-sdk-path
+    
       # Opus: built natively for this CPU (its SIMD detection must see the real target, so no "universal" build here)
       - name: Build Opus (static)
         run: |
