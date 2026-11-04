@@ -140,8 +140,11 @@ Follow these exactly; each one is a crash or a glitch if broken.
     (Android re-routes, phone calls, unplugged devices). Not calling it means silence after such events.
 
 **Audio rules**
-12. **One `Player` per remote talker.** One jitter buffer follows one sender's sequence numbers. Mixing several senders
-    into one `Player` corrupts ordering; route by `streamId` (`PacketRouter`) to separate players.
+12. **One jitter buffer per remote talker.** One jitter buffer follows one sender's sequence numbers; datagrams of several senders
+    in one `Player` play nothing or garbage (the symptom: "works with 2 clients, breaks with 3"). With more than one talker use
+    `ConferencePlayer` (section 6, "Conference"): it routes by `streamId` and mixes everybody into ONE speaker.
+    Every talker needs its own stream id: a server that only forwards datagrams does not number the clients, so give each client
+    `Packet::NewStreamId()` (random, never 0).
 13. Echo cancellation only removes *this machine's* speaker from *this machine's* microphone. It cannot stop acoustic
     feedback between two devices in the same room (use headphones when testing with two devices side by side).
 14. Use headphones, or enable echo cancellation, for local loopback; otherwise the speaker howls into the microphone.
@@ -182,6 +185,7 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in 
 | `AudioConfig` | all settings, `Validate(&err)`, `FrameSamples()`, `RenderRate()` |
 | `Recorder` | `SetConfig`, `SetPacketHandler`, `SetAudioProcessor`, `Start`, `Stop`, `SetInputGain`, `GetLevel`, `SetInputDevice(id)`, `KeepDevice`, `ActiveInputDevice`, `MusicError`, `IsMusicFinished` (playMusic), `Music()` (the `MusicPlayer`), `SetMicEnabled` |
 | `MusicPlayer` | `Play` / `Pause` / `Resume` / `Stop`, `GetState`, `Error`, `SetVolume` (stream), `SetMonitor` / `SetMonitorVolume` (local copy; attach with `Player::SetMusicMonitor` before `SetConfig`) |
+| `ConferencePlayer` | several talkers, ONE speaker: `Play(streamId, datagram)`, `SetStreamVolume`, `GetStreamLevel`, `ActiveStreams`, `GetStreamStats`, `SetMaxStreams`, `SetIdleTimeoutMs`; the rest as `Player` |
 | `Player` | `SetConfig`, `SetAudioProcessor`, `Play(datagram)`, `SetVolume`, `GetLevel`, `GetStats(stats, depthFrames, frameMs)`, `SetOutputDevice(id)`, `KeepDevice`, `ActiveOutputDevice` |
 | `AudioProcessor` | `IsAvailable()`, `Init(captureRate, renderRate, channels, Options, &err)`, used through `SetAudioProcessor` |
 | `ListInputDevices()` / `ListOutputDevices()` | `vector<AudioDeviceInfo>{name, id, isDefault}` |
@@ -247,6 +251,29 @@ and forwards every packet. Use `musicMode` and a higher bitrate (96000+) when th
 
 **API change:** `Recorder::MusicPlay/MusicPause/MusicResume/MusicStop/GetMusicState/SetMusicVolume` became `Recorder::Music()->Play/...`
 (`Recorder::MusicState` is now `MusicPlayer::State`).
+
+### Conference: several people talking, one speaker (class `ConferencePlayer`)
+
+```cpp
+rec.SetPacketHandler([&](const Bytes &body){            // sender: a random id of our own, once (a forwarding server does not number clients)
+    Packet::Header h; h.type = Packet::Audio; h.streamId = myId;       // myId = Packet::NewStreamId();
+    Packet::WrapInto(wire, h, body);  send(wire);
+});
+
+ConferencePlayer room;                                  // instead of Player; same SetAudioProcessor / SetOutputDevice / KeepDevice / SetVolume ...
+room.SetAudioProcessor(aec);  room.SetMusicMonitor(rec.Music());      // before SetConfig()
+room.SetConfig(&cfg);                                   // opens the ONE speaker
+router.SetHandler(Packet::Audio, [&](const Packet::Header &h, const uint8_t *p, size_t n){ room.Play(h.streamId, p, n); });
+
+room.SetStreamVolume(id, 0);                            // mute one person        room.GetStreamLevel(id): who is talking
+room.ActiveStreams();                                   // the ids heard lately   room.GetStreamStats(id, st, depth, ms)
+```
+
+Each stream id gets its own jitter buffer, FEC / PLC and Opus decoder (the first packet creates it, `SetIdleTimeoutMs`, default 10 s of
+silence, releases it); the talkers are added with a saturating mix into one speaker, then master `SetVolume`, the echo canceller
+reference (one, for the whole mix) and the music monitor. At most `SetMaxStreams` (default 16, hard limit 32) talkers are heard; a packet of one
+more is dropped and counted in `Rejected()`. Do not send a client its own stream back (the server should forward to the others only), or it hears itself.
+A big room should not forward everybody: let the server send only the few loudest talkers to each listener (as Meet / Discord do).
 
 ## 7. Build
 

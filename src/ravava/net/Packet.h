@@ -16,12 +16,14 @@
 //   byte 0   : packet type (Packet::Type). Decides who gets the payload (audio, later other kinds of packets).
 //              0 is never valid.
 //   byte 1-2 : stream id, uint16 little endian: whose stream this packet belongs to. The server fills it in, so a
-//              receiver knows which user is talking (conference).
+//              receiver knows which user is talking (conference). A plain forwarding server does not: then each client
+//              uses its own random id (Packet::NewStreamId()).
 //   byte 3.. : payload. For Packet::Audio that is an audio packet body, see ../VoicePacket.h
 //
 // NOT compatible with the old format that started directly with the audio header.
 
 #include "../AudioTypes.h"
+#include <random>
 
 namespace ravava {
 
@@ -40,6 +42,17 @@ namespace Packet
         uint8_t  type = Invalid;
         uint16_t streamId = 0;
     };
+
+    // A random stream id (1..65535, never 0) for a client that was not given one. A server that only forwards datagrams does not
+    // fill the id in, so without this every client sends id 0 and a receiver cannot tell the talkers apart (ConferencePlayer needs
+    // the ids to be different). 16 bits: two of N clients collide with a chance of about N*N/131072 (4 clients: 0.01 %), so a server
+    // that hands out ids (or a check on join) is still the better way for big rooms.
+    inline uint16_t NewStreamId()
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        return uint16_t(std::uniform_int_distribution<unsigned>(1, 65535)(gen));
+    }
 
     // Writes envelope + payload into `out` (cleared first). Reusing the same `out` avoids allocations.
     inline void WrapInto(Bytes &out, const Header &h, const uint8_t *payload, size_t payloadSize)

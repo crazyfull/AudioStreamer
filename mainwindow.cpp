@@ -2,7 +2,7 @@
 #include "ui_mainwindow.h"
 #include "src/ravava/AudioDevice.h"
 #include "src/ravava/Recorder.h"
-#include "src/ravava/Player.h"
+#include "src/ravava/ConferencePlayer.h"
 #include "src/ravava/AudioProcessor.h"
 #ifdef Q_OS_ANDROID
 #include "androidpermissions.h"
@@ -120,6 +120,11 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     ui->setupUi(this);
     updateMusicButtons();           // no recorder yet: the music buttons start disabled
+
+    // our stream id: a plain forwarding server does not number the clients, so each one picks a random id (never 0)
+    if(m_txStreamId == 0)
+        m_txStreamId = Packet::NewStreamId();
+    RAVAVA_INFO("stream id of this client: %u", unsigned(m_txStreamId));
 
 #ifdef Q_OS_ANDROID
     QWidget *central = ui->centralwidget;
@@ -331,7 +336,7 @@ void MainWindow::initAudio()
     m_pAec.reset();     // the old recorder/player are gone, nothing uses it anymore
 
     m_pAudioRecorder = new Recorder();
-    m_pAudioPlayer = new Player();
+    m_pAudioPlayer = new ConferencePlayer();      // one speaker, one jitter buffer + decoder per talker (stream id)
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
     m_pAudioRecorder->SetInputGain(ui->MicGainSlider->value());
     // music: stream volume, and the local copy (monitor) that lets the singer hear the music without the stream delay.
@@ -550,10 +555,9 @@ void MainWindow::onAudioPacket(const Packet::Header &hdr, const uint8_t *payload
     m_rxStreamId = hdr.streamId;
     m_rxStreamTime = QDateTime::currentMSecsSinceEpoch();
 
-    // NOTE: one player = one jitter buffer = one stream. For several people talking at once (conference) each
-    // stream id needs its own player; this is where packets get routed to them by hdr.streamId.
+    // several people can talk at once: the ConferencePlayer keeps one jitter buffer + decoder per stream id and mixes them into one speaker
     if(m_pAudioPlayer)
-        m_pAudioPlayer->Play(payload, size);
+        m_pAudioPlayer->Play(hdr.streamId, payload, size);
 }
 
 // the two volume bars: what is received (to the speaker) and what is sent (from the microphone)
@@ -597,7 +601,8 @@ void MainWindow::OnStatsTimer()
         updateMusicButtons();
     }
 
-    if(!m_pAudioPlayer || !m_pAudioPlayer->GetStats(st, depthFrames, frameMs)){
+    // the statistics are those of the talker heard last (m_rxStreamId)
+    if(!m_pAudioPlayer || !m_pAudioPlayer->GetStreamStats(m_rxStreamId, st, depthFrames, frameMs)){
         ui->txtLog->setPlainText(devices + "Receive stats: (not started, or no audio received yet)");
         return;
     }
@@ -648,8 +653,16 @@ void MainWindow::OnStatsTimer()
     // network layer: who is talking (stream id of the last audio packet) and packets that are not audio
     const PacketRouter::Stats &net = m_router.GetStats();
     if(m_rxStreamTime){
-        t += QString("\nStream   : talking stream #%1 (%2 ms ago)")
-                 .arg(m_rxStreamId).arg(QDateTime::currentMSecsSinceEpoch() - m_rxStreamTime);
+        t += QString("\nStream   : stats of stream #%1 (last heard %2 ms ago), you are #%3")
+                 .arg(m_rxStreamId).arg(QDateTime::currentMSecsSinceEpoch() - m_rxStreamTime).arg(m_txStreamId);
+    }
+    if(m_pAudioPlayer){
+        const std::vector<uint16_t> talkers = m_pAudioPlayer->ActiveStreams();
+        if(!talkers.empty()){
+            t += QString("\nTalkers  : %1 in the room:").arg(talkers.size());
+            for(uint16_t id : talkers)
+                t += QString(" #%1 (level %2)").arg(id).arg(m_pAudioPlayer->GetStreamLevel(id));
+        }
     }
     if(net.unhandled || net.malformed)
         t += QString("\nNetwork  : ignored %1 unknown type, %2 malformed").arg(net.unhandled).arg(net.malformed);

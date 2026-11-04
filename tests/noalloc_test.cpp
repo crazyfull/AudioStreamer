@@ -2,9 +2,10 @@
 // Uses the fake devices and a pass-through AudioProcessor defined HERE that cuts 10 ms blocks exactly like the real
 // one (src/ravava/AudioProcessor.cpp), so the "echo canceller ready" branch of the recorder is exercised too.
 // Build (one line):
-//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
+//   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/ConferencePlayer.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o noalloc_test
 #include "ravava/Recorder.h"
 #include "ravava/Player.h"
+#include "ravava/ConferencePlayer.h"
 #include "ravava/net/PacketRouter.h"
 #include "ravava/BlockCutter.h"
 #include <atomic>
@@ -138,6 +139,34 @@ static long runMusicCase(int frameMs)
     return g_allocs.load();
 }
 
+// three talkers heard through ONE speaker (ConferencePlayer): packets of one recorder fed as three different stream ids.
+// The talkers are created by their first packets (allocates, warm-up); after that nothing may allocate: not Play(), not the audio thread's mix.
+static long runConferenceCase(int frameMs)
+{
+    AudioConfig cfg; cfg.frameMs = frameMs; cfg.Bitrate = 16000;
+    Recorder rec; ConferencePlayer room;
+    room.SetAdaptivePlayout(true);
+    uint32_t n = 0;
+    rec.SetPacketHandler([&](const Bytes &d){
+        if(d.empty()) return;
+        n++;
+        if(n % 10 == 3) return;                                  // 10% lost
+        room.Play(uint16_t(100 + n % 3), d);                     // the three "talkers" take turns (each has gaps: that is fine here)
+    });
+    rec.SetConfig(&cfg); room.SetConfig(&cfg);
+    rec.Start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));      // warm-up: talkers are created
+    g_allocs = 0; g_count = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+    g_count = false;
+    rec.Stop();
+    const size_t talkers = room.ActiveStreams().size();
+    std::printf("  conference frame=%2dms : %zu talkers, allocations in steady state: %ld\n", frameMs, talkers, g_allocs.load());
+    long bad = g_allocs.load();
+    if(talkers != 3){ std::printf("  FAIL: expected 3 talkers\n"); bad++; }
+    return bad;
+}
+
 int main()
 {
     long bad = 0;
@@ -150,6 +179,8 @@ int main()
     bad += runPlayerCase(20, true);
     bad += runMusicCase(20);
     bad += runMusicCase(60);
+    bad += runConferenceCase(20);
+    bad += runConferenceCase(60);
     std::printf(bad ? "FAIL: the audio thread allocates\n" : "PASS: no allocation on the audio thread\n");
     return bad ? 1 : 0;
 }

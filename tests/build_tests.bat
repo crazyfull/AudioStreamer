@@ -68,7 +68,7 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\unit_test.exe" tests\unit_test.cpp sr
 echo.
 echo === noalloc_test.exe  (no webrtc needed)
 cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\noalloc_test.exe" tests\noalloc_test.cpp tests\stub\audio_device_stub.cpp ^
-   src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\net\PacketRouter.cpp /link "%OPUS_LIB%" || goto fail
+   src\ravava\Recorder.cpp src\ravava\Player.cpp src\ravava\ConferencePlayer.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\net\PacketRouter.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
 echo === volume_test.exe  (no webrtc needed)
@@ -86,6 +86,11 @@ cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\mic_gain_test.exe" tests\mic_gain_tes
    src\ravava\Recorder.cpp src\ravava\MusicPlayer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
 
 echo.
+echo === conference_test.exe  (no webrtc needed)
+cl %CFLAGS% /Fo"tests\obj\\" /Fe"tests\bin\conference_test.exe" tests\conference_test.cpp tests\stub\audio_device_stub.cpp ^
+   src\ravava\ConferencePlayer.cpp src\ravava\Player.cpp src\ravava\MusicPlayer.cpp src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp src\ravava\AudioProcessor.cpp /link "%OPUS_LIB%" || goto fail
+
+echo.
 echo === jitter_diff_test.exe  (no webrtc needed)
 cl %CFLAGS% /Itests\ref /Fo"tests\obj\\" /Fe"tests\bin\jitter_diff_test.exe" tests\jitter_diff_test.cpp tests\ref\refJitterBuffer.cpp ^
    src\ravava\JitterBuffer.cpp src\ravava\OpusCodec.cpp /link "%OPUS_LIB%" || goto fail
@@ -99,6 +104,7 @@ echo     tests\bin\noalloc_test.exe         (must end with PASS)
 echo     tests\bin\volume_test.exe          (must end with PASS)
 echo     tests\bin\format_test.exe          (must end with PASS)
 echo     tests\bin\mic_gain_test.exe        (must end with PASS)
+echo     tests\bin\conference_test.exe      (must end with PASS)
 echo     tests\bin\jitter_diff_test.exe     (must end with PASS)
 popd
 exit /b 0
