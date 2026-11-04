@@ -6,13 +6,7 @@ name: Build CLI
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'src/ravava/**'
-      - 'miniaudio/**'
-      - 'example/**'
-      - 'tests/**'
-      - '.github/workflows/build-cli.yml'
+
 
 jobs:
   macos:
