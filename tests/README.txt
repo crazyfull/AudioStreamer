@@ -21,7 +21,7 @@ Windows (MSVC 2019 x64): tests\build_tests.bat builds both echo canceller tests 
 Unit tests without webrtc / sound card (Linux; on Windows build_tests.bat builds them as unit_test.exe / noalloc_test.exe):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/unit_test.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/net/PacketRouter.cpp -lopus -o unit_test
       CutBlocks, PacketQueue (2 producer threads), AudioConfig::Validate / Opus encoder checks, JitterBuffer loss counters
-  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/net/PacketRouter.cpp -lopus -o noalloc_test
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/noalloc_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/Player.cpp src/ravava/ConferencePlayer.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/net/PacketRouter.cpp -lopus -o noalloc_test
       counts operator new while recorder and player run (lossy, reordering network): must be 0 in steady state
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc -Itests/ref tests/jitter_diff_test.cpp tests/ref/refJitterBuffer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp -lopus -o jitter_diff_test
       real (fixed-slot) JitterBuffer vs the old std::map version in tests/ref: random loss / reorder / duplicates / DTX / restarts,
@@ -43,6 +43,10 @@ Stress / fuzz (run under sanitizers; ~25 s plain, ~1-2 min with TSan or ASan+UBS
 
 Microphone gain (real Recorder + Opus, fake mic; 100 = unchanged, 50 = -12 dB, 200 = +12 dB, 0 = mute, no click on a jump):
   g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/mic_gain_test.cpp tests/stub/audio_device_stub.cpp src/ravava/Recorder.cpp src/ravava/MusicPlayer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o mic_gain_test
+
+Conference (several talkers, ONE speaker: ConferencePlayer; 3 synthetic talkers with own sequence numbers, loss and reordering; per-talker and master volume,
+idle timeout, SetMaxStreams, talkers coming and going; also prints what ONE ordinary Player does with the same packets). ~25 s:
+  g++ -std=c++17 -O1 -pthread -I/usr/include/opus -Isrc tests/conference_test.cpp tests/stub/audio_device_stub.cpp src/ravava/ConferencePlayer.cpp src/ravava/Player.cpp src/ravava/MusicPlayer.cpp src/ravava/JitterBuffer.cpp src/ravava/OpusCodec.cpp src/ravava/AudioProcessor.cpp -lopus -o conference_test
 
 Local music monitor (hear the playing music on the speaker at once, own volume; speaker 48k mono / 24k stereo / 16k mono; off by default,
 independent of the stream volume and of Player::SetVolume, follows Pause / Resume / Stop, no gaps):

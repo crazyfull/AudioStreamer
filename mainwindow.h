@@ -13,7 +13,7 @@
 #include "src/ravava/net/PacketRouter.h"
 //#include "src/ravava/Recorder.h"
 
-namespace ravava { class AudioProcessor; class Recorder; class Player; }
+namespace ravava { class AudioProcessor; class Recorder; class ConferencePlayer; }
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -24,7 +24,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 private:
     ravava::Recorder *m_pAudioRecorder = nullptr;
-    ravava::Player *m_pAudioPlayer  = nullptr;
+    ravava::ConferencePlayer *m_pAudioPlayer  = nullptr;
     std::shared_ptr<ravava::AudioProcessor> m_pAec;      // shared by recorder (mic) and player (speaker)
     ravava::AudioConfig m_AudioConfig;
     class QUdpSocket *m_pUDPClient;
@@ -49,7 +49,7 @@ private:
     // Network layer: the UDP envelope (packet type + stream id, src/ravava/net/Packet.h) is handled HERE.
     // The audio layer only ever gets the payload of Packet::Audio packets.
     ravava::PacketRouter m_router;
-    quint16 m_txStreamId = 0;       // stream id written into the packets we send
+    quint16 m_txStreamId = 0;       // stream id written into the packets we send: random (Packet::NewStreamId) unless set before the first packet
     quint16 m_rxStreamId = 0;       // stream id of the last audio packet received = who is talking
     qint64  m_rxStreamTime = 0;     // when it arrived (ms since epoch), 0 = nothing yet
 

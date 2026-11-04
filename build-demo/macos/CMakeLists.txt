@@ -59,6 +59,7 @@ set(RAVAVA_SOURCES
     ${REPO_ROOT}/src/ravava/AudioDevice.cpp
     ${REPO_ROOT}/src/ravava/Player.cpp
     ${REPO_ROOT}/src/ravava/MusicPlayer.cpp
+    ${REPO_ROOT}/src/ravava/ConferencePlayer.cpp
     ${REPO_ROOT}/src/ravava/Recorder.cpp
     ${REPO_ROOT}/src/ravava/JitterBuffer.cpp
     ${REPO_ROOT}/src/ravava/net/PacketRouter.cpp
@@ -75,6 +76,7 @@ set(RAVAVA_HEADERS
     ${REPO_ROOT}/src/ravava/BlockCutter.h
     ${REPO_ROOT}/src/ravava/Player.h
     ${REPO_ROOT}/src/ravava/MusicPlayer.h
+    ${REPO_ROOT}/src/ravava/ConferencePlayer.h
     ${REPO_ROOT}/src/ravava/Recorder.h
     ${REPO_ROOT}/src/ravava/DeviceWatchdog.h
     ${REPO_ROOT}/src/ravava/GainRamp.h

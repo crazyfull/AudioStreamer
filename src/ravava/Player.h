@@ -27,6 +27,15 @@
 
 namespace ravava {
 
+// Something that adds its own audio to what a Player sends to the speaker (ConferencePlayer: the other talkers). Called on the audio
+// thread, once per device callback, with the player's own output (silence for a hub): add into `out` (saturating), never block or allocate.
+class AudioMixSource
+{
+public:
+    virtual ~AudioMixSource() {}
+    virtual void MixInto(int16_t *out, uint32_t frames) = 0;
+};
+
 // Receive side: datagram -> JitterBuffer (reorder / FEC / PLC) -> opus decode -> speaker.
 //
 // The player needs NO description of the stream: the frame duration comes from the Opus packets themselves
@@ -63,6 +72,8 @@ class Player
     int m_candidateCount;                   // ... this many packets in a row
     std::shared_ptr<AudioProcessor> m_aec;   // shared with Recorder (we feed it what the speaker plays)
     std::shared_ptr<MusicPlayer> m_musicMon; // the recorder's music: its local copy is added to what the speaker plays (SetMusicMonitor)
+    AudioMixSource *m_mix = nullptr;         // ConferencePlayer's other talkers (SetMixSource), not owned
+    bool m_external = false;                 // SetExternalOutput(): no speaker of its own, the owner calls Pull()
 
     PacketQueue m_queue;                    // network/GUI thread(s) -> audio thread
     std::atomic<bool> m_ready;              // true once the speaker runs: Play() accepts datagrams
@@ -101,6 +112,7 @@ class Player
     std::atomic<uint32_t> m_formatDropped;  // datagrams that were not valid Opus or did not match the current stream format
 
     void onDeviceData(int16_t *out, uint32_t frames);
+    bool render(int16_t *out, uint32_t frames);     // jitter buffer -> (mix source) -> level -> volume. true = real audio was produced
     void adoptNextStream();
     void reapRetired();
     void init();                            // called by SetConfig()
@@ -138,6 +150,15 @@ public:
     // scales the received voice) and from the volume of what is sent. It goes through the echo canceller reference, like everything the speaker
     // plays. Call BEFORE SetConfig() (that starts the speaker); refused afterwards.
     void SetMusicMonitor(std::shared_ptr<MusicPlayer> music);
+    // ---- used by ConferencePlayer (several talkers, ONE speaker); a normal app never calls these ----
+    // The player then has NO speaker of its own: the owner calls Pull() from ITS audio callback. Before SetConfig().
+    void SetExternalOutput(bool on) { if(!m_ready.load(std::memory_order_acquire)) m_external = on; }
+    // Audio thread of the owner: the next `frames` of this player (volume and level applied; silence where there is nothing). Never blocks
+    // or allocates. Returns true when part of it was real audio, false = pure silence (the owner can skip mixing it). External mode only.
+    bool Pull(int16_t *out, uint32_t frames) { return m_external && render(out, frames); }
+    // Another source whose audio is added to this player's output before level / volume / echo canceller. Not owned, must outlive the
+    // player. Before SetConfig(); refused afterwards.
+    void SetMixSource(AudioMixSource *src);
 
     // Adaptive playout (default ON): the player stamps every datagram when Play() gets it and the jitter buffer follows the
     // measured network jitter (deeper BEFORE the audio breaks up, shallower again when the network is calm), and keeps the

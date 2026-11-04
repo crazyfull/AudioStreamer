@@ -92,6 +92,15 @@ void Player::SetMusicMonitor(std::shared_ptr<MusicPlayer> music)
     m_musicMon = std::move(music);
 }
 
+void Player::SetMixSource(AudioMixSource *src)
+{
+    if(m_ready.load(std::memory_order_acquire)){
+        RAVAVA_WARN("player: SetMixSource() after SetConfig() is ignored (call it before SetConfig(): that starts the speaker)");
+        return;
+    }
+    m_mix = src;
+}
+
 void Player::SetConfig(AudioConfig *pConfig)
 {
     m_pConfig = pConfig;
@@ -128,6 +137,12 @@ void Player::init()
         m_frameMsCopy = 0;
     }
     m_formatDropped = 0;
+
+    if(m_external){
+        // no speaker, no watchdog: the owner's audio callback calls Pull(). Play() accepts datagrams from now on.
+        m_ready = true;
+        return;
+    }
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
     m_output.SetDevice(m_pConfig->outputDeviceId);
@@ -209,6 +224,19 @@ void Player::KeepDevice()
 // Whatever the jitter buffer can't deliver (prefilling, DTX silence) is played as silence.
 void Player::onDeviceData(int16_t *out, uint32_t frames)
 {
+    render(out, frames);
+
+    // the local copy of the music that is being sent (its own volume, after the speaker volume of the received voice)
+    if(m_musicMon)
+        m_musicMon->MixMonitor(out, frames);
+
+    // the canceller must see EXACTLY what goes to the speaker, silence included.
+    if(m_aec)
+        m_aec->Render(out, frames);
+}
+
+bool Player::render(int16_t *out, uint32_t frames)
+{
     const size_t need = size_t(frames) * m_channels;
     size_t done = 0;
 
@@ -253,16 +281,13 @@ void Player::onDeviceData(int16_t *out, uint32_t frames)
     if(done < need)
         std::memset(out + done, 0, (need - done) * sizeof(int16_t));
 
+    // the other talkers of a ConferencePlayer (silence + them for the hub)
+    if(m_mix)
+        m_mix->MixInto(out, frames);
+
     m_level.Feed(out, frames, m_rate, m_channels);
     m_volume.Process(out, frames, m_channels);
-
-    // the local copy of the music that is being sent (its own volume, after the speaker volume of the received voice)
-    if(m_musicMon)
-        m_musicMon->MixMonitor(out, frames);
-
-    // the canceller must see EXACTLY what goes to the speaker, silence included.
-    if(m_aec)
-        m_aec->Render(out, frames);
+    return done > 0;
 }
 
 // audio thread: copy the numbers for the GUI. If the GUI is reading right now, skip, the next callback (10 ms) tries again.
