@@ -22,6 +22,7 @@
 #include "DeviceSwitcher.h"
 #include "AudioProcessor.h"
 #include "PacketQueue.h"
+#include "DeviceWatchdog.h"
 
 namespace ravava {
 
@@ -83,6 +84,9 @@ class Player
     int m_channels;
 
     std::string m_deviceChoice;             // the device id the user chose (GUI thread)
+    std::mutex m_keepMutex;                 // KeepDevice() runs on the GUI thread AND on the watchdog
+    std::atomic<bool> m_autoKeep{true};
+    DeviceWatchdog m_watchdog;
     int64_t m_lastKeepMs = 0;               // GUI thread: when KeepDevice() last re-opened the device
     int m_keepIntervalMs = 3000;            // GUI thread
     std::atomic<bool> m_switching{false};   // the device worker is busy
@@ -119,10 +123,14 @@ public:
     // attempts in a row it falls back to the system default device (the choice in the UI is not touched).
     void KeepDevice();
     void SetKeepIntervalMs(int ms) { m_keepIntervalMs = ms; }       // (tests)
+    // By default the player runs KeepDevice() itself about once a second (own thread), so the 1 s timer in the app is no longer needed
+    // (calling KeepDevice() yourself as well is harmless). false = only your calls repair the device. Any thread.
+    void SetAutoKeepDevice(bool on) { m_autoKeep.store(on, std::memory_order_relaxed); }
     // the speaker that is REALLY in use (see AudioOutput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveOutputDevice() const { return m_output.ActiveDevice(); }
     // optional echo canceller, the SAME instance as the recorder's. Call BEFORE SetConfig() (it starts the speaker).
-    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
+    // Ignored (with a warning) once the speaker runs (after SetConfig()): the audio thread is already using it.
+    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec);
 
     // Adaptive playout (default ON): the player stamps every datagram when Play() gets it and the jitter buffer follows the
     // measured network jitter (deeper BEFORE the audio breaks up, shallower again when the network is calm), and keeps the

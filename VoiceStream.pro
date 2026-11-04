@@ -191,6 +191,7 @@ HEADERS += \
     src/ravava/BlockCutter.h \
     src/ravava/Player.h \
     src/ravava/Recorder.h \
+    src/ravava/DeviceWatchdog.h \
     src/ravava/GainRamp.h \
     src/ravava/JitterBuffer.h \
     src/ravava/LevelMeter.h \

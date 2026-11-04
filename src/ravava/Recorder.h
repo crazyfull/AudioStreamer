@@ -19,6 +19,7 @@
 #include "AudioDevice.h"
 #include "OpusCodec.h"
 #include "AudioProcessor.h"
+#include "DeviceWatchdog.h"
 #include "BlockCutter.h"
 #include "GainRamp.h"
 #include "LevelMeter.h"
@@ -36,7 +37,8 @@ public:
     using PacketHandler = std::function<void(const Bytes &datagram)>;
 
 private:
-    AudioConfig *m_pConfig;
+    AudioConfig *m_pConfig;           // only read by SetConfig() and Start(); after Start() returns the recorder works on its own copy m_cfg
+    AudioConfig m_cfg;                // snapshot taken by Start(): the caller's AudioConfig may change or be destroyed afterwards
     std::unique_ptr<OpusCodec> m_pOpus;
     PacketHandler m_handler;
     std::shared_ptr<AudioProcessor> m_aec;   // shared with Player (it feeds the speaker signal)
@@ -69,6 +71,9 @@ private:
     bool m_idle = false;                      // audio thread: this chunk has neither microphone nor music: nothing is encoded or sent
 
     std::string m_deviceChoice;       // the device id the user chose (GUI thread)
+    std::mutex m_keepMutex;           // KeepDevice() runs on the GUI thread AND on the watchdog
+    std::atomic<bool> m_autoKeep{true};
+    DeviceWatchdog m_watchdog;
     int64_t m_lastKeepMs = 0;         // GUI thread: when KeepDevice() last re-opened the device
     int m_keepIntervalMs = 3000;      // GUI thread
     std::atomic<bool> m_switching{false};   // the device worker is busy
@@ -87,7 +92,8 @@ public:
     void SetConfig(AudioConfig *pConfig);
     void SetPacketHandler(PacketHandler handler) { m_handler = std::move(handler); }   // call before Start()
     // optional echo canceller, the SAME instance as the player's. Call before Start(). Ignored while playing music.
-    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec) { m_aec = std::move(aec); }
+    // Ignored (with a warning) once recording has started: the audio thread is already using it.
+    void SetAudioProcessor(std::shared_ptr<AudioProcessor> aec);
     // microphone gain in percent: 0 = mute, 100 = unchanged (default), up to 200 = +12 dB (clips instead of wrapping).
     // Any thread, takes effect within ~10 ms without clicks. Applied to the raw mic signal BEFORE the echo canceller /
     // noise suppression / AGC (like an analog mic gain). Not used while playing a music file.
@@ -134,6 +140,9 @@ public:
     // falls back to the system default device (the choice in the UI is not touched).
     void KeepDevice();
     void SetKeepIntervalMs(int ms) { m_keepIntervalMs = ms; }       // (tests)
+    // By default the recorder runs KeepDevice() itself about once a second while it is started (own thread), so the 1 s timer in the app
+    // is no longer needed (calling KeepDevice() yourself as well is harmless). false = only your calls repair the device. Any thread.
+    void SetAutoKeepDevice(bool on) { m_autoKeep.store(on, std::memory_order_relaxed); }
     // the microphone that is REALLY in use (see AudioInput::ActiveDevice), "" = unknown. GUI thread.
     std::string ActiveInputDevice() const { return m_input.ActiveDevice(); }
 private:

@@ -39,6 +39,7 @@ int main()
     AudioConfig cfg; cfg.frameMs = 20; cfg.Bitrate = 64000; cfg.useDtx = false;
     OpusCodec dec; dec.InitDecoder(cfg.inputRate, 1);
     Recorder rec;
+    rec.SetAutoKeepDevice(false);                                       // the KeepDevice() checks below run on their own timing
     rec.SetPacketHandler([&](const Bytes &body){
         uint16_t seq; bool marker; uint8_t tx; Bytes opus; Pcm pcm;
         if(!VoicePacket::Parse(body.data(), body.size(), seq, marker, tx, opus)) return;
@@ -250,6 +251,34 @@ int main()
         mx.SetMusicVolume(300); CHECK(mx.GetMusicVolume() == 200);
         mx.Stop();
         CHECK(!mx.MusicPlay("tone"));                                   // stopped recorder: refused
+    }
+
+    // The recorder repairs its microphone by itself, and works on its own copy of the config (the caller's may be destroyed after Start())
+    {
+        std::printf("automatic KeepDevice + config copy\n");
+        AudioConfig *hc = new AudioConfig(cfg);
+        Recorder r4;
+        std::atomic<int> got{0};
+        r4.SetPacketHandler([&](const Bytes &){ got++; });
+        r4.SetConfig(hc);
+        r4.SetKeepIntervalMs(100);
+        r4.Start();
+        delete hc;                                          // dangling from here on: must not matter any more
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        CHECK(got > 10);
+        r4.SetAudioProcessor(nullptr);                      // after Start(): refused with a warning
+        const int o0 = g_stubInputStarts;
+        g_stubInputMoved = true;                            // the system moved the stream, nobody calls KeepDevice()
+        std::this_thread::sleep_for(std::chrono::milliseconds(2600));
+        std::printf("  re-opens after the route moved: %d, packets %d\n", int(g_stubInputStarts) - o0, got.load());
+        CHECK(g_stubInputStarts == o0 + 1);
+        const int before = got; std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        CHECK(got > before);                                // recording again
+        r4.Stop();
+        const int o1 = g_stubInputStarts;
+        g_stubInputMoved = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2200));
+        CHECK(g_stubInputStarts == o1);                     // stopped: the watchdog does not bring the microphone back
     }
 
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);
