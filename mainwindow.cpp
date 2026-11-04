@@ -334,6 +334,7 @@ void MainWindow::initAudio()
     m_pAudioPlayer = new Player();
     m_pAudioPlayer->SetVolume(ui->VolumeSlider->value());     // the slider keeps its value across Start/Stop
     m_pAudioRecorder->SetInputGain(ui->MicGainSlider->value());
+    m_pAudioPlayer->SetVolume(ui->musicGainSlider->value());
     m_pAudioPlayer->SetAdaptivePlayout(ui->Adaptive_checkBox->checkState()); // behtar ine m_AudioConfig bashe
 
 
@@ -399,6 +400,12 @@ void MainWindow::on_MicGainSlider_valueChanged(int value)
     ui->label_micGainValue->setText(QString::number(value));
     if(m_pAudioRecorder)
         m_pAudioRecorder->SetInputGain(value);
+}
+
+void MainWindow::on_musicGainSlider_valueChanged(int value)
+{
+    if(m_pAudioRecorder)
+        m_pAudioRecorder->SetMusicVolume(value);
 }
 
 // A newly connected headset (or a permission that was just granted) shows up without Stop / Start: the list is refreshed
@@ -567,8 +574,8 @@ void MainWindow::OnStatsTimer()
         if(ms != MS::Stopped){
             const QString merr = QString::fromStdString(m_pAudioRecorder->MusicError());
             devices += !merr.isEmpty() ? QString("Music    : ERROR - %1\n").arg(merr)
-                     : ms == MS::Finished ? QString("Music    : finished\n")
-                     : ms == MS::Paused   ? QString("Music    : paused\n") : QString("Music    : playing\n");
+                       : ms == MS::Finished ? QString("Music    : finished\n")
+                       : ms == MS::Paused   ? QString("Music    : paused\n") : QString("Music    : playing\n");
         }
         updateMusicButtons();
     }
@@ -801,7 +808,7 @@ void MainWindow::on_btnTalk_clicked(bool checked)
 
 void MainWindow::on_LoopBack_checkBox_stateChanged(int arg1)
 {
-     ui->server_comboBox->setDisabled(arg1);
+    ui->server_comboBox->setDisabled(arg1);
 }
 
 // ---- music (separate buttons, mixed into the stream; Talk may be on at the same time) ----
@@ -847,3 +854,6 @@ void MainWindow::on_btnMusicStop_clicked()
         m_pAudioRecorder->MusicStop();
     updateMusicButtons();
 }
+
+
+

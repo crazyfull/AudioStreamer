@@ -91,6 +91,8 @@ private slots:
 
     void on_LoopBack_checkBox_stateChanged(int arg1);
 
+    void on_musicGainSlider_valueChanged(int value);
+
 private:
     Ui::MainWindow *ui;
     void updateMusicButtons();

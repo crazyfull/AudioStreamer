@@ -560,6 +560,28 @@
            </property>
           </widget>
          </item>
+         <item>
+          <widget class="QSlider" name="musicGainSlider">
+           <property name="maximum">
+            <number>200</number>
+           </property>
+           <property name="pageStep">
+            <number>20</number>
+           </property>
+           <property name="value">
+            <number>100</number>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="tickPosition">
+            <enum>QSlider::TicksBothSides</enum>
+           </property>
+           <property name="tickInterval">
+            <number>20</number>
+           </property>
+          </widget>
+         </item>
         </layout>
        </item>
        <item>
