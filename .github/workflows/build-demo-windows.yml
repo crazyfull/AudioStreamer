@@ -1,0 +1,122 @@
+# Builds a fully static Windows x64 demo:
+# - Qt: static (AllanChain/install-qt-static, prebuilt zip — fast install)
+# - Opus: prebuilt static (libs/opus/win32)
+# - CRT: /MT (already in RavAva-Demo.pro)
+# - WebRTC: OFF
+# Result: single .exe, no Qt DLLs, no VC runtime DLLs
+name: Build Demo Windows (static)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-x64-static:
+    name: Windows x64 static (no WebRTC)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Prebuilt static Qt — download only (not build from source)
+      # Pin a release tag, not the moving v6 branch
+      - name: Install static Qt
+        uses: AllanChain/install-qt-static@v6.12.0-1
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show qmake
+        shell: bash
+        run: |
+          which qmake || true
+          qmake -v
+          qmake -query QT_INSTALL_PREFIX
+          qmake -query QT_INSTALL_LIBS
+
+      - name: Configure
+        shell: cmd
+        run: |
+          if not exist build-demo mkdir build-demo
+          cd build-demo
+          qmake ..\RavAva-Demo.pro ^
+            CONFIG+=release ^
+            CONFIG+=no_webrtc ^
+            "TARGET=RavAva_Demo" ^
+            "DESTDIR=$$PWD/out"
+          if errorlevel 1 exit /b 1
+
+      - name: Build
+        shell: cmd
+        run: |
+          cd build-demo
+          nmake /nologo
+          if errorlevel 1 exit /b 1
+
+      - name: Locate and verify single EXE
+        id: find_exe
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "build-demo/out/RavAva_Demo.exe",
+            "build-demo/release/RavAva_Demo.exe",
+            "build-demo/RavAva_Demo.exe",
+            "RavAva_Demo.exe"
+          )
+          $found = $null
+          foreach ($p in $candidates) {
+            if (Test-Path $p) { $found = (Resolve-Path $p).Path; break }
+          }
+          if (-not $found) {
+            Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+            throw "Demo executable not found"
+          }
+          Write-Host "Found: $found"
+          $sizeMB = [math]::Round((Get-Item $found).Length / 1MB, 2)
+          Write-Host "Size: $sizeMB MB"
+
+          # Static build should not depend on Qt DLLs
+          $dump = & dumpbin /dependents $found 2>$null
+          if ($dump) {
+            Write-Host "--- dependents ---"
+            $dump | Select-String -Pattern "\.dll" | ForEach-Object { $_.Line }
+            if ($dump -match "Qt6") {
+              throw "Qt DLLs still linked — static Qt was not used"
+            }
+          }
+
+          echo "exe=$found" >> $env:GITHUB_OUTPUT
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $exe = "${{ steps.find_exe.outputs.exe }}"
+          $dist = "dist/RavAva_Demo-windows-x64-static"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item $exe (Join-Path $dist "RavAva_Demo.exe")
+
+          @"
+          RavAva Demo — Windows x64 STATIC
+          --------------------------------
+          Qt: static (AllanChain/install-qt-static)
+          Opus: static (libs/opus/win32)
+          CRT: /MT
+          WebRTC / AEC: OFF
+
+          Single file. No Qt install, no extra DLLs required.
+          Run RavAva_Demo.exe
+          "@ | Set-Content (Join-Path $dist "README.txt") -Encoding UTF8
+
+          Compress-Archive -Path $dist -DestinationPath "RavAva_Demo-windows-x64-static.zip" -Force
+          Get-Item "RavAva_Demo-windows-x64-static.zip" | Format-List Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavAva_Demo-windows-x64-static
+          path: RavAva_Demo-windows-x64-static.zip
+          retention-days: 30
+          if-no-files-found: error
