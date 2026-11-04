@@ -1,9 +1,11 @@
-# Builds a fully static Windows x64 demo:
-# - Qt: static (AllanChain/install-qt-static, prebuilt zip — fast install)
+# Builds a fully static Windows x64 demo (manual only):
+# - Qt: static prebuilt (AllanChain/install-qt-static) — download, not build from source
 # - Opus: prebuilt static (libs/opus/win32)
-# - CRT: /MT (already in RavAva-Demo.pro)
+# - CRT: /MT (RavAva-Demo.pro)
 # - WebRTC: OFF
-# Result: single .exe, no Qt DLLs, no VC runtime DLLs
+# Result: single .exe (no Qt DLLs, no VC runtime DLLs)
+#
+# Run: Actions → "Build Demo Windows (static)" → Run workflow
 name: Build Demo Windows (static)
 
 on:
@@ -18,8 +20,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Prebuilt static Qt — download only (not build from source)
-      # Pin a release tag, not the moving v6 branch
       - name: Install static Qt
         uses: AllanChain/install-qt-static@v6.12.0-1
 
@@ -28,20 +28,64 @@ jobs:
         with:
           arch: x64
 
-      - name: Show qmake
-        shell: bash
+      - name: Show qmake / locate static Qt
+        id: qt
+        shell: pwsh
         run: |
-          which qmake || true
-          qmake -v
-          qmake -query QT_INSTALL_PREFIX
-          qmake -query QT_INSTALL_LIBS
+          $qmake = (Get-Command qmake -ErrorAction Stop).Source
+          Write-Host "qmake: $qmake"
+
+          # qt_static/bin/qmake.exe → root = parent of bin
+          $qtRoot = (Resolve-Path (Join-Path (Split-Path $qmake -Parent) "..")).Path
+          Write-Host "QT root: $qtRoot"
+
+          if (-not (Test-Path (Join-Path $qtRoot "mkspecs"))) {
+            Write-Host "Listing around qmake:"
+            Get-ChildItem (Split-Path $qmake -Parent) | Format-Table Name
+            Get-ChildItem $qtRoot | Format-Table Name
+            throw "mkspecs not found under Qt root"
+          }
+
+          Write-Host "mkspecs:"
+          Get-ChildItem (Join-Path $qtRoot "mkspecs") -Directory |
+            Select-Object -ExpandProperty Name
+
+          $spec = "win32-msvc"
+          $specDir = Join-Path $qtRoot "mkspecs\$spec"
+          if (-not (Test-Path $specDir)) {
+            $alt = Get-ChildItem (Join-Path $qtRoot "mkspecs") -Directory |
+                   Where-Object { $_.Name -like "win32-msvc*" } |
+                   Select-Object -First 1
+            if (-not $alt) { throw "No win32-msvc* mkspec found" }
+            $spec = $alt.Name
+            Write-Host "Using mkspec: $spec"
+          }
+
+          echo "qt_root=$qtRoot" >> $env:GITHUB_OUTPUT
+          echo "qmake=$qmake" >> $env:GITHUB_OUTPUT
+          echo "spec=$spec" >> $env:GITHUB_OUTPUT
+
+          & $qmake -v
+          & $qmake -query
 
       - name: Configure
         shell: cmd
+        env:
+          QTDIR: ${{ steps.qt.outputs.qt_root }}
+          SPEC: ${{ steps.qt.outputs.spec }}
         run: |
           if not exist build-demo mkdir build-demo
           cd build-demo
-          qmake ..\RavAva-Demo.pro ^
+
+          set "PATH=%QTDIR%\bin;%PATH%"
+          set "QMAKEPATH=%QTDIR%"
+
+          echo QTDIR=%QTDIR%
+          echo SPEC=%SPEC%
+          qmake -query QT_INSTALL_PREFIX
+          qmake -query QMAKE_XSPEC
+
+          qmake ..\RavAva-Demo.pro -spec %SPEC% ^
             CONFIG+=release ^
             CONFIG+=no_webrtc ^
             "TARGET=RavAva_Demo" ^
@@ -50,7 +94,11 @@ jobs:
 
       - name: Build
         shell: cmd
+        env:
+          QTDIR: ${{ steps.qt.outputs.qt_root }}
         run: |
+          set "PATH=%QTDIR%\bin;%PATH%"
+          set "QMAKEPATH=%QTDIR%"
           cd build-demo
           nmake /nologo
           if errorlevel 1 exit /b 1
@@ -67,18 +115,22 @@ jobs:
           )
           $found = $null
           foreach ($p in $candidates) {
-            if (Test-Path $p) { $found = (Resolve-Path $p).Path; break }
+            if (Test-Path $p) {
+              $found = (Resolve-Path $p).Path
+              break
+            }
           }
           if (-not $found) {
+            Write-Host "Searching for any .exe..."
             Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
               Select-Object -ExpandProperty FullName
             throw "Demo executable not found"
           }
+
           Write-Host "Found: $found"
           $sizeMB = [math]::Round((Get-Item $found).Length / 1MB, 2)
           Write-Host "Size: $sizeMB MB"
 
-          # Static build should not depend on Qt DLLs
           $dump = & dumpbin /dependents $found 2>$null
           if ($dump) {
             Write-Host "--- dependents ---"
