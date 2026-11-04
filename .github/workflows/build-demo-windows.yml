@@ -263,3 +263,17 @@ jobs:
           path: RavAva_Demo-windows-x64-static.zip
           retention-days: 30
           if-no-files-found: error
+          
+      - name: Debug Qt installation
+        shell: pwsh
+        run: |
+          Write-Host "GITHUB_WORKSPACE=$env:GITHUB_WORKSPACE"
+          Write-Host "GITHUB_ACTION_PATH=$env:GITHUB_ACTION_PATH"
+
+          Write-Host "Searching qmake.exe:"
+          Get-ChildItem D:\a -Filter qmake.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+
+          Write-Host "Searching mkspecs:"
+          Get-ChildItem D:\a -Directory -Filter mkspecs -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
