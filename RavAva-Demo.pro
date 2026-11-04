@@ -69,7 +69,7 @@ win32 {
     #QMAKE_CXXFLAGS_DEBUG += /MTd
 
 
-    LIBS += libucrt.lib libucrtd.lib libvcruntime.lib
+    LIBS += libucrt.lib libvcruntime.lib    # libucrtd.lib baraye debug
 
     #CONFIG += -static-runtime
     #
