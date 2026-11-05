@@ -80,18 +80,25 @@ jobs:
           echo "ANDROID_NDK_ROOT=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
 
-
-      - name: Remove non-numeric Android platforms (Qt 6.4 bug)
+      # Qt 6.4 calls .toInteger() on the platform name → "android-36-ext19" crashes.
+      # Also androiddeployqt always picks the HIGHEST platform present.
+      # Keep ONLY the platform we just installed so it has no choice.
+      - name: Keep only the platform we installed (fix Qt 6.4)
         run: |
-          # Qt 6.4 does .toInteger() on the platform name → "android-36-ext19" crashes
-          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
-          echo "Platforms before cleanup:"
+          SDK="${ANDROID_SDK_ROOT}"
+          KEEP="android-${ANDROID_PLATFORM_SDK}"
+          echo "=== Platforms before cleanup ==="
           ls -1 "$SDK/platforms" || true
-          # keep only pure android-NN platforms
-          find "$SDK/platforms" -maxdepth 1 -type d -name 'android-*-ext*' -exec rm -rf {} +
-          find "$SDK/platforms" -maxdepth 1 -type d -name 'android-*[A-Za-z]*' ! -name 'android-[0-9]*' -exec rm -rf {} + 2>/dev/null || true
-          echo "Platforms after cleanup:"
-          ls -1 "$SDK/platforms" || true
+          for dir in "$SDK/platforms"/android-*; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            if [ "$name" != "$KEEP" ]; then
+              echo "Removing $name"
+              rm -rf "$dir"
+            fi
+          done
+          echo "=== Platforms after cleanup ==="
+          ls -1 "$SDK/platforms"
 
       # ---------------------------------------------------------------- Qt version
       # The Android kit and the host (desktop) kit must be the SAME version. aqtinstall (the downloader behind install-qt-action) can only
