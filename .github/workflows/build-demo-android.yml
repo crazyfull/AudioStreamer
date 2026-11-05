@@ -1,3 +1,8 @@
+# Two flavors (input "flavor" of the Run workflow dialog):
+#   android6 (default)  runs on Android 6.0+ (API 23). Qt 6.4 is the last Qt 6 that supports it (Qt 6.5 needs Android 8, Qt 6.8+ Android 9).
+#   modern              Android 9+ (API 28), the newest Qt that has an Android kit.
+# Each flavor uses the toolchain its Qt release asks for (JDK / NDK / SDK platform, see the "Toolchain" step).
+#
 # RavAva Demo for Android: one APK per ABI -- arm64-v8a (64 bit ARM, almost every phone), armeabi-v7a (32 bit ARM, old phones),
 # x86_64 (emulator / Chromebook). To add 32 bit x86 too, add `- abi: x86` / `qt_arch: android_x86` to the matrix.
 # Opus is built from source (static); webrtc-audio-processing 1.3 (echo cancellation, noise suppression, AGC) is built from source
@@ -12,16 +17,18 @@ name: Build Demo Android
 
 on:
   workflow_dispatch:
+    inputs:
+      flavor:
+        description: "android6 = Android 6.0+ (Qt 6.4) | modern = Android 9+ (newest Qt)"
+        type: choice
+        options: [android6, modern]
+        default: android6
 
 env:
   # QT_VERSION is chosen by the "Pick the Qt version" step: the newest version that has BOTH a desktop kit (host tools) and an Android kit
   OPUS_VERSION: "1.6.1"
   WEBRTC_VERSION: "1.3"
-  ANDROID_API: "28"
-  # Qt's documentation (Qt for Android Prerequisites, Qt 6.12): NDK 27.2.12479018, JDK 21+, platform android-36, build-tools 36.0.0
-  ANDROID_NDK_VERSION: "27.2.12479018"
-  ANDROID_BUILD_TOOLS: "36.0.0"
-  ANDROID_PLATFORM_SDK: "36"
+  # ANDROID_API (lowest Android version the native code is built for), JDK, NDK, SDK platform and build-tools come from the "Toolchain" step
 
 jobs:
   android:
@@ -42,11 +49,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      # What each Qt release asks for (its "Qt for Android Prerequisites" page): Qt 6.4: JDK 11+, NDK 23.1.7779620, platform 31, build-tools 31.0.0.
+      # Qt 6.12: JDK 21+, NDK 27.2.12479018, platform 36, build-tools 36.0.0. Qt 6.4's Gradle plugin does not run on JDK 21: 17 there.
+      - name: Toolchain for the flavor
+        run: |
+          FLAVOR="${{ inputs.flavor || 'android6' }}"
+          if [ "$FLAVOR" = "android6" ]; then
+            { echo "QT_SPEC=>=6.4,<6.5"; echo "JAVA_VERSION=17"; echo "ANDROID_NDK_VERSION=23.1.7779620"
+              echo "ANDROID_PLATFORM_SDK=31"; echo "ANDROID_BUILD_TOOLS=31.0.0"; echo "ANDROID_API=23"; echo "EXPECT_MIN_SDK=23"; } >> "$GITHUB_ENV"
+          else
+            { echo "QT_SPEC=>=6.8"; echo "JAVA_VERSION=21"; echo "ANDROID_NDK_VERSION=27.2.12479018"
+              echo "ANDROID_PLATFORM_SDK=36"; echo "ANDROID_BUILD_TOOLS=36.0.0"; echo "ANDROID_API=28"; echo "EXPECT_MIN_SDK=28"; } >> "$GITHUB_ENV"
+          fi
+          echo "FLAVOR=$FLAVOR" >> "$GITHUB_ENV"
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ env.JAVA_VERSION }}
 
       # ---------------------------------------------------------------- SDK / NDK
       - name: Install Android NDK and build tools
@@ -67,8 +88,8 @@ jobs:
         run: |
           python3 -m pip install --user --upgrade "aqtinstall>=3.3.0"
           python3 -m aqt version
-          ANDROID_LIST="$(python3 -m aqt list-qt linux android --spec ">=6.8" 2>&1 || true)"
-          DESKTOP_LIST="$(python3 -m aqt list-qt linux desktop --spec ">=6.8" 2>&1 || true)"
+          ANDROID_LIST="$(python3 -m aqt list-qt linux android --spec "$QT_SPEC" 2>&1 || true)"
+          DESKTOP_LIST="$(python3 -m aqt list-qt linux desktop --spec "$QT_SPEC" 2>&1 || true)"
           echo "Android kits: $ANDROID_LIST"
           echo "Desktop kits: $DESKTOP_LIST"
           PICK=""
@@ -80,8 +101,12 @@ jobs:
             PICK="$v"; break
           done
           [ -n "$PICK" ] || { echo "::error::no Qt version with an Android kit (${{ matrix.qt_arch }}) and a desktop kit was found"; exit 1; }
-          echo "Using Qt $PICK"
+          # the desktop kit's name differs between Qt releases (gcc_64 up to 6.6, linux_gcc_64 from 6.7)
+          DARCH="$(python3 -m aqt list-qt linux desktop --arch "$PICK" 2>&1 | tr ' ' '\n' | grep -E '^(linux_)?gcc_64$' | head -n1)"
+          [ -n "$DARCH" ] || { echo "::error::no gcc_64 desktop kit for Qt $PICK"; exit 1; }
+          echo "Using Qt $PICK (desktop kit $DARCH)"
           echo "QT_VERSION=$PICK" >> "$GITHUB_ENV"
+          echo "DESKTOP_ARCH=$DARCH" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------------- Qt: the desktop kit (moc, rcc, androiddeployqt run on the host) + the Android kit of this ABI
       - name: Install Qt (desktop host tools)
@@ -91,7 +116,7 @@ jobs:
           aqtversion: ">=3.3.0"
           host: linux
           target: desktop
-          arch: linux_gcc_64
+          arch: ${{ env.DESKTOP_ARCH }}
           dir: ${{ runner.temp }}
           cache: true
 
@@ -201,6 +226,10 @@ jobs:
           echo "QT_ANDROID_KEYSTORE_KEY_PASS=$PASS"   >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------------- build
+      # the manifest comes from THIS Qt's own template, with RavAva's permissions and foreground service added
+      - name: Prepare the Android package
+        run: python3 -I build-demo/android/make_android_package.py "$QT_ANDROID_PATH" android "$GITHUB_WORKSPACE/android-package"
+
       - name: Configure
         run: |
           "$QT_ANDROID_PATH/bin/qt-cmake" -S build-demo/android -B build-android \
@@ -209,6 +238,8 @@ jobs:
                 -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
                 -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
                 -DQT_ANDROID_SIGN_APK=ON \
+                -DANDROID_PACKAGE_DIR="$GITHUB_WORKSPACE/android-package" \
+                -DANDROID_TARGET_SDK=34 \
                 -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
                 -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
@@ -224,29 +255,40 @@ jobs:
           BT="$ANDROID_SDK_ROOT/build-tools/${ANDROID_BUILD_TOOLS}"
           echo "== $apk =="; ls -l "$apk"
           echo "== signature =="
-          "$BT/apksigner" verify --print-certs "$apk"
+          if ! "$BT/apksigner" verify --print-certs "$apk"; then
+            # an older Qt may leave the APK unsigned (it ignores QT_ANDROID_SIGN_APK): align and sign it here with the same key
+            echo "not signed by the Qt build: signing it now"
+            "$BT/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+            "$BT/apksigner" sign --ks "$QT_ANDROID_KEYSTORE_PATH" --ks-key-alias "$QT_ANDROID_KEYSTORE_ALIAS" \
+                  --ks-pass "pass:$QT_ANDROID_KEYSTORE_STORE_PASS" --key-pass "pass:$QT_ANDROID_KEYSTORE_KEY_PASS" \
+                  --out "$RUNNER_TEMP/signed.apk" "$RUNNER_TEMP/aligned.apk"
+            apk="$RUNNER_TEMP/signed.apk"
+            "$BT/apksigner" verify --print-certs "$apk"
+          fi
           echo "== native code =="
           unzip -l "$apk" | grep "lib/${{ matrix.abi }}/" | head -20
           "$BT/aapt2" dump badging "$apk" | grep -E "^package|native-code|sdkVersion|targetSdkVersion|uses-permission" | head -30
           "$BT/aapt2" dump badging "$apk" | grep -q "native-code: '${{ matrix.abi }}'" || { echo "the APK has no ${{ matrix.abi }} code"; exit 1; }
+          # the lowest Android version the APK installs on (Qt's own minimum for the chosen release)
+          "$BT/aapt2" dump badging "$apk" | grep -q "^sdkVersion:'${EXPECT_MIN_SDK}'" || { echo "minSdkVersion is not ${EXPECT_MIN_SDK} (flavor ${FLAVOR})"; exit 1; }
           "$BT/aapt2" dump badging "$apk" | grep -q "android.permission.RECORD_AUDIO" || { echo "RECORD_AUDIO missing in the manifest"; exit 1; }
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
 
       - name: Package
         run: |
           mkdir -p dist
-          cp "${{ steps.verify.outputs.apk }}" "dist/RavAva_Demo-android-${{ matrix.abi }}.apk"
+          cp "${{ steps.verify.outputs.apk }}" "dist/RavAva_Demo-android-${FLAVOR}-${{ matrix.abi }}.apk"
           {
-            echo "### Android ${{ matrix.abi }}"
-            echo "- APK: RavAva_Demo-android-${{ matrix.abi }}.apk ($(du -h dist/*.apk | cut -f1))"
-            echo "- Qt ${QT_VERSION}, Opus ${OPUS_VERSION} (static), minSdk per Qt, targetSdk 34"
+            echo "### Android ${FLAVOR} ${{ matrix.abi }}"
+            echo "- APK: RavAva_Demo-android-${FLAVOR}-${{ matrix.abi }}.apk ($(du -h dist/*.apk | cut -f1)), runs on Android API ${EXPECT_MIN_SDK}+"
+            echo "- Qt ${QT_VERSION}, Opus ${OPUS_VERSION} (static), minSdk ${EXPECT_MIN_SDK}, targetSdk 34"
             echo "- webrtc echo cancellation: ${{ steps.webrtc.outputs.status }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RavAva_Demo-android-${{ matrix.abi }}
-          path: dist/RavAva_Demo-android-${{ matrix.abi }}.apk
+          name: RavAva_Demo-android-${{ env.FLAVOR }}-${{ matrix.abi }}
+          path: dist/RavAva_Demo-android-${{ env.FLAVOR }}-${{ matrix.abi }}.apk
           retention-days: 30
           if-no-files-found: error
