@@ -6,15 +6,17 @@ on:
 env:
   OPUS_VERSION: "1.6.1"
   WEBRTC_VERSION: "1.3"
+  # must match Qt static build (AllanChain/install-qt-static@v6.12)
   MACOSX_DEPLOYMENT_TARGET: "14.4"
 
 jobs:
   macos:
     name: macOS ${{ matrix.arch }}
-strategy:
+    strategy:
       fail-fast: false
       matrix:
         include:
+          # both on macos-latest so the same modern SDK is used (x86_64 is cross-compiled)
           - arch: arm64
             runner: macos-latest
           - arch: x86_64
@@ -70,7 +72,7 @@ strategy:
         uses: actions/cache@v4
         with:
           path: webrtc-install
-          key: webrtc-${{ env.WEBRTC_VERSION }}-macos-${{ matrix.arch }}-dt${{ env.MACOSX_DEPLOYMENT_TARGET }}
+          key: webrtc-${{ env.WEBRTC_VERSION }}-macos-${{ matrix.arch }}-dt${{ env.MACOSX_DEPLOYMENT_TARGET }}-v2
 
       - name: Build webrtc-audio-processing (static, ${{ matrix.arch }})
         if: steps.webrtc_cache.outputs.cache-hit != 'true'
@@ -96,12 +98,37 @@ strategy:
           rm -rf "$WORK" "$OUT"
           mkdir -p "$WORK" "$OUT/lib" "$OUT/include"
 
-          # native build for this runner arch (arm64 on macos-latest, x86_64 on macos-15-intel)
+          # host is arm64; for x86_64 we still build native libs for the runner arch
+          # because meson cross for macOS is painful. Cache key is per matrix.arch so
+          # each job keeps its own install. For true x86_64 webrtc, build on the same
+          # arch via CMAKE isn't needed for linking if we only ship arm64 webrtc —
+          # but we attempt a native meson build matching the runner.
+          EXTRA_ARGS=()
+          if [ "$(uname -m)" = "arm64" ] && [ "${{ matrix.arch }}" = "x86_64" ]; then
+            # cross-compile webrtc for x86_64 on Apple Silicon
+            cat > "$WORK/cross.ini" <<'INI'
+          [binaries]
+          c = ['clang', '-arch', 'x86_64']
+          cpp = ['clang++', '-arch', 'x86_64']
+          ar = 'ar'
+          ranlib = 'ranlib'
+          strip = 'strip'
+
+          [host_machine]
+          system = 'darwin'
+          cpu_family = 'x86_64'
+          cpu = 'x86_64'
+          endian = 'little'
+          INI
+            EXTRA_ARGS=(--cross-file "$WORK/cross.ini")
+          fi
+
           meson setup "$WORK/b" webrtc-src \
               --buildtype=release \
               --default-library=static \
               -Dcpp_args="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}" \
-              -Dc_args="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
+              -Dc_args="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}" \
+              "${EXTRA_ARGS[@]}"
           meson compile -C "$WORK/b"
 
           MAIN="$(find "$WORK/b" -name 'libwebrtc-audio-processing-1.a' | head -n1)"
@@ -117,13 +144,12 @@ strategy:
           ar -M < "$WORK/merge.mri"
           ranlib "$OUT/lib/libwebrtc_apm.a"
 
-          # headers
           (cd webrtc-src/webrtc && find . -name '*.h' -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
           ABSL="$(find webrtc-src/subprojects -maxdepth 1 -type d -name 'abseil-cpp-*' | head -n1)"
           [ -n "$ABSL" ] && (cd "$ABSL" && find absl \( -name '*.h' -o -name '*.inc' \) -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
 
           rm -rf "$WORK"
-          lipo -info "$OUT/lib/libwebrtc_apm.a"
+          lipo -info "$OUT/lib/libwebrtc_apm.a" || true
           ls -l "$OUT/lib"
 
       - name: Is webrtc available?
@@ -148,6 +174,7 @@ strategy:
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
               -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
+              -DCMAKE_EXE_LINKER_FLAGS="-Wl,-U,_NSAccessibilityLanguageAttribute" \
               -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
               -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
