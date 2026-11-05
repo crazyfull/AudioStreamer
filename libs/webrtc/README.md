@@ -23,6 +23,15 @@ Outside qmake: compile with `-DRAVAVA_WITH_WEBRTC` to turn it on. Source: https:
 If the app link fails with `LNK2019 unresolved external ... __imp_XYZ`, add the Windows library that
 contains XYZ to the `LIBS +=` line in VoiceStream.pro (`winmm dbghelp advapi32` are already there).
 
+## Android (static, NDK)
+
+    ANDROID_NDK_ROOT=/path/to/ndk libs/webrtc/build_android.sh <webrtc-audio-processing-1.3 source dir> <abi> <out dir>
+
+`abi` = `arm64-v8a`, `armeabi-v7a`, `x86_64` or `x86`. It cross-builds with meson + the NDK clang (needs `pip install meson ninja` and internet: meson
+downloads abseil) and writes ONE `<out>/lib/libwebrtc_apm.a` (the library + every abseil lib) and `<out>/include/`, the same layout as the Windows
+script. `build-demo/android/CMakeLists.txt` links it when given `-DWEBRTC_ROOT=<out>`; the GitHub workflow `build-demo-android.yml` does all of this per ABI.
+On 32 bit ARM the NEON option is switched off (plain C path). If the webrtc build fails the APK is still built, without echo cancellation.
+
 ## Linux
 
 Ubuntu 24.10+/Debian 13: `sudo apt install libwebrtc-audio-processing-1-dev`.
