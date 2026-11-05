@@ -1,11 +1,3 @@
-# RavAva Demo for macOS, STATIC: Qt (static, AllanChain/install-qt-static) + Opus (built from source, static).
-# Run it from the Actions tab ("Build Demo macOS (static)" -> "Run workflow").
-# Result: three artifacts
-#   RavAva_Demo-macos-arm64-static      Apple Silicon (M1/M2/M3/M4)
-#   RavAva_Demo-macos-x86_64-static     Intel
-#   RavAva_Demo-macos-universal-static  both in one app (lipo), runs natively on either
-# Each is a zipped RavAva_Demo.app with no Qt / Opus to install. The app is ad-hoc signed (no Apple developer account), so the first
-# launch needs: right click -> Open, or `xattr -cr RavAva_Demo.app` (the README inside the zip says so).
 name: Build Demo macOS (static)
 
 on:
@@ -22,9 +14,9 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-26
+            runner: macos-latest
           - arch: x86_64
-            runner: macos-26
+            runner: macos-latest
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -35,59 +27,54 @@ jobs:
         run: |
           echo "== Xcode =="
           xcodebuild -version
-      
           echo "== macOS SDK =="
           xcrun --sdk macosx --show-sdk-version
-      
           echo "== SDK Path =="
           xcrun --sdk macosx --show-sdk-path
-    
-      # Opus: built natively for this CPU (its SIMD detection must see the real target, so no "universal" build here)
+      
+      # Opus: built natively for this CPU
       - name: Build Opus (static)
         run: |
           OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
 
           if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
-              --connect-timeout 20 --max-time 180 \
-              -o opus.tar.gz \
-              "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
-
+               --connect-timeout 20 --max-time 180 \
+               -o opus.tar.gz \
+               "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
             echo "Primary server failed. Trying mirror..."
-
             curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
-                --connect-timeout 20 --max-time 180 \
-                -o opus.tar.gz \
-                "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+                 --connect-timeout 20 --max-time 180 \
+                 -o opus.tar.gz \
+                 "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
           fi
 
           tar xf opus.tar.gz
 
           cmake -S "opus-${OPUS_VERSION}" -B opus-build \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
-                -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
-                -DBUILD_SHARED_LIBS=OFF \
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-                -DOPUS_BUILD_PROGRAMS=OFF \
-                -DCMAKE_OSX_DEPLOYMENT_TARGET=14.4 \
-                -DOPUS_BUILD_TESTING=OFF \
-                -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DOPUS_BUILD_PROGRAMS=OFF \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=14.4 \
+              -DOPUS_BUILD_TESTING=OFF \
+              -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
 
           cmake --build opus-build --parallel 4
           cmake --install opus-build
 
           lipo -info opus-install/lib/libopus.a
 
-      # The macOS static Qt is a universal build (x86_64 + arm64); we link only the slice of this CPU
       - name: Install static Qt
         uses: AllanChain/install-qt-static@v6.12.0-1
 
       - name: Configure
         run: |
           qt-cmake -S build-demo/macos -B build-macos \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
-                -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install"
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install"
 
       - name: Build
         run: cmake --build build-macos --parallel 4
@@ -108,12 +95,15 @@ jobs:
             || { echo "NSMicrophoneUsageDescription missing in Info.plist"; exit 1; }
           echo "app=$app" >> "$GITHUB_OUTPUT"
 
-      - name: Package
+      - name: Package and Sign
         run: |
           name="RavAva_Demo-macos-${{ matrix.arch }}-static"
           mkdir -p "dist/$name"
           cp -R "${{ steps.verify.outputs.app }}" "dist/$name/RavAva_Demo.app"
-          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"      # ad-hoc: Apple Silicon refuses unsigned code
+          
+          # Ad-hoc Sign for static bundle
+          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"
+          
           cat > "dist/$name/README.txt" <<TXT
           RavAva Demo - macOS ${{ matrix.arch }} STATIC
           --------------------------------------------
@@ -124,35 +114,11 @@ jobs:
           or in Terminal:  xattr -cr RavAva_Demo.app
           Allow the microphone when macOS asks (System Settings -> Privacy & Security -> Microphone).
           TXT
+          
           (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
           ls -l "$name.zip"
           echo "NAME=$name" >> "$GITHUB_ENV"
-          
-          # self sign
-          - name: Build with CMake and macdeployqt
-                run: |
-                  mkdir build && cd build
-                  cmake -DCMAKE_BUILD_TYPE=Release ..
-                  cmake --build . --config Release
-                  # جمع‌آوری کتابخانه‌های Qt
-                  macdeployqt RavAva.app
-          
-              - name: Self-Sign Application
-                run: |
-                  # امضای Ad-hoc (خود-امضا) برای تمام کتابخانه‌ها و خود برنامه
-                  codesign --force --deep --sign - build/RavAva.app
-          
-              - name: Create DMG or ZIP
-                run: |
-                  cd build
-                  zip -r RavAva-macOS.zip RavAva.app
-          
-              - name: Upload Artifact
-                uses: actions/upload-artifact@v4
-                with:
-                  name: ravava-macos-selfsigned
-                  path: build/RavAva-macOS.zip
-                  
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
