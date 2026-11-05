@@ -1,0 +1,403 @@
+# Two flavors (input "flavor" of the Run workflow dialog):
+#   android6 (default)  runs on Android 6.0+ (API 23). Qt 6.4 is the last Qt 6 that supports it (Qt 6.5 needs Android 8, Qt 6.8+ Android 9).
+#   modern              Android 9+ (API 28), the newest Qt that has an Android kit.
+# Each flavor uses the toolchain its Qt release asks for (JDK / NDK / SDK platform, see the "Toolchain" step).
+#
+# RavAva Demo for Android: one APK per ABI -- arm64-v8a (64 bit ARM, almost every phone), armeabi-v7a (32 bit ARM, old phones),
+# x86_64 (emulator / Chromebook). To add 32 bit x86 too, add `- abi: x86` / `qt_arch: android_x86` to the matrix.
+# Opus is built from source (static); webrtc-audio-processing 1.3 (echo cancellation, noise suppression, AGC) is built from source
+# (static, libs/webrtc/build_android.sh). If that one fails for an ABI the APK is still built, WITHOUT echo cancellation (the job
+# summary says which). Run it from the Actions tab ("Build Demo Android" -> "Run workflow").
+#
+# Signing: an APK must be signed to install. With the repository secrets ANDROID_KEYSTORE_BASE64 (the keystore file, base64),
+# ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS it is signed with your key (updates install over the old version).
+# Without them a temporary debug-style key is made on every run (installs fine, but a new run's APK cannot update the old one:
+# uninstall first).
+name: Build Demo Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: "android6 = Android 6.0+ (Qt 6.4) | modern = Android 9+ (newest Qt)"
+        type: choice
+        options: [android6, modern]
+        default: android6
+      release_tag:
+        description: ""
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark as prerelease"
+        type: boolean
+        default: true
+
+env:
+  # QT_VERSION is chosen by the "Pick the Qt version" step: the newest version that has BOTH a desktop kit (host tools) and an Android kit
+  OPUS_VERSION: "1.6.1"
+  WEBRTC_VERSION: "1.3"
+  # ANDROID_API (lowest Android version the native code is built for), JDK, NDK, SDK platform and build-tools come from the "Toolchain" step
+
+jobs:
+  android:
+    name: Android ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            qt_arch: android_arm64_v8a
+          - abi: armeabi-v7a
+            qt_arch: android_armv7
+          - abi: x86_64
+            qt_arch: android_x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # What each Qt release asks for (its "Qt for Android Prerequisites" page): Qt 6.4: JDK 11+, NDK 23.1.7779620, platform 31, build-tools 31.0.0.
+      # Qt 6.12: JDK 21+, NDK 27.2.12479018, platform 36, build-tools 36.0.0. Qt 6.4's Gradle plugin does not run on JDK 21: 17 there.
+      - name: Toolchain for the flavor
+        run: |
+          FLAVOR="${{ inputs.flavor || 'android6' }}"
+          if [ "$FLAVOR" = "android6" ]; then
+            { echo "QT_SPEC=>=6.4,<6.5"; echo "JAVA_VERSION=17"; echo "ANDROID_NDK_VERSION=23.1.7779620"
+              echo "ANDROID_PLATFORM_SDK=31"; echo "ANDROID_BUILD_TOOLS=31.0.0"; echo "ANDROID_API=23"; echo "EXPECT_MIN_SDK=23"; } >> "$GITHUB_ENV"
+          else
+            { echo "QT_SPEC=>=6.8"; echo "JAVA_VERSION=21"; echo "ANDROID_NDK_VERSION=27.2.12479018"
+              echo "ANDROID_PLATFORM_SDK=36"; echo "ANDROID_BUILD_TOOLS=36.0.0"; echo "ANDROID_API=28"; echo "EXPECT_MIN_SDK=28"; } >> "$GITHUB_ENV"
+          fi
+          echo "FLAVOR=$FLAVOR" >> "$GITHUB_ENV"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # ---------------------------------------------------------------- SDK / NDK
+      - name: Install Android NDK and build tools
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-${ANDROID_PLATFORM_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
+          echo "ANDROID_SDK_ROOT=$SDK"                                  >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK"                                      >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
+
+      # Qt 6.4 calls .toInteger() on the platform name → "android-36-ext19" crashes.
+      # Also androiddeployqt always picks the HIGHEST platform present.
+      # Keep ONLY the platform we just installed so it has no choice.
+      - name: Keep only the platform we installed (fix Qt 6.4)
+        run: |
+          SDK="${ANDROID_SDK_ROOT}"
+          KEEP="android-${ANDROID_PLATFORM_SDK}"
+          echo "=== Platforms before cleanup ==="
+          ls -1 "$SDK/platforms" || true
+          for dir in "$SDK/platforms"/android-*; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            if [ "$name" != "$KEEP" ]; then
+              echo "Removing $name"
+              rm -rf "$dir"
+            fi
+          done
+          echo "=== Platforms after cleanup ==="
+          ls -1 "$SDK/platforms"
+
+      # ---------------------------------------------------------------- Qt version
+      # The Android kit and the host (desktop) kit must be the SAME version. aqtinstall (the downloader behind install-qt-action) can only
+      # install what the Qt servers list, and a brand new Qt release may have no Android kit there yet, so the newest version that has both
+      # is used instead of a fixed one. The lists are printed to the log.
+      - name: Pick the Qt version
+        run: |
+          python3 -m pip install --user --upgrade "aqtinstall>=3.3.0"
+          python3 -m aqt version
+          ANDROID_LIST="$(python3 -m aqt list-qt linux android --spec "$QT_SPEC" 2>&1 || true)"
+          DESKTOP_LIST="$(python3 -m aqt list-qt linux desktop --spec "$QT_SPEC" 2>&1 || true)"
+          echo "Android kits: $ANDROID_LIST"
+          echo "Desktop kits: $DESKTOP_LIST"
+          PICK=""
+          for v in $(echo "$ANDROID_LIST" | tr ' ' '\n' | grep -E '^6\.[0-9]+\.[0-9]+$' | sort -V -r); do
+            echo "$DESKTOP_LIST" | tr ' ' '\n' | grep -qx "$v" || continue
+            ARCHS="$(python3 -m aqt list-qt linux android --arch "$v" 2>&1 || true)"
+            echo "  $v android kits: $ARCHS"
+            echo "$ARCHS" | grep -q "${{ matrix.qt_arch }}" || continue
+            PICK="$v"; break
+          done
+          [ -n "$PICK" ] || { echo "::error::no Qt version with an Android kit (${{ matrix.qt_arch }}) and a desktop kit was found"; exit 1; }
+          # the desktop kit's name differs between Qt releases (gcc_64 up to 6.6, linux_gcc_64 from 6.7)
+          DARCH="$(python3 -m aqt list-qt linux desktop --arch "$PICK" 2>&1 | tr ' ' '\n' | grep -E '^(linux_)?gcc_64$' | head -n1)"
+          [ -n "$DARCH" ] || { echo "::error::no gcc_64 desktop kit for Qt $PICK"; exit 1; }
+          echo "Using Qt $PICK (desktop kit $DARCH)"
+          echo "QT_VERSION=$PICK" >> "$GITHUB_ENV"
+          echo "DESKTOP_ARCH=$DARCH" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- Qt: the desktop kit (moc, rcc, androiddeployqt run on the host) + the Android kit of this ABI
+      - name: Install Qt (desktop host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
+          host: linux
+          target: desktop
+          arch: ${{ env.DESKTOP_ARCH }}
+          dir: ${{ runner.temp }}
+          cache: true
+
+      - name: Remember the host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for Android (${{ matrix.abi }})
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
+          host: linux
+          target: android
+          arch: ${{ matrix.qt_arch }}
+          dir: ${{ runner.temp }}
+          cache: true
+
+      - name: Remember the Android Qt
+        run: |
+          echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+          ls -l "$QT_ROOT_DIR/bin" | head -20
+
+      # aqtinstall unpacks the tools of some Qt releases (6.4: qt-cmake, qmake, androiddeployqt ...) without the executable bit:
+      # "qt-cmake: Permission denied" (exit code 126). Both kits: every file in bin/ and libexec/ becomes executable.
+      - name: Make the Qt tools executable
+        run: |
+          for kit in "$QT_HOST_PATH" "$QT_ANDROID_PATH"; do
+            for d in bin libexec; do
+              [ -d "$kit/$d" ] && find "$kit/$d" -maxdepth 1 -type f -exec chmod +x {} +
+            done
+          done
+          ls -l "$QT_ANDROID_PATH/bin/qt-cmake"
+
+      # ---------------------------------------------------------------- Opus (static)
+      - name: Build Opus (static, ${{ matrix.abi }})
+        run: |
+          OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 180 \
+                -o opus.tar.gz "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
+            echo "Primary server failed. Trying mirror..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 180 \
+                -o opus.tar.gz "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+          fi
+          tar xf opus.tar.gz
+
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build \
+                -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI=${{ matrix.abi }} \
+                -DANDROID_PLATFORM=android-${ANDROID_API} \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DOPUS_BUILD_PROGRAMS=OFF \
+                -DOPUS_BUILD_TESTING=OFF \
+                -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+          cmake --build opus-build --parallel 4
+          cmake --install opus-build
+          ls -l opus-install/lib
+
+      # ---------------------------------------------------------------- webrtc-audio-processing (static, optional)
+      - name: Cache webrtc-audio-processing
+        id: webrtc_cache
+        uses: actions/cache@v4
+        with:
+          path: webrtc-install
+          key: webrtc-${{ env.WEBRTC_VERSION }}-android-${{ matrix.abi }}-api${{ env.ANDROID_API }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('libs/webrtc/build_android.sh') }}
+
+      - name: Build webrtc-audio-processing (static, ${{ matrix.abi }})
+        if: steps.webrtc_cache.outputs.cache-hit != 'true'
+        continue-on-error: true            # no echo cancellation is better than no APK
+        run: |
+          pip install meson ninja
+          WFILE="webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
+          mkdir -p webrtc-src
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 300 \
+                -o webrtc.tar.xz "https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/${WFILE}"; then
+            echo "Primary server failed. Trying GitLab..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 300 \
+                -o webrtc.tar.xz "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing/-/archive/v${WEBRTC_VERSION}/webrtc-audio-processing-v${WEBRTC_VERSION}.tar.gz"
+          fi
+          tar xf webrtc.tar.xz -C webrtc-src --strip-components=1
+          libs/webrtc/build_android.sh webrtc-src ${{ matrix.abi }} webrtc-install
+
+      - name: Is webrtc available?
+        id: webrtc
+        run: |
+          if [ -f webrtc-install/lib/libwebrtc_apm.a ]; then
+            echo "root=$GITHUB_WORKSPACE/webrtc-install" >> "$GITHUB_OUTPUT"
+            echo "status=ON" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=" >> "$GITHUB_OUTPUT"
+            echo "status=OFF (the webrtc build failed: see the step above)" >> "$GITHUB_OUTPUT"
+            echo "::warning::webrtc-audio-processing was not built for ${{ matrix.abi }}: the APK has no echo cancellation"
+          fi
+
+      # ---------------------------------------------------------------- signing key
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          KS="$RUNNER_TEMP/ravava.keystore"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            PASS="$KS_PASS"; ALIAS="$KS_ALIAS"
+            echo "Signing with the key from the repository secrets"
+          else
+            PASS="android"; ALIAS="androiddebugkey"
+            keytool -genkeypair -keystore "$KS" -storepass "$PASS" -keypass "$PASS" -alias "$ALIAS" \
+                    -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=RavAva Demo,O=RavAva,C=US"
+            echo "No signing secrets: signing with a temporary key (a new APK of another run cannot update the old one)"
+          fi
+          echo "QT_ANDROID_KEYSTORE_PATH=$KS"         >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_ALIAS=$ALIAS"     >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_STORE_PASS=$PASS" >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_KEY_PASS=$PASS"   >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- build
+      # the manifest comes from THIS Qt's own template, with RavAva's permissions and foreground service added
+      - name: Prepare the Android package
+        run: python3 -I build-demo/android/make_android_package.py "$QT_ANDROID_PATH" android "$GITHUB_WORKSPACE/android-package"
+
+      - name: Configure
+        run: |
+          "$QT_ANDROID_PATH/bin/qt-cmake" -S build-demo/android -B build-android \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DQT_HOST_PATH="$QT_HOST_PATH" \
+                -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+                -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+                -DQT_ANDROID_SIGN_APK=ON \
+                -DANDROID_PACKAGE_DIR="$GITHUB_WORKSPACE/android-package" \
+                -DANDROID_TARGET_SDK=34 \
+                -DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
+                -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
+                -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
+
+      - name: Build APK
+        run: cmake --build build-android --target apk --parallel 4
+
+      - name: Verify APK
+        id: verify
+        run: |
+          apk="$(find build-android -name '*.apk' | grep -i signed | head -n1)"
+          [ -n "$apk" ] || apk="$(find build-android -name '*.apk' | head -n1)"
+          [ -n "$apk" ] || { echo "no APK was generated"; find build-android -maxdepth 6 -type d -name outputs; exit 1; }
+          BT="$ANDROID_SDK_ROOT/build-tools/${ANDROID_BUILD_TOOLS}"
+          echo "== $apk =="; ls -l "$apk"
+          echo "== signature =="
+          if ! "$BT/apksigner" verify --print-certs "$apk"; then
+            # an older Qt may leave the APK unsigned (it ignores QT_ANDROID_SIGN_APK): align and sign it here with the same key
+            echo "not signed by the Qt build: signing it now"
+            "$BT/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+            "$BT/apksigner" sign --ks "$QT_ANDROID_KEYSTORE_PATH" --ks-key-alias "$QT_ANDROID_KEYSTORE_ALIAS" \
+                  --ks-pass "pass:$QT_ANDROID_KEYSTORE_STORE_PASS" --key-pass "pass:$QT_ANDROID_KEYSTORE_KEY_PASS" \
+                  --out "$RUNNER_TEMP/signed.apk" "$RUNNER_TEMP/aligned.apk"
+            apk="$RUNNER_TEMP/signed.apk"
+            "$BT/apksigner" verify --print-certs "$apk"
+          fi
+          echo "== native code =="
+          unzip -l "$apk" | grep "lib/${{ matrix.abi }}/" | head -20
+          "$BT/aapt2" dump badging "$apk" | grep -E "^package|native-code|sdkVersion|targetSdkVersion|uses-permission" | head -30
+          "$BT/aapt2" dump badging "$apk" | grep -q "native-code: '${{ matrix.abi }}'" || { echo "the APK has no ${{ matrix.abi }} code"; exit 1; }
+          # the lowest Android version the APK installs on (Qt's own minimum for the chosen release)
+          "$BT/aapt2" dump badging "$apk" | grep -q "^sdkVersion:'${EXPECT_MIN_SDK}'" || { echo "minSdkVersion is not ${EXPECT_MIN_SDK} (flavor ${FLAVOR})"; exit 1; }
+          "$BT/aapt2" dump badging "$apk" | grep -q "android.permission.RECORD_AUDIO" || { echo "RECORD_AUDIO missing in the manifest"; exit 1; }
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp "${{ steps.verify.outputs.apk }}" "dist/RavAva_Demo-android-${FLAVOR}-${{ matrix.abi }}.apk"
+          {
+            echo "### Android ${FLAVOR} ${{ matrix.abi }}"
+            echo "- APK: RavAva_Demo-android-${FLAVOR}-${{ matrix.abi }}.apk ($(du -h dist/*.apk | cut -f1)), runs on Android API ${EXPECT_MIN_SDK}+"
+            echo "- Qt ${QT_VERSION}, Opus ${OPUS_VERSION} (static), minSdk ${EXPECT_MIN_SDK}, targetSdk 34"
+            echo "- webrtc echo cancellation: ${{ steps.webrtc.outputs.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavAva_Demo-android-${{ env.FLAVOR }}-${{ matrix.abi }}
+          path: dist/RavAva_Demo-android-${{ env.FLAVOR }}-${{ matrix.abi }}.apk
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: [android]
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.release_tag != '' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: RavAva_Demo-android-*
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare upload folder
+        run: |
+          set -euo pipefail
+          echo "=== raw tree ==="
+          find dist -type f | sort || true
+
+          mkdir -p upload
+          find dist -type f -name 'RavAva_Demo-android-*.apk' -print -exec cp -v {} upload/ \;
+
+          echo "=== upload/ ==="
+          ls -lh upload/
+          test "$(ls -1 upload/*.apk 2>/dev/null | wc -l)" -ge 1
+
+      - name: Create release if missing, then upload APKs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          FLAVOR="${{ github.event.inputs.flavor || 'android6' }}"
+
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            NOTES="## RavAva Demo — Android (${FLAVOR})
+
+          - **ABIs**: arm64-v8a, armeabi-v7a, x86_64
+          - **Opus**: static ${{ env.OPUS_VERSION }}
+          - **WebRTC** echo cancellation: built when available
+          - **flavor android6**: Android 6.0+ (API 23), Qt 6.4
+          - **flavor modern**: Android 9+ (API 28), newer Qt
+
+          Install the APK matching your device ABI (arm64-v8a for almost all phones).
+          "
+            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "RavAva Demo Android $TAG" \
+                --notes "$NOTES" \
+                --prerelease
+            else
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "RavAva Demo Android $TAG" \
+                --notes "$NOTES"
+            fi
+          fi
+
+          gh release upload "$TAG" upload/*.apk \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+          echo "=== assets on release ==="
+          gh release view "$TAG" --repo "${{ github.repository }}"
