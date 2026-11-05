@@ -298,40 +298,51 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Collect zip files
-        id: zips
+      - name: Prepare upload folder
         run: |
+          set -euo pipefail
           echo "=== raw tree ==="
-          find dist -type f -print | sort
+          find dist -type f | sort || true
 
           mkdir -p upload
-          # هر zip را از هر عمقی به upload/ بیاور
-          find dist -type f -name 'RavAva_Demo-macos-*.zip' -exec cp -v {} upload/ \;
+          find dist -type f -name '*.zip' -print -exec cp -v {} upload/ \;
 
           echo "=== upload/ ==="
           ls -lh upload/
+          test "$(ls -1 upload/*.zip 2>/dev/null | wc -l)" -ge 1
 
-          count=$(ls upload/*.zip 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$count" -lt 1 ]; then
-            echo "No zip files found to upload"
-            exit 1
+      - name: Create release if missing, then upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          # اگر Release نیست، بساز
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "RavAva Demo macOS $TAG" \
+              --notes "## RavAva Demo — macOS (static)
+
+          - **Qt**: static 6.12
+          - **Opus**: static ${{ env.OPUS_VERSION }}
+          - **WebRTC** echo cancellation: built when available
+          - **Architectures**: arm64, x86_64, universal
+          - **Signing**: ad-hoc (codesign -s -), not notarized
+
+          ### First launch
+          \`\`\`bash
+          xattr -cr RavAva_Demo.app
+          \`\`\`
+          " \
+              ${{ github.event.inputs.prerelease == true && '--prerelease' || '' }}
           fi
-          echo "count=$count" >> "$GITHUB_OUTPUT"
 
-      - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          name: RavAva Demo macOS ${{ github.event.inputs.release_tag }}
-          body: |
-            ## RavAva Demo — macOS (static)
+          # zipها را آپلود کن (با --clobber جایگزین فایل قبلی می‌شود)
+          gh release upload "$TAG" upload/*.zip \
+            --repo "${{ github.repository }}" \
+            --clobber
 
-            - **Qt**: static 6.12
-            - **Opus**: static ${{ env.OPUS_VERSION }}
-            - **WebRTC** echo cancellation: built when available
-            - **Architectures**: arm64, x86_64, universal
-            - **Signing**: ad-hoc (`codesign -s -`), not notarized
-
-            ### First launch
-            ```bash
-            xattr -cr RavAva_Demo.app
+          echo "=== assets on release ==="
+          gh release view "$TAG" --repo "${{ github.repository }}"
