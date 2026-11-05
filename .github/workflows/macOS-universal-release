@@ -1,0 +1,51 @@
+universal:
+    name: macOS universal
+    needs: macos
+    runs-on: macos-latest
+    permissions:
+      contents: write  # اجازه دسترسی برای ساخت Release و آپلود فایل
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: RavAva_Demo-macos-*-static
+          path: parts
+
+      - name: Join arm64 + x86_64 (lipo)
+        run: |
+          name="RavAva_Demo-macos-universal-static"
+          mkdir -p work "dist/$name"
+          for a in arm64 x86_64; do
+            ditto -x -k "parts/RavAva_Demo-macos-$a-static/RavAva_Demo-macos-$a-static.zip" "work/$a"
+          done
+          cp -R "work/arm64/RavAva_Demo-macos-arm64-static/RavAva_Demo.app" "dist/$name/RavAva_Demo.app"
+          lipo -create \
+               "work/arm64/RavAva_Demo-macos-arm64-static/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" \
+               "work/x86_64/RavAva_Demo-macos-x86_64-static/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" \
+               -output "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo"
+          lipo -info "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo"
+          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"
+          codesign --verify --deep --strict "dist/$name/RavAva_Demo.app"
+          cp "work/arm64/RavAva_Demo-macos-arm64-static/README.txt" "dist/$name/README.txt"
+          sed -i '' 's/macOS arm64 STATIC/macOS universal (arm64 + x86_64) STATIC/' "dist/$name/README.txt"
+          (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
+          ls -l "$name.zip"
+
+      - name: Upload artifact (Actions storage)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavAva_Demo-macos-universal-static
+          path: RavAva_Demo-macos-universal-static.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      # -------------------------------------------------------------
+      # بخش جدید: انتشار خودکار فایل‌ها در بخش GitHub Releases
+      # -------------------------------------------------------------
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') # فقط وقتی تگ (Tag) ثبت شد اجرا شود
+        with:
+          files: |
+            RavAva_Demo-macos-universal-static.zip
+            # اگر فایل‌های arm64 و x86_64 را هم خواستید می‌توانید اینجا اضافه کنید
+          generate_release_notes: true
