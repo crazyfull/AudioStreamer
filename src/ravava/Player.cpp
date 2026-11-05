@@ -146,7 +146,7 @@ void Player::init()
 
     // 10ms device periods: the real buffering is done by the jitter buffer, not by the device
     m_output.SetDevice(m_pConfig->outputDeviceId);
-    m_deviceChoice = m_pConfig->outputDeviceId;
+    setChoice(m_pConfig->outputDeviceId);
     m_deviceWanted = true;
     // The speaker is opened on the device worker: on Android that takes seconds (call mode + route), which used to freeze the
     // GUI (a thread blocked for ~5 s gets the app killed). Play() accepts packets from now on, they wait in the queue until
@@ -155,8 +155,7 @@ void Player::init()
     m_failedOpens = 0;
     m_ready = true;
     m_watchdog.Start([this]{ if(m_autoKeep.load(std::memory_order_relaxed)) KeepDevice(); });
-    m_switching = true;
-    requestOpen(m_deviceChoice);
+    requestOpen(choice());
 }
 
 bool Player::startDevice()
@@ -171,7 +170,7 @@ bool Player::startDevice()
 // GUI thread. Only the sound device is replaced; the streams, jitter buffer and counters stay as they are.
 bool Player::SetOutputDevice(const std::string &deviceId)
 {
-    m_deviceChoice = deviceId;
+    setChoice(deviceId);
     if(!m_deviceWanted){
         m_output.SetDevice(deviceId);   // not started yet: the next init() opens it
         return true;
@@ -183,7 +182,6 @@ bool Player::SetOutputDevice(const std::string &deviceId)
 void Player::requestOpen(const std::string &deviceId)
 {
     m_switcher.Request(deviceId, [this](const std::string &id){
-        m_switching = true;
         m_output.Stop();                // returns when the audio callback is guaranteed to be finished
         m_output.SetDevice(id);
         m_pendingPos = m_pending.size();    // what was cut in half by the switch is dropped, the next callback pops a fresh frame
@@ -191,14 +189,13 @@ void Player::requestOpen(const std::string &deviceId)
         if(ok)
             RAVAVA_INFO("player started: %d Hz, %d ch", m_rate, m_channels);
         m_failedOpens = ok ? 0 : m_failedOpens + 1;
-        m_switching = false;
     });
 }
 
 void Player::KeepDevice()
 {
     std::lock_guard<std::mutex> lk(m_keepMutex);        // GUI thread and watchdog
-    if(!m_deviceWanted || m_switching)
+    if(!m_deviceWanted || m_switcher.Busy())
         return;
     const bool running = m_output.IsRunning();
     if(running && !m_output.DeviceMoved())
@@ -208,7 +205,7 @@ void Player::KeepDevice()
         return;                         // not in a loop: at most one re-open per interval
     m_lastKeepMs = now;
 
-    std::string id = m_deviceChoice;
+    std::string id = choice();
     if(!running && m_failedOpens >= 2){
         id.clear();
         RAVAVA_WARN("player: the chosen speaker can't be opened, using the system default");

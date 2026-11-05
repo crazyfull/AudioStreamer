@@ -88,11 +88,10 @@ void Recorder::Start()
 
     // 10ms capture periods; they are re-cut into exact opus frames in onCapture()
     m_input.SetDevice(m_cfg.inputDeviceId);
-    m_deviceChoice = m_cfg.inputDeviceId;
+    setChoice(m_cfg.inputDeviceId);
     m_deviceWanted = true;
     m_failedOpens = 0;
-    m_switching = true;
-    requestOpen(m_deviceChoice);        // on the device worker: opening the microphone can take seconds (Android)
+    requestOpen(choice());        // on the device worker: opening the microphone can take seconds (Android)
     m_watchdog.Start([this]{ if(m_autoKeep.load(std::memory_order_relaxed)) KeepDevice(); });
     RAVAVA_INFO("recorder: Start() took %d ms%s", int(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()),
                 m_cfg.playMusic ? " (music file is opened in the background)" : "");
@@ -110,7 +109,7 @@ bool Recorder::startDevice()
 // GUI thread. Only the microphone device is replaced: sequence numbers, the encoder and the echo canceller continue.
 bool Recorder::SetInputDevice(const std::string &deviceId)
 {
-    m_deviceChoice = deviceId;
+    setChoice(deviceId);
     if(!m_deviceWanted){
         m_input.SetDevice(deviceId);    // not recording: Start() opens it
         return true;
@@ -122,21 +121,19 @@ bool Recorder::SetInputDevice(const std::string &deviceId)
 void Recorder::requestOpen(const std::string &deviceId)
 {
     m_switcher.Request(deviceId, [this](const std::string &id){
-        m_switching = true;
         m_input.Stop();                 // returns when the capture callback is guaranteed to be finished
         m_cache.clear();                // the part of a frame captured from the old device is dropped
         m_marker = true;                // the next packet follows a gap: the receiver re-syncs its buffer
         m_input.SetDevice(id);
         const bool ok = startDevice();  // failure is logged
         m_failedOpens = ok ? 0 : m_failedOpens + 1;
-        m_switching = false;
     });
 }
 
 void Recorder::KeepDevice()
 {
     std::lock_guard<std::mutex> lk(m_keepMutex);        // GUI thread and watchdog
-    if(!m_deviceWanted || m_switching)
+    if(!m_deviceWanted || m_switcher.Busy())
         return;
     const bool running = m_input.IsRunning();
     if(running && !m_input.DeviceMoved())
@@ -146,7 +143,7 @@ void Recorder::KeepDevice()
         return;                         // not in a loop: at most one re-open per interval
     m_lastKeepMs = now;
 
-    std::string id = m_deviceChoice;
+    std::string id = choice();
     if(!running && m_failedOpens >= 2){
         id.clear();
         RAVAVA_WARN("recorder: the chosen microphone can't be opened, using the system default");
@@ -163,7 +160,6 @@ void Recorder::Stop()
     m_watchdog.Stop();      // first: it must not re-open the microphone while we are stopping
     m_deviceWanted = false;
     m_switcher.Cancel();    // a switch in progress finishes first, then nothing restarts the mic
-    m_switching = false;
     m_input.Stop();         // returns when the callback is guaranteed to be finished
     m_musicPlayer->Release();
     m_file.Close();

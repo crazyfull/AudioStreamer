@@ -18,6 +18,7 @@
 //
 //   Request(id, fn) : fn(id) runs on a worker thread. Requests that arrive while fn is running are merged: only the LAST
 //                     id is applied afterwards (moving through a combo box with the mouse wheel opens one device, not ten).
+//   Busy()          : a request is waiting or running (the GUI must not touch the device meanwhile).
 //   Cancel()        : drops a request that has not started yet and waits for the one that is running. After it returns no
 //                     fn is running and none will start. Call it before Stop() / Start() / destruction.
 // Thread-safe: Request / Cancel can be called from any thread (but not from fn itself).
@@ -55,6 +56,14 @@ public:
             old.join();
     }
 
+    // true from Request() until the worker has applied the last request: the device is being (re)opened, or is about to be.
+    // Unlike a flag set by fn itself it has no gap between Request() and the worker starting, nor between two merged requests.
+    bool Busy() const
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        return m_running || m_hasPending;
+    }
+
     void Cancel()
     {
         std::thread t;
@@ -87,7 +96,7 @@ private:
         }
     }
 
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     std::thread m_thread;
     std::string m_pending;
     Apply m_fn;
