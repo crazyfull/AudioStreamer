@@ -32,8 +32,10 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 set(OPUS_ROOT "" CACHE PATH "Opus install prefix for this ABI (include/opus, lib/libopus.a)")
 
-find_path(OPUS_INCLUDE_DIR opus.h HINTS "${OPUS_ROOT}/include/opus" "${OPUS_ROOT}/include" NO_DEFAULT_PATH)
-find_library(OPUS_LIBRARY NAMES libopus.a opus HINTS "${OPUS_ROOT}/lib" NO_DEFAULT_PATH)
+# NO_CMAKE_FIND_ROOT_PATH: the Android toolchain makes find_path / find_library look ONLY inside the NDK sysroot (cross-compiling), so a
+# folder outside it (our own Opus build) is never found without this, even with a correct HINTS path.
+find_path(OPUS_INCLUDE_DIR opus.h HINTS "${OPUS_ROOT}/include/opus" "${OPUS_ROOT}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_library(OPUS_LIBRARY NAMES libopus.a opus HINTS "${OPUS_ROOT}/lib" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 if(NOT OPUS_INCLUDE_DIR OR NOT OPUS_LIBRARY)
     message(FATAL_ERROR "Opus not found under OPUS_ROOT='${OPUS_ROOT}' (include: ${OPUS_INCLUDE_DIR}, lib: ${OPUS_LIBRARY})")
 endif()
