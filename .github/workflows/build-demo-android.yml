@@ -252,6 +252,7 @@ jobs:
                 -DANDROID_PACKAGE_DIR="$GITHUB_WORKSPACE/android-package" \
 				-DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
                 -DANDROID_TARGET_SDK=34 \
+				-DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
                 -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
                 -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
