@@ -127,7 +127,32 @@ jobs:
           (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
           ls -l "$name.zip"
           echo "NAME=$name" >> "$GITHUB_ENV"
-
+          
+          # self sign
+          - name: Build with CMake and macdeployqt
+                run: |
+                  mkdir build && cd build
+                  cmake -DCMAKE_BUILD_TYPE=Release ..
+                  cmake --build . --config Release
+                  # جمع‌آوری کتابخانه‌های Qt
+                  macdeployqt RavAva.app
+          
+              - name: Self-Sign Application
+                run: |
+                  # امضای Ad-hoc (خود-امضا) برای تمام کتابخانه‌ها و خود برنامه
+                  codesign --force --deep --sign - build/RavAva.app
+          
+              - name: Create DMG or ZIP
+                run: |
+                  cd build
+                  zip -r RavAva-macOS.zip RavAva.app
+          
+              - name: Upload Artifact
+                uses: actions/upload-artifact@v4
+                with:
+                  name: ravava-macos-selfsigned
+                  path: build/RavAva-macOS.zip
+                  
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
