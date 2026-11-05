@@ -137,7 +137,18 @@ jobs:
       - name: Remember the Android Qt
         run: |
           echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
-          ls "$QT_ROOT_DIR/bin" | head -20
+          ls -l "$QT_ROOT_DIR/bin" | head -20
+
+      # aqtinstall unpacks the tools of some Qt releases (6.4: qt-cmake, qmake, androiddeployqt ...) without the executable bit:
+      # "qt-cmake: Permission denied" (exit code 126). Both kits: every file in bin/ and libexec/ becomes executable.
+      - name: Make the Qt tools executable
+        run: |
+          for kit in "$QT_HOST_PATH" "$QT_ANDROID_PATH"; do
+            for d in bin libexec; do
+              [ -d "$kit/$d" ] && find "$kit/$d" -maxdepth 1 -type f -exec chmod +x {} +
+            done
+          done
+          ls -l "$QT_ANDROID_PATH/bin/qt-cmake"
 
       # ---------------------------------------------------------------- Opus (static)
       - name: Build Opus (static, ${{ matrix.abi }})
