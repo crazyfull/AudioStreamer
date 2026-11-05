@@ -5,6 +5,8 @@ on:
 
 env:
   OPUS_VERSION: "1.6.1"
+  WEBRTC_VERSION: "1.3"
+  MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 jobs:
   macos:
@@ -16,29 +18,25 @@ jobs:
           - arch: arm64
             runner: macos-latest
           - arch: x86_64
-            runner: macos-latest
+            runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     permissions:
-          contents: write
-      
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Check macOS SDK
         run: |
-          echo "== Xcode =="
-          xcodebuild -version
-          echo "== macOS SDK =="
-          xcrun --sdk macosx --show-sdk-version
-          echo "== SDK Path =="
-          xcrun --sdk macosx --show-sdk-path
-      
-      # Opus: built natively for this CPU
-      - name: Build Opus (static)
+          echo "== Xcode =="; xcodebuild -version
+          echo "== SDK =="; xcrun --sdk macosx --show-sdk-version
+          echo "== arch =="; uname -m
+
+      # ---------------------------------------------------------------- Opus 1.6.1 (static, this arch)
+      - name: Build Opus (static, ${{ matrix.arch }})
         run: |
           OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
-
           if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
                --connect-timeout 20 --max-time 180 \
                -o opus.tar.gz \
@@ -49,25 +47,98 @@ jobs:
                  -o opus.tar.gz \
                  "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
           fi
-
           tar xf opus.tar.gz
 
           cmake -S "opus-${OPUS_VERSION}" -B opus-build \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
               -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
               -DBUILD_SHARED_LIBS=OFF \
               -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
               -DOPUS_BUILD_PROGRAMS=OFF \
-              -DCMAKE_OSX_DEPLOYMENT_TARGET=14.4 \
               -DOPUS_BUILD_TESTING=OFF \
               -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
 
           cmake --build opus-build --parallel 4
           cmake --install opus-build
-
           lipo -info opus-install/lib/libopus.a
 
+      # ---------------------------------------------------------------- webrtc-audio-processing 1.3 (static, this arch)
+      - name: Cache webrtc-audio-processing
+        id: webrtc_cache
+        uses: actions/cache@v4
+        with:
+          path: webrtc-install
+          key: webrtc-${{ env.WEBRTC_VERSION }}-macos-${{ matrix.arch }}-dt${{ env.MACOSX_DEPLOYMENT_TARGET }}
+
+      - name: Build webrtc-audio-processing (static, ${{ matrix.arch }})
+        if: steps.webrtc_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          pip3 install meson ninja
+          WFILE="webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
+          mkdir -p webrtc-src
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+               --connect-timeout 20 --max-time 300 \
+               -o webrtc.tar.xz \
+               "https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/${WFILE}"; then
+            echo "Primary failed. Trying GitLab..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+                 --connect-timeout 20 --max-time 300 \
+                 -o webrtc.tar.xz \
+                 "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing/-/archive/v${WEBRTC_VERSION}/webrtc-audio-processing-v${WEBRTC_VERSION}.tar.gz"
+          fi
+          tar xf webrtc.tar.xz -C webrtc-src --strip-components=1
+
+          WORK="$GITHUB_WORKSPACE/webrtc-work"
+          OUT="$GITHUB_WORKSPACE/webrtc-install"
+          rm -rf "$WORK" "$OUT"
+          mkdir -p "$WORK" "$OUT/lib" "$OUT/include"
+
+          # native build for this runner arch (arm64 on macos-latest, x86_64 on macos-15-intel)
+          meson setup "$WORK/b" webrtc-src \
+              --buildtype=release \
+              --default-library=static \
+              -Dcpp_args="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}" \
+              -Dc_args="-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
+          meson compile -C "$WORK/b"
+
+          MAIN="$(find "$WORK/b" -name 'libwebrtc-audio-processing-1.a' | head -n1)"
+          [ -n "$MAIN" ] || { echo "libwebrtc-audio-processing-1.a not found"; find "$WORK/b" -name '*.a'; exit 1; }
+
+          {
+            echo "create $OUT/lib/libwebrtc_apm.a"
+            echo "addlib $MAIN"
+            find "$WORK/b/subprojects" -name '*.a' 2>/dev/null | sort | while read -r f; do echo "addlib $f"; done
+            echo "save"
+            echo "end"
+          } > "$WORK/merge.mri"
+          ar -M < "$WORK/merge.mri"
+          ranlib "$OUT/lib/libwebrtc_apm.a"
+
+          # headers
+          (cd webrtc-src/webrtc && find . -name '*.h' -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+          ABSL="$(find webrtc-src/subprojects -maxdepth 1 -type d -name 'abseil-cpp-*' | head -n1)"
+          [ -n "$ABSL" ] && (cd "$ABSL" && find absl \( -name '*.h' -o -name '*.inc' \) -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+
+          rm -rf "$WORK"
+          lipo -info "$OUT/lib/libwebrtc_apm.a"
+          ls -l "$OUT/lib"
+
+      - name: Is webrtc available?
+        id: webrtc
+        run: |
+          if [ -f webrtc-install/lib/libwebrtc_apm.a ]; then
+            echo "root=$GITHUB_WORKSPACE/webrtc-install" >> "$GITHUB_OUTPUT"
+            echo "status=ON" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=" >> "$GITHUB_OUTPUT"
+            echo "status=OFF" >> "$GITHUB_OUTPUT"
+            echo "::warning::webrtc not built for ${{ matrix.arch }}: no echo cancellation"
+          fi
+
+      # ---------------------------------------------------------------- Qt static
       - name: Install static Qt
         uses: AllanChain/install-qt-static@v6.12.0-1
 
@@ -76,7 +147,9 @@ jobs:
           qt-cmake -S build-demo/macos -B build-macos \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
-              -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install"
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
+              -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
+              -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
       - name: Build
         run: cmake --build build-macos --parallel 4
@@ -86,15 +159,20 @@ jobs:
         run: |
           app="build-macos/out/RavAva_Demo.app"
           exe="$app/Contents/MacOS/RavAva_Demo"
-          test -x "$exe" || { echo "RavAva_Demo.app was not generated"; find build-macos -name "*.app" -maxdepth 3; exit 1; }
+          test -x "$exe" || { echo "app missing"; find build-macos -name "*.app"; exit 1; }
+
           echo "== size =="; du -sh "$app"
-          echo "== architectures =="; lipo -info "$exe"
-          echo "== dynamic dependencies =="; otool -L "$exe"
-          if otool -L "$exe" | grep -i -E "Qt[A-Za-z0-9]*\.framework|libQt|libopus"; then
-            echo "Dynamic Qt / Opus dependency detected"; exit 1
+          echo "== arch =="; lipo -info "$exe"
+          lipo -info "$exe" | grep -q "${{ matrix.arch }}" || { echo "wrong arch"; exit 1; }
+
+          echo "== deps =="; otool -L "$exe"
+          if otool -L "$exe" | grep -i -E "Qt[A-Za-z0-9]*\.framework|libQt|libopus|libwebrtc"; then
+            echo "dynamic dependency detected"; exit 1
           fi
-          test -f "$app/Contents/Info.plist" && plutil -p "$app/Contents/Info.plist" | grep -q NSMicrophoneUsageDescription \
-            || { echo "NSMicrophoneUsageDescription missing in Info.plist"; exit 1; }
+
+          plutil -p "$app/Contents/Info.plist" | grep -q NSMicrophoneUsageDescription \
+            || { echo "NSMicrophoneUsageDescription missing"; exit 1; }
+
           echo "app=$app" >> "$GITHUB_OUTPUT"
 
       - name: Package and Sign
@@ -102,23 +180,24 @@ jobs:
           name="RavAva_Demo-macos-${{ matrix.arch }}-static"
           mkdir -p "dist/$name"
           cp -R "${{ steps.verify.outputs.app }}" "dist/$name/RavAva_Demo.app"
-          
-          # Ad-hoc Sign for static bundle
           codesign --force --deep -s - "dist/$name/RavAva_Demo.app"
-          
+          codesign --verify --deep --strict "dist/$name/RavAva_Demo.app"
+
           cat > "dist/$name/README.txt" <<TXT
           RavAva Demo - macOS ${{ matrix.arch }} STATIC
           --------------------------------------------
-          Qt: static 6.12     Opus: static ${OPUS_VERSION}     WebRTC: OFF
-          No Qt / Opus to install.
+          Qt: static 6.12
+          Opus: static ${OPUS_VERSION}
+          WebRTC echo cancellation: ${{ steps.webrtc.outputs.status }}
+          Deployment target: ${MACOSX_DEPLOYMENT_TARGET}
+          No Qt / Opus / WebRTC to install.
 
-          The app is not notarized. First launch: right click RavAva_Demo.app -> Open -> Open,
-          or in Terminal:  xattr -cr RavAva_Demo.app
-          Allow the microphone when macOS asks (System Settings -> Privacy & Security -> Microphone).
+          First launch: right-click -> Open, or: xattr -cr RavAva_Demo.app
+          Allow microphone in System Settings -> Privacy & Security -> Microphone.
           TXT
-          
+
           (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
-          ls -l "$name.zip"
+          ls -lh "$name.zip"
           echo "NAME=$name" >> "$GITHUB_ENV"
 
       - name: Upload artifact
@@ -143,21 +222,31 @@ jobs:
         run: |
           name="RavAva_Demo-macos-universal-static"
           mkdir -p work "dist/$name"
+
           for a in arm64 x86_64; do
-            ditto -x -k "parts/RavAva_Demo-macos-$a-static/RavAva_Demo-macos-$a-static.zip" "work/$a"
+            zip="parts/RavAva_Demo-macos-$a-static/RavAva_Demo-macos-$a-static.zip"
+            test -f "$zip" || { echo "missing $zip"; ls -R parts; exit 1; }
+            ditto -x -k "$zip" "work/$a"
           done
+
           cp -R "work/arm64/RavAva_Demo-macos-arm64-static/RavAva_Demo.app" "dist/$name/RavAva_Demo.app"
           lipo -create \
                "work/arm64/RavAva_Demo-macos-arm64-static/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" \
                "work/x86_64/RavAva_Demo-macos-x86_64-static/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" \
                -output "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo"
+
           lipo -info "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo"
-          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"       # the signature of the arm64 copy is void after lipo
+          lipo -info "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" | grep -q arm64
+          lipo -info "dist/$name/RavAva_Demo.app/Contents/MacOS/RavAva_Demo" | grep -q x86_64
+
+          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"
           codesign --verify --deep --strict "dist/$name/RavAva_Demo.app"
+
           cp "work/arm64/RavAva_Demo-macos-arm64-static/README.txt" "dist/$name/README.txt"
           sed -i '' 's/macOS arm64 STATIC/macOS universal (arm64 + x86_64) STATIC/' "dist/$name/README.txt"
+
           (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
-          ls -l "$name.zip"
+          ls -lh "$name.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
