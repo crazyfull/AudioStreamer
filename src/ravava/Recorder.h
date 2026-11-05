@@ -64,13 +64,17 @@ private:
     std::atomic<bool> m_micOn{true};          // SetMicEnabled(): the "talk" gate
     bool m_idle = false;                      // audio thread: this chunk has neither microphone nor music: nothing is encoded or sent
 
-    std::string m_deviceChoice;       // the device id the user chose (GUI thread)
+    // the chosen device id: written by the GUI thread (SetXDevice / Start) and read by the watchdog thread (KeepDevice),
+    // so it is only touched under its own mutex (a std::string read while another thread assigns it can crash)
+    std::string m_deviceChoice;
+    mutable std::mutex m_choiceMutex;
+    void setChoice(const std::string &id) { std::lock_guard<std::mutex> lk(m_choiceMutex); m_deviceChoice = id; }
+    std::string choice() const { std::lock_guard<std::mutex> lk(m_choiceMutex); return m_deviceChoice; }
     std::mutex m_keepMutex;           // KeepDevice() runs on the GUI thread AND on the watchdog
     std::atomic<bool> m_autoKeep{true};
     DeviceWatchdog m_watchdog;
     int64_t m_lastKeepMs = 0;         // GUI thread: when KeepDevice() last re-opened the device
     int m_keepIntervalMs = 3000;      // GUI thread
-    std::atomic<bool> m_switching{false};   // the device worker is busy
     std::atomic<int> m_failedOpens{0};      // consecutive failed (re)opens of the microphone
     std::atomic<bool> m_deviceWanted{false};  // recording is on (set by Start, cleared by Stop): SetInputDevice() re-opens the mic
     DeviceSwitcher m_switcher;        // moves the microphone to another device off the GUI thread

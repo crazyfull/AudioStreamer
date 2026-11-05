@@ -76,8 +76,26 @@ static bool stringToId(const std::string &s, ma_device_id &id)
     return true;
 }
 
-static std::vector<AudioDeviceInfo> listDevices(bool capture)
+// One lock for everything that opens, closes or enumerates sound devices. The backends (ALSA especially, also PulseAudio and
+// the Android JNI side) are not safe when a device is being opened / closed on the device worker while the GUI enumerates
+// the devices (which happens every time the user opens the device combo box) - that was a rare crash while switching.
+// The audio callbacks never take it, so ma_device_uninit() (which waits for the callback) can't deadlock on it.
+static std::mutex g_deviceMutex;
+
+static std::vector<AudioDeviceInfo> listDevices(bool capture, bool wait = false)
 {
+    // the GUI must not freeze behind a Bluetooth headset that is being opened (seconds): then the last list is shown again
+    static std::vector<AudioDeviceInfo> cache[2];
+    static std::mutex cacheMutex;
+    std::unique_lock<std::mutex> lk(g_deviceMutex, std::defer_lock);
+    if(wait)
+        lk.lock();                  // internal callers (a device is about to be opened) need the real, current list
+    else
+        lk.try_lock();
+    if(!lk.owns_lock()){
+        std::lock_guard<std::mutex> ck(cacheMutex);
+        return cache[capture ? 1 : 0];
+    }
     std::vector<AudioDeviceInfo> out;
     ma_context ctx;
     if(ma_context_init(nullptr, 0, nullptr, &ctx) != MA_SUCCESS)
@@ -96,6 +114,10 @@ static std::vector<AudioDeviceInfo> listDevices(bool capture)
         }
     }
     ma_context_uninit(&ctx);
+    {
+        std::lock_guard<std::mutex> ck(cacheMutex);
+        cache[capture ? 1 : 0] = out;
+    }
     return out;
 }
 
@@ -121,14 +143,15 @@ static std::vector<AudioDeviceInfo> listAny(bool capture)
 std::vector<AudioDeviceInfo> ListInputDevices()  { return listAny(true); }
 std::vector<AudioDeviceInfo> ListOutputDevices() { return listAny(false); }
 #else
-std::vector<AudioDeviceInfo> ListInputDevices()
+static std::vector<AudioDeviceInfo> realMicrophones(bool wait)
 {
-    std::vector<AudioDeviceInfo> all = listDevices(true), out;
+    std::vector<AudioDeviceInfo> all = listDevices(true, wait), out;
     for(AudioDeviceInfo &d : all)
         if(!isMonitorName(d.name))
             out.push_back(std::move(d));
     return out;
 }
+std::vector<AudioDeviceInfo> ListInputDevices() { return realMicrophones(false); }
 std::vector<AudioDeviceInfo> ListOutputDevices() { return listDevices(false); }
 #endif
 
@@ -213,7 +236,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
     if(!haveChosen){
         // "system default": make sure there is a real microphone, and never record a speaker monitor
-        const std::vector<AudioDeviceInfo> mics = ListInputDevices();
+        const std::vector<AudioDeviceInfo> mics = realMicrophones(true);
         if(mics.empty()){
             if(err) *err = "no microphone found (connect one and start again)";
             return false;
@@ -225,6 +248,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
             haveChosen = stringToId(mics.front().id, chosen);       // the default is a monitor: take the first real microphone
     }
 #endif
+    std::unique_lock<std::mutex> devLock(g_deviceMutex);
     if(haveChosen){
         cfg.capture.pDeviceID = &chosen;
         r = ma_device_init(nullptr, &cfg, &d->dev);
@@ -235,6 +259,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
         cfg.capture.pDeviceID = nullptr;
         r = ma_device_init(nullptr, &cfg, &d->dev);
     }
+    devLock.unlock();
     if(r != MA_SUCCESS){
         if(err) *err = std::string("capture device init failed: ") + ma_result_description(r);
 #ifdef RAVAVA_ANDROID
@@ -269,7 +294,10 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
 void AudioInput::Stop()
 {
     if(d->opened){
-        ma_device_uninit(&d->dev);      // stops the device and waits for the callback
+        {
+            std::lock_guard<std::mutex> lk(g_deviceMutex);
+            ma_device_uninit(&d->dev);  // stops the device and waits for the callback
+        }
         d->opened = false;
     }
     d->running = false;
@@ -420,6 +448,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
 #else
     haveChosen = !d->deviceId.empty() && stringToId(d->deviceId, chosen);
 #endif
+    std::unique_lock<std::mutex> devLock(g_deviceMutex);
     if(haveChosen){
         cfg.playback.pDeviceID = &chosen;
         r = ma_device_init(nullptr, &cfg, &d->dev);
@@ -430,6 +459,7 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
         cfg.playback.pDeviceID = nullptr;
         r = ma_device_init(nullptr, &cfg, &d->dev);
     }
+    devLock.unlock();
     if(r != MA_SUCCESS){
         if(err) *err = std::string("playback device init failed: ") + ma_result_description(r);
 #ifdef RAVAVA_ANDROID
@@ -464,7 +494,10 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
 void AudioOutput::Stop()
 {
     if(d->opened){
-        ma_device_uninit(&d->dev);
+        {
+            std::lock_guard<std::mutex> lk(g_deviceMutex);
+            ma_device_uninit(&d->dev);
+        }
         d->opened = false;
     }
     d->running = false;

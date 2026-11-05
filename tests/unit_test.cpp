@@ -226,6 +226,21 @@ static void testDeviceSwitcher()
         CHECK(applied.size() <= 2);                                                        // "b" and "c" were merged away
     }
     {
+        DeviceSwitcher sw;                                                                 // Busy(): no gap from Request() on
+        CHECK(!sw.Busy());
+        std::atomic<bool> release{false};
+        auto fn = [&](const std::string &){ while(!release) std::this_thread::sleep_for(std::chrono::milliseconds(1)); };
+        sw.Request("a", fn);
+        CHECK(sw.Busy());                                                                  // at once, before the worker even started
+        sw.Request("b", fn);
+        release = true;
+        for(int i = 0; i < 2000 && sw.Busy(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(!sw.Busy());                                                                 // the merged queue is done
+        sw.Request("c", fn);                                                               // and it can be used again
+        for(int i = 0; i < 2000 && sw.Busy(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(!sw.Busy());
+    }
+    {
         DeviceSwitcher sw;                                                                 // Cancel drops what has not started
         std::atomic<int> n{0};
         std::atomic<bool> release{false};
