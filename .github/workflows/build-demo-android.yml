@@ -1,0 +1,225 @@
+# RavAva Demo for Android: one APK per ABI -- arm64-v8a (64 bit ARM, almost every phone), armeabi-v7a (32 bit ARM, old phones),
+# x86_64 (emulator / Chromebook). To add 32 bit x86 too, add `- abi: x86` / `qt_arch: android_x86` to the matrix.
+# Opus is built from source (static); webrtc-audio-processing 1.3 (echo cancellation, noise suppression, AGC) is built from source
+# (static, libs/webrtc/build_android.sh). If that one fails for an ABI the APK is still built, WITHOUT echo cancellation (the job
+# summary says which). Run it from the Actions tab ("Build Demo Android" -> "Run workflow").
+#
+# Signing: an APK must be signed to install. With the repository secrets ANDROID_KEYSTORE_BASE64 (the keystore file, base64),
+# ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS it is signed with your key (updates install over the old version).
+# Without them a temporary debug-style key is made on every run (installs fine, but a new run's APK cannot update the old one:
+# uninstall first).
+name: Build Demo Android
+
+on:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: "6.12.0"
+  OPUS_VERSION: "1.6.1"
+  WEBRTC_VERSION: "1.3"
+  ANDROID_API: "28"
+  # Qt's documentation names the NDK each Qt release is built with; keep this in step with QT_VERSION
+  ANDROID_NDK_VERSION: "27.2.12479018"
+  ANDROID_BUILD_TOOLS: "34.0.0"
+
+jobs:
+  android:
+    name: Android ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            qt_arch: android_arm64_v8a
+          - abi: armeabi-v7a
+            qt_arch: android_armv7
+          - abi: x86_64
+            qt_arch: android_x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # ---------------------------------------------------------------- SDK / NDK
+      - name: Install Android NDK and build tools
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-34" "build-tools;${ANDROID_BUILD_TOOLS}"
+          echo "ANDROID_SDK_ROOT=$SDK"                                  >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK"                                      >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- Qt: the desktop kit (moc, rcc, androiddeployqt run on the host) + the Android kit of this ABI
+      - name: Install Qt (desktop host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          dir: ${{ runner.temp }}
+          cache: true
+
+      - name: Remember the host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for Android (${{ matrix.abi }})
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: android
+          arch: ${{ matrix.qt_arch }}
+          dir: ${{ runner.temp }}
+          cache: true
+
+      - name: Remember the Android Qt
+        run: |
+          echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+          ls "$QT_ROOT_DIR/bin" | head -20
+
+      # ---------------------------------------------------------------- Opus (static)
+      - name: Build Opus (static, ${{ matrix.abi }})
+        run: |
+          OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 180 \
+                -o opus.tar.gz "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
+            echo "Primary server failed. Trying mirror..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 180 \
+                -o opus.tar.gz "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+          fi
+          tar xf opus.tar.gz
+
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build \
+                -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI=${{ matrix.abi }} \
+                -DANDROID_PLATFORM=android-${ANDROID_API} \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DOPUS_BUILD_PROGRAMS=OFF \
+                -DOPUS_BUILD_TESTING=OFF \
+                -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+          cmake --build opus-build --parallel 4
+          cmake --install opus-build
+          ls -l opus-install/lib
+
+      # ---------------------------------------------------------------- webrtc-audio-processing (static, optional)
+      - name: Cache webrtc-audio-processing
+        id: webrtc_cache
+        uses: actions/cache@v4
+        with:
+          path: webrtc-install
+          key: webrtc-${{ env.WEBRTC_VERSION }}-android-${{ matrix.abi }}-api${{ env.ANDROID_API }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('libs/webrtc/build_android.sh') }}
+
+      - name: Build webrtc-audio-processing (static, ${{ matrix.abi }})
+        if: steps.webrtc_cache.outputs.cache-hit != 'true'
+        continue-on-error: true            # no echo cancellation is better than no APK
+        run: |
+          pip install meson ninja
+          WFILE="webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
+          mkdir -p webrtc-src
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 300 \
+                -o webrtc.tar.xz "https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/${WFILE}"; then
+            echo "Primary server failed. Trying GitLab..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 300 \
+                -o webrtc.tar.xz "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing/-/archive/v${WEBRTC_VERSION}/webrtc-audio-processing-v${WEBRTC_VERSION}.tar.gz"
+          fi
+          tar xf webrtc.tar.xz -C webrtc-src --strip-components=1
+          libs/webrtc/build_android.sh webrtc-src ${{ matrix.abi }} webrtc-install
+
+      - name: Is webrtc available?
+        id: webrtc
+        run: |
+          if [ -f webrtc-install/lib/libwebrtc_apm.a ]; then
+            echo "root=$GITHUB_WORKSPACE/webrtc-install" >> "$GITHUB_OUTPUT"
+            echo "status=ON" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=" >> "$GITHUB_OUTPUT"
+            echo "status=OFF (the webrtc build failed: see the step above)" >> "$GITHUB_OUTPUT"
+            echo "::warning::webrtc-audio-processing was not built for ${{ matrix.abi }}: the APK has no echo cancellation"
+          fi
+
+      # ---------------------------------------------------------------- signing key
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          KS="$RUNNER_TEMP/ravava.keystore"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            PASS="$KS_PASS"; ALIAS="$KS_ALIAS"
+            echo "Signing with the key from the repository secrets"
+          else
+            PASS="android"; ALIAS="androiddebugkey"
+            keytool -genkeypair -keystore "$KS" -storepass "$PASS" -keypass "$PASS" -alias "$ALIAS" \
+                    -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=RavAva Demo,O=RavAva,C=US"
+            echo "No signing secrets: signing with a temporary key (a new APK of another run cannot update this one)"
+          fi
+          echo "QT_ANDROID_KEYSTORE_PATH=$KS"         >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_ALIAS=$ALIAS"     >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_STORE_PASS=$PASS" >> "$GITHUB_ENV"
+          echo "QT_ANDROID_KEYSTORE_KEY_PASS=$PASS"   >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- build
+      - name: Configure
+        run: |
+          "$QT_ANDROID_PATH/bin/qt-cmake" -S build-demo/android -B build-android \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DQT_HOST_PATH="$QT_HOST_PATH" \
+                -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+                -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+                -DQT_ANDROID_SIGN_APK=ON \
+                -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
+                -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
+
+      - name: Build APK
+        run: cmake --build build-android --target apk --parallel 4
+
+      - name: Verify APK
+        id: verify
+        run: |
+          apk="$(find build-android -name '*.apk' | grep -i signed | head -n1)"
+          [ -n "$apk" ] || apk="$(find build-android -name '*.apk' | head -n1)"
+          [ -n "$apk" ] || { echo "no APK was generated"; find build-android -maxdepth 6 -type d -name outputs; exit 1; }
+          BT="$ANDROID_SDK_ROOT/build-tools/${ANDROID_BUILD_TOOLS}"
+          echo "== $apk =="; ls -l "$apk"
+          echo "== signature =="
+          "$BT/apksigner" verify --print-certs "$apk"
+          echo "== native code =="
+          unzip -l "$apk" | grep "lib/${{ matrix.abi }}/" | head -20
+          "$BT/aapt2" dump badging "$apk" | grep -E "^package|native-code|sdkVersion|targetSdkVersion|uses-permission" | head -30
+          "$BT/aapt2" dump badging "$apk" | grep -q "native-code: '${{ matrix.abi }}'" || { echo "the APK has no ${{ matrix.abi }} code"; exit 1; }
+          "$BT/aapt2" dump badging "$apk" | grep -q "android.permission.RECORD_AUDIO" || { echo "RECORD_AUDIO missing in the manifest"; exit 1; }
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp "${{ steps.verify.outputs.apk }}" "dist/RavAva_Demo-android-${{ matrix.abi }}.apk"
+          {
+            echo "### Android ${{ matrix.abi }}"
+            echo "- APK: RavAva_Demo-android-${{ matrix.abi }}.apk ($(du -h dist/*.apk | cut -f1))"
+            echo "- Qt ${QT_VERSION}, Opus ${OPUS_VERSION} (static), minSdk per Qt, targetSdk 34"
+            echo "- webrtc echo cancellation: ${{ steps.webrtc.outputs.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavAva_Demo-android-${{ matrix.abi }}
+          path: dist/RavAva_Demo-android-${{ matrix.abi }}.apk
+          retention-days: 30
+          if-no-files-found: error
