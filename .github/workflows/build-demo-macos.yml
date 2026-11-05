@@ -6,7 +6,7 @@ on:
 env:
   OPUS_VERSION: "1.6.1"
   WEBRTC_VERSION: "1.3"
-  MACOSX_DEPLOYMENT_TARGET: "13.0"
+  MACOSX_DEPLOYMENT_TARGET: "14.4"
 
 jobs:
   macos:
