@@ -3,8 +3,9 @@ name: Build Demo macOS (static)
 on:
   workflow_dispatch:
   push:
-      tags:
-        - 'v*'
+    branches:
+      - master  # Har vaght be master push konid ya dasti run konid kar mikonad
+
 env:
   OPUS_VERSION: "1.6.1"
 
@@ -129,7 +130,7 @@ jobs:
     needs: macos
     runs-on: macos-latest
     permissions:
-      contents: write   # تنظیم مجوز نوشتن برای ایجاد Release
+      contents: write  # Baraye ijad tag va release
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -164,10 +165,23 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # 1. Sakht va Push kardan-e yek Tag khodkar bar asas tarikh va saat
+      - name: Create Automatic Tag
+        id: tag
+        run: |
+          TAG_NAME="v1.0.$(date +%Y%m%d%H%M%S)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag $TAG_NAME
+          git push origin $TAG_NAME
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      # 2. Enteqal dadan file be Release ba hamoon Tag jadid
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             RavAva_Demo-macos-universal-static.zip
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: "RavAva Demo macOS Universal Release ${{ steps.tag.outputs.tag_name }}"
           generate_release_notes: true
