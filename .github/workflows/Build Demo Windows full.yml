@@ -1,4 +1,4 @@
-name: Build Demo Windows (static full)
+name: Build Demo Windows (static)
 
 on:
   workflow_dispatch:
@@ -146,12 +146,16 @@ jobs:
 
           Write-Host "========== OPUS =========="
           $opus = "libs/opus/win32/libopus_x64.lib"
-          if (!(Test-Path $opus)) { throw "Opus x64 library not found: $opus" }
+          if (!(Test-Path $opus)) {
+              throw "Opus x64 library not found: $opus"
+          }
           Write-Host "Found: $opus"
 
           Write-Host "========== WEBRTC =========="
           $webrtc = "libs/webrtc/win32/webrtc_apm_x64.lib"
-          if (!(Test-Path $webrtc)) { throw "WebRTC library not found: $webrtc" }
+          if (!(Test-Path $webrtc)) {
+              throw "WebRTC library not found: $webrtc"
+          }
           Write-Host "Found: $webrtc"
 
           Write-Host "========== QT VERSION =========="
@@ -164,12 +168,10 @@ jobs:
         shell: pwsh
         run: |
           qt-cmake `
-            -S . `
+            -S build-demo/windows `
             -B build-demo `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
-            -DRAVAVA_WITH_WEBRTC=ON `
-            -DRAVAVA_WEBRTC_ROOT="${{ github.workspace }}/libs/webrtc/win32"
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
           if ($LASTEXITCODE -ne 0) {
               throw "CMake configuration failed"
@@ -181,7 +183,10 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          cmake --build build-demo --config Release --parallel
+          cmake --build build-demo `
+            --config Release `
+            --parallel
+
           if ($LASTEXITCODE -ne 0) {
               throw "Build failed"
           }
@@ -203,13 +208,16 @@ jobs:
           }
 
           $file = Get-Item $exe
+
           Write-Host "========== EXECUTABLE =========="
           Write-Host "Path: $($file.FullName)"
           Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
 
           Write-Host "========== DLL DEPENDENCIES =========="
           $dump = & dumpbin /dependents $exe
-          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed" }
+          if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin failed"
+          }
           $dump | ForEach-Object { Write-Host $_ }
 
           if ($dump -match "Qt6(Core|Gui|Widgets|Network)\.dll") {
@@ -250,7 +258,8 @@ jobs:
               -DestinationPath "RavAva_Demo-windows-x64-static.zip" `
               -Force
 
-          Get-Item "RavAva_Demo-windows-x64-static.zip" | Format-List Name, Length
+          Get-Item "RavAva_Demo-windows-x64-static.zip" |
+              Format-List Name, Length
 
       # --------------------------------------------------
       # Upload
