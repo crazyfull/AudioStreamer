@@ -229,7 +229,7 @@ jobs:
             PASS="android"; ALIAS="androiddebugkey"
             keytool -genkeypair -keystore "$KS" -storepass "$PASS" -keypass "$PASS" -alias "$ALIAS" \
                     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=RavAva Demo,O=RavAva,C=US"
-            echo "No signing secrets: signing with a temporary key (a new APK of another run cannot update this one)"
+            echo "No signing secrets: signing with a temporary key (a new APK of another run cannot update the old one)"
           fi
           echo "QT_ANDROID_KEYSTORE_PATH=$KS"         >> "$GITHUB_ENV"
           echo "QT_ANDROID_KEYSTORE_ALIAS=$ALIAS"     >> "$GITHUB_ENV"
@@ -250,9 +250,8 @@ jobs:
                 -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
                 -DQT_ANDROID_SIGN_APK=ON \
                 -DANDROID_PACKAGE_DIR="$GITHUB_WORKSPACE/android-package" \
-				-DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
                 -DANDROID_TARGET_SDK=34 \
-				-DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
+                -DANDROID_PLATFORM=android-${ANDROID_PLATFORM_SDK} \
                 -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
                 -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
