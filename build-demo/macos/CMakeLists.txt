@@ -1,7 +1,8 @@
-# RavAva demo for macOS (a .app bundle), statically linked: Qt (static, from AllanChain/install-qt-static), Opus (static, built by the
-# workflow). Nothing has to be installed on the tester's Mac. Built per CPU (arm64 / x86_64); the workflow also joins them into a
-# universal app. The sources are in the repository root, so this file can live here:
-#   qt-cmake -S build-demo/macos -B build-macos -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DOPUS_ROOT=/path/to/opus-install
+# RavAva demo for macOS (a .app bundle), statically linked: Qt (static), Opus (static),
+# webrtc-audio-processing 1.3 optional (echo cancellation / NS / AGC).
+#   qt-cmake -S build-demo/macos -B build-macos \
+#     -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
+#     -DOPUS_ROOT=/path/to/opus-install [-DWEBRTC_ROOT=/path/to/webrtc-install]
 cmake_minimum_required(VERSION 3.21)
 
 project(RavAva_Demo
@@ -21,14 +22,10 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${REPO_ROOT}")
 
-# --------------------------------------------------
-# Qt (static)
-# --------------------------------------------------
-
 find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 # --------------------------------------------------
-# Opus (static): -DOPUS_ROOT=<install prefix with include/opus/opus.h and lib/libopus.a>
+# Opus (static): -DOPUS_ROOT=<prefix with include/opus/opus.h and lib/libopus.a>
 # --------------------------------------------------
 
 set(OPUS_ROOT "" CACHE PATH "Opus install prefix (include/opus, lib/libopus.a)")
@@ -46,7 +43,20 @@ if(NOT OPUS_INCLUDE_DIR OR NOT OPUS_LIBRARY)
 endif()
 
 # --------------------------------------------------
-# Sources (the same list as build-demo/windows)
+# webrtc-audio-processing 1.3 (optional): -DWEBRTC_ROOT=<install with lib/libwebrtc_apm.a + include/>
+# --------------------------------------------------
+
+set(WEBRTC_ROOT "" CACHE PATH "webrtc-audio-processing install (lib/libwebrtc_apm.a, include/)")
+set(RAVAVA_WEBRTC OFF)
+if(WEBRTC_ROOT AND EXISTS "${WEBRTC_ROOT}/lib/libwebrtc_apm.a"
+   AND EXISTS "${WEBRTC_ROOT}/include/modules/audio_processing/include/audio_processing.h")
+    set(RAVAVA_WEBRTC ON)
+elseif(WEBRTC_ROOT)
+    message(WARNING "WEBRTC_ROOT='${WEBRTC_ROOT}' incomplete: building WITHOUT echo cancellation")
+endif()
+
+# --------------------------------------------------
+# Sources
 # --------------------------------------------------
 
 set(RAVAVA_SOURCES
@@ -89,11 +99,6 @@ set(RAVAVA_HEADERS
     ${REPO_ROOT}/src/ravava/VoicePacket.h
 )
 
-# --------------------------------------------------
-# App bundle. Info.plist carries NSMicrophoneUsageDescription: without it macOS silently gives
-# the app no microphone (and never shows the permission dialog).
-# --------------------------------------------------
-
 qt_add_executable(RavAva_Demo MACOSX_BUNDLE
     ${RAVAVA_SOURCES}
     ${RAVAVA_HEADERS}
@@ -123,15 +128,20 @@ target_link_libraries(RavAva_Demo PRIVATE
     Qt6::Widgets
     Qt6::Network
     "${OPUS_LIBRARY}"
-    # used by miniaudio (Core Audio backend)
     "-framework CoreFoundation"
     "-framework CoreAudio"
     "-framework AudioToolbox"
     "-framework AudioUnit"
 )
 
+if(RAVAVA_WEBRTC)
+    target_compile_definitions(RavAva_Demo PRIVATE RAVAVA_WITH_WEBRTC)
+    target_include_directories(RavAva_Demo PRIVATE "${WEBRTC_ROOT}/include")
+    target_link_libraries(RavAva_Demo PRIVATE "${WEBRTC_ROOT}/lib/libwebrtc_apm.a")
+endif()
+
 message(STATUS "RavAva Demo (macOS) configuration:")
 message(STATUS "  Architectures: ${CMAKE_OSX_ARCHITECTURES}")
 message(STATUS "  Qt: static ${Qt6_VERSION}")
 message(STATUS "  Opus: ${OPUS_LIBRARY}")
-message(STATUS "  WebRTC: OFF")
+message(STATUS "  WebRTC (echo cancellation): ${RAVAVA_WEBRTC}")
