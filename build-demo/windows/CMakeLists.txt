@@ -8,9 +8,13 @@ project(RavAva_Demo
 )
 
 # --------------------------------------------------
+# Repo root (this file lives in build-demo/windows/)
+# --------------------------------------------------
+get_filename_component(RAVAVA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+
+# --------------------------------------------------
 # C / C++ standard
 # --------------------------------------------------
-
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -22,7 +26,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 set(CMAKE_AUTOUIC_SEARCH_PATHS
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${RAVAVA_ROOT}
 )
 
 # Static MSVC runtime: /MT
@@ -31,7 +35,6 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 # --------------------------------------------------
 # Qt
 # --------------------------------------------------
-
 find_package(Qt6 6.12 REQUIRED COMPONENTS
     Core
     Gui
@@ -42,9 +45,8 @@ find_package(Qt6 6.12 REQUIRED COMPONENTS
 # --------------------------------------------------
 # Opus
 # --------------------------------------------------
-
 set(OPUS_ROOT
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/opus/win32"
+    "${RAVAVA_ROOT}/libs/opus/win32"
 )
 
 set(OPUS_INCLUDE_DIR
@@ -56,95 +58,95 @@ set(OPUS_LIBRARY
 )
 
 if(NOT EXISTS "${OPUS_LIBRARY}")
-    message(FATAL_ERROR
-        "Opus x64 library not found: ${OPUS_LIBRARY}"
-    )
+    message(FATAL_ERROR "Opus x64 library not found: ${OPUS_LIBRARY}")
 endif()
 
 if(NOT EXISTS "${OPUS_INCLUDE_DIR}/opus.h")
-    message(FATAL_ERROR
-        "Opus headers not found: ${OPUS_INCLUDE_DIR}"
-    )
+    message(FATAL_ERROR "Opus headers not found: ${OPUS_INCLUDE_DIR}")
+endif()
+
+# --------------------------------------------------
+# WebRTC (optional, built in CI)
+# --------------------------------------------------
+set(WEBRTC_ROOT "${RAVAVA_ROOT}/libs/webrtc/win32")
+set(WEBRTC_LIB  "${WEBRTC_ROOT}/webrtc_apm_x64.lib")
+set(WEBRTC_INC  "${WEBRTC_ROOT}/include")
+
+set(RAVAVA_WITH_WEBRTC FALSE)
+if(EXISTS "${WEBRTC_LIB}" AND EXISTS "${WEBRTC_INC}/modules/audio_processing/include/audio_processing.h")
+    set(RAVAVA_WITH_WEBRTC TRUE)
+    message(STATUS "WebRTC found -> echo cancellation / NS / AGC enabled")
+else()
+    message(STATUS "WebRTC not found -> building without echo cancellation")
 endif()
 
 # --------------------------------------------------
 # Sources
 # --------------------------------------------------
-
 set(RAVAVA_SOURCES
-
-    main.cpp
-    mainwindow.cpp
-
-    miniaudio/miniaudio.c
-
-    src/ravava/AudioProcessor.cpp
-    src/ravava/AudioDevice.cpp
-    src/ravava/Player.cpp
-    src/ravava/MusicPlayer.cpp
-    src/ravava/ConferencePlayer.cpp
-    src/ravava/Recorder.cpp
-    src/ravava/JitterBuffer.cpp
-    src/ravava/net/PacketRouter.cpp
-    src/ravava/OpusCodec.cpp
+    ${RAVAVA_ROOT}/main.cpp
+    ${RAVAVA_ROOT}/mainwindow.cpp
+    ${RAVAVA_ROOT}/miniaudio/miniaudio.c
+    ${RAVAVA_ROOT}/src/ravava/AudioProcessor.cpp
+    ${RAVAVA_ROOT}/src/ravava/AudioDevice.cpp
+    ${RAVAVA_ROOT}/src/ravava/Player.cpp
+    ${RAVAVA_ROOT}/src/ravava/MusicPlayer.cpp
+    ${RAVAVA_ROOT}/src/ravava/ConferencePlayer.cpp
+    ${RAVAVA_ROOT}/src/ravava/Recorder.cpp
+    ${RAVAVA_ROOT}/src/ravava/JitterBuffer.cpp
+    ${RAVAVA_ROOT}/src/ravava/net/PacketRouter.cpp
+    ${RAVAVA_ROOT}/src/ravava/OpusCodec.cpp
 )
 
-# --------------------------------------------------
-# Headers
-# --------------------------------------------------
-
 set(RAVAVA_HEADERS
-
-    mainwindow.h
-
-    src/ravava/AudioConfig.h
-    src/ravava/AudioProcessor.h
-    src/ravava/AudioTypes.h
-    src/ravava/AudioDevice.h
-    src/ravava/BlockCutter.h
-    src/ravava/Player.h
-    src/ravava/MusicPlayer.h
-    src/ravava/ConferencePlayer.h
-    src/ravava/Recorder.h
-    src/ravava/DeviceWatchdog.h
-    src/ravava/GainRamp.h
-    src/ravava/JitterBuffer.h
-    src/ravava/LevelMeter.h
-    src/ravava/net/Packet.h
-    src/ravava/net/PacketRouter.h
-    src/ravava/OpusCodec.h
-    src/ravava/PacketQueue.h
-    src/ravava/VoicePacket.h
+    ${RAVAVA_ROOT}/mainwindow.h
+    ${RAVAVA_ROOT}/src/ravava/AudioConfig.h
+    ${RAVAVA_ROOT}/src/ravava/AudioProcessor.h
+    ${RAVAVA_ROOT}/src/ravava/AudioTypes.h
+    ${RAVAVA_ROOT}/src/ravava/AudioDevice.h
+    ${RAVAVA_ROOT}/src/ravava/BlockCutter.h
+    ${RAVAVA_ROOT}/src/ravava/Player.h
+    ${RAVAVA_ROOT}/src/ravava/MusicPlayer.h
+    ${RAVAVA_ROOT}/src/ravava/ConferencePlayer.h
+    ${RAVAVA_ROOT}/src/ravava/Recorder.h
+    ${RAVAVA_ROOT}/src/ravava/DeviceWatchdog.h
+    ${RAVAVA_ROOT}/src/ravava/GainRamp.h
+    ${RAVAVA_ROOT}/src/ravava/JitterBuffer.h
+    ${RAVAVA_ROOT}/src/ravava/LevelMeter.h
+    ${RAVAVA_ROOT}/src/ravava/net/Packet.h
+    ${RAVAVA_ROOT}/src/ravava/net/PacketRouter.h
+    ${RAVAVA_ROOT}/src/ravava/OpusCodec.h
+    ${RAVAVA_ROOT}/src/ravava/PacketQueue.h
+    ${RAVAVA_ROOT}/src/ravava/VoicePacket.h
 )
 
 # --------------------------------------------------
 # Qt executable
 # --------------------------------------------------
-
 qt_add_executable(RavAva_Demo WIN32
-
     ${RAVAVA_SOURCES}
     ${RAVAVA_HEADERS}
-
-    mainwindow.ui
-    resource.qrc
+    ${RAVAVA_ROOT}/mainwindow.ui
+    ${RAVAVA_ROOT}/resource.qrc
 )
 
 target_include_directories(RavAva_Demo PRIVATE
-
-    "${CMAKE_CURRENT_SOURCE_DIR}/miniaudio"
+    "${RAVAVA_ROOT}/miniaudio"
+    "${RAVAVA_ROOT}/src"
     "${OPUS_INCLUDE_DIR}"
 )
 
-target_link_libraries(RavAva_Demo PRIVATE
+if(RAVAVA_WITH_WEBRTC)
+    target_include_directories(RavAva_Demo PRIVATE "${WEBRTC_INC}")
+    target_compile_definitions(RavAva_Demo PRIVATE RAVAVA_WITH_WEBRTC)
+endif()
 
+target_link_libraries(RavAva_Demo PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
     Qt6::Network
-
     "${OPUS_LIBRARY}"
-
     # Windows audio dependencies used by miniaudio
     ole32
     uuid
@@ -152,35 +154,32 @@ target_link_libraries(RavAva_Demo PRIVATE
     avrt
 )
 
+if(RAVAVA_WITH_WEBRTC)
+    target_link_libraries(RavAva_Demo PRIVATE
+        "${WEBRTC_LIB}"
+        winmm
+        dbghelp
+        advapi32
+    )
+endif()
+
 # --------------------------------------------------
 # Compiler settings
 # --------------------------------------------------
-
 if(MSVC)
-
-    target_compile_options(RavAva_Demo PRIVATE
-        /utf-8
-    )
-
+    target_compile_options(RavAva_Demo PRIVATE /utf-8)
     set_property(TARGET RavAva_Demo PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded"
     )
-
 endif()
 
 # --------------------------------------------------
 # Output
 # --------------------------------------------------
-
 set_target_properties(RavAva_Demo PROPERTIES
-
     OUTPUT_NAME "RavAva_Demo"
-
-    RUNTIME_OUTPUT_DIRECTORY
-        "${CMAKE_BINARY_DIR}/out"
-
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE
-        "${CMAKE_BINARY_DIR}/out"
+    RUNTIME_OUTPUT_DIRECTORY        "${CMAKE_BINARY_DIR}/out"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/out"
 )
 
 message(STATUS "RavAva Demo configuration:")
@@ -188,4 +187,8 @@ message(STATUS "  Architecture: Windows x64")
 message(STATUS "  Qt: Static Qt 6.12")
 message(STATUS "  Opus: Static x64")
 message(STATUS "  CRT: /MT")
-message(STATUS "  WebRTC: OFF")
+if(RAVAVA_WITH_WEBRTC)
+    message(STATUS "  WebRTC: ON")
+else()
+    message(STATUS "  WebRTC: OFF")
+endif()
