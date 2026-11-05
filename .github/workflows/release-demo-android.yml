@@ -13,7 +13,7 @@
 # ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS it is signed with your key (updates install over the old version).
 # Without them a temporary debug-style key is made on every run (installs fine, but a new run's APK cannot update the old one:
 # uninstall first).
-name: Build Demo Android
+name: release Demo Android
 
 on:
   workflow_dispatch:
