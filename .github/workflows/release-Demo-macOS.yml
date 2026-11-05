@@ -298,8 +298,25 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List files
-        run: find dist -type f -ls
+      - name: Collect zip files
+        id: zips
+        run: |
+          echo "=== raw tree ==="
+          find dist -type f -print | sort
+
+          mkdir -p upload
+          # هر zip را از هر عمقی به upload/ بیاور
+          find dist -type f -name 'RavAva_Demo-macos-*.zip' -exec cp -v {} upload/ \;
+
+          echo "=== upload/ ==="
+          ls -lh upload/
+
+          count=$(ls upload/*.zip 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$count" -lt 1 ]; then
+            echo "No zip files found to upload"
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
