@@ -1,9 +1,133 @@
-universal:
+name: Build Demo macOS (static)
+
+on:
+  workflow_dispatch:
+
+env:
+  OPUS_VERSION: "1.6.1"
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x86_64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Check macOS SDK
+        run: |
+          echo "== Xcode =="
+          xcodebuild -version
+          echo "== macOS SDK =="
+          xcrun --sdk macosx --show-sdk-version
+          echo "== SDK Path =="
+          xcrun --sdk macosx --show-sdk-path
+      
+      - name: Build Opus (static)
+        run: |
+          OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
+
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+               --connect-timeout 20 --max-time 180 \
+               -o opus.tar.gz \
+               "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
+            echo "Primary server failed. Trying mirror..."
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+                 --connect-timeout 20 --max-time 180 \
+                 -o opus.tar.gz \
+                 "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+          fi
+
+          tar xf opus.tar.gz
+
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DOPUS_BUILD_PROGRAMS=OFF \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=14.4 \
+              -DOPUS_BUILD_TESTING=OFF \
+              -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+
+          cmake --build opus-build --parallel 4
+          cmake --install opus-build
+
+          lipo -info opus-install/lib/libopus.a
+
+      - name: Install static Qt
+        uses: AllanChain/install-qt-static@v6.12.0-1
+
+      - name: Configure
+        run: |
+          qt-cmake -S build-demo/macos -B build-macos \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install"
+
+      - name: Build
+        run: cmake --build build-macos --parallel 4
+
+      - name: Verify app
+        id: verify
+        run: |
+          app="build-macos/out/RavAva_Demo.app"
+          exe="$app/Contents/MacOS/RavAva_Demo"
+          test -x "$exe" || { echo "RavAva_Demo.app was not generated"; find build-macos -name "*.app" -maxdepth 3; exit 1; }
+          echo "== size =="; du -sh "$app"
+          echo "== architectures =="; lipo -info "$exe"
+          echo "== dynamic dependencies =="; otool -L "$exe"
+          if otool -L "$exe" | grep -i -E "Qt[A-Za-z0-9]*\.framework|libQt|libopus"; then
+            echo "Dynamic Qt / Opus dependency detected"; exit 1
+          fi
+          test -f "$app/Contents/Info.plist" && plutil -p "$app/Contents/Info.plist" | grep -q NSMicrophoneUsageDescription \
+            || { echo "NSMicrophoneUsageDescription missing in Info.plist"; exit 1; }
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+
+      - name: Package and Sign
+        run: |
+          name="RavAva_Demo-macos-${{ matrix.arch }}-static"
+          mkdir -p "dist/$name"
+          cp -R "${{ steps.verify.outputs.app }}" "dist/$name/RavAva_Demo.app"
+          codesign --force --deep -s - "dist/$name/RavAva_Demo.app"
+          cat > "dist/$name/README.txt" <<TXT
+          RavAva Demo - macOS ${{ matrix.arch }} STATIC
+          --------------------------------------------
+          Qt: static 6.12     Opus: static ${OPUS_VERSION}     WebRTC: OFF
+          No Qt / Opus to install.
+
+          The app is not notarized. First launch: right click RavAva_Demo.app -> Open -> Open,
+          or in Terminal:  xattr -cr RavAva_Demo.app
+          Allow the microphone when macOS asks (System Settings -> Privacy & Security -> Microphone).
+          TXT
+          (cd dist && ditto -c -k --keepParent "$name" "../$name.zip")
+          ls -l "$name.zip"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.zip
+          retention-days: 30
+          if-no-files-found: error
+
+  universal:
     name: macOS universal
     needs: macos
     runs-on: macos-latest
     permissions:
-      contents: write  # اجازه دسترسی برای ساخت Release و آپلود فایل
+      contents: write   # تنظیم مجوز نوشتن برای ایجاد Release
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -38,14 +162,10 @@ universal:
           retention-days: 30
           if-no-files-found: error
 
-      # -------------------------------------------------------------
-      # بخش جدید: انتشار خودکار فایل‌ها در بخش GitHub Releases
-      # -------------------------------------------------------------
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') # فقط وقتی تگ (Tag) ثبت شد اجرا شود
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             RavAva_Demo-macos-universal-static.zip
-            # اگر فایل‌های arm64 و x86_64 را هم خواستید می‌توانید اینجا اضافه کنید
           generate_release_notes: true
