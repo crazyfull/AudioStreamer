@@ -371,6 +371,9 @@ cd build && ctest
   Uses communication mode (`MODE_IN_COMMUNICATION`).  
   Supports speaker, earpiece, wired, USB, and Bluetooth headsets.  
   Bluetooth mic + phone speaker simultaneously is not supported.
+  Oldest Android: the library itself builds for API 23 (Android 6.0, `-DANDROID_PLATFORM=android-23`; miniaudio then uses OpenSL ES, AAudio needs 8.0+).
+  The Qt demo APK runs on Android 6.0+ only when built with Qt 6.4 (the last Qt 6 with API 23: Qt 6.5 needs Android 8, Qt 6.8+ Android 9):
+  the workflow `build-demo-android.yml`, flavor `android6` (default) does that, flavor `modern` uses the newest Qt (Android 9+).
 
 - Real-time rule: no allocation, no shared locks, no I/O on the audio thread.
 

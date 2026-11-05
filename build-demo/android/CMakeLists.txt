@@ -24,7 +24,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${REPO_ROOT}")
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 # --------------------------------------------------
 # Opus (static, for this ABI): -DOPUS_ROOT=<prefix with include/opus/opus.h and lib/libopus.a>
@@ -131,9 +131,14 @@ endif()
 # APK: the manifest (permissions, the foreground service) and the Java service live in android/
 # --------------------------------------------------
 
+# The package folder (AndroidManifest.xml + Java) can be generated for the Qt in use: see make_android_package.py (the manifest of
+# android/ is written for a recent Qt; Qt 6.4, needed for Android 6, has other mandatory entries).
+set(ANDROID_PACKAGE_DIR "${REPO_ROOT}/android" CACHE PATH "folder with AndroidManifest.xml and src/ (Java)")
+set(ANDROID_TARGET_SDK "34" CACHE STRING "targetSdkVersion")
+
 set_target_properties(RavAva_Demo PROPERTIES
-    QT_ANDROID_PACKAGE_SOURCE_DIR "${REPO_ROOT}/android"
-    QT_ANDROID_TARGET_SDK_VERSION 34
+    QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_PACKAGE_DIR}"
+    QT_ANDROID_TARGET_SDK_VERSION "${ANDROID_TARGET_SDK}"
     QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
     QT_ANDROID_VERSION_CODE 1
 )
