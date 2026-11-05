@@ -2,7 +2,9 @@ name: Build Demo macOS (static)
 
 on:
   workflow_dispatch:
-
+  push:
+      tags:
+        - 'v*'
 env:
   OPUS_VERSION: "1.6.1"
 
