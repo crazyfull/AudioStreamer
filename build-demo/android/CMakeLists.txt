@@ -24,7 +24,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${REPO_ROOT}")
 
-find_package(Qt6 6.12 REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 # --------------------------------------------------
 # Opus (static, for this ABI): -DOPUS_ROOT=<prefix with include/opus/opus.h and lib/libopus.a>

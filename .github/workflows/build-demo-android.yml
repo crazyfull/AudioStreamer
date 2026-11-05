@@ -14,13 +14,14 @@ on:
   workflow_dispatch:
 
 env:
-  QT_VERSION: "6.12.0"
+  # QT_VERSION is chosen by the "Pick the Qt version" step: the newest version that has BOTH a desktop kit (host tools) and an Android kit
   OPUS_VERSION: "1.6.1"
   WEBRTC_VERSION: "1.3"
   ANDROID_API: "28"
-  # Qt's documentation names the NDK each Qt release is built with; keep this in step with QT_VERSION
+  # Qt's documentation (Qt for Android Prerequisites, Qt 6.12): NDK 27.2.12479018, JDK 21+, platform android-36, build-tools 36.0.0
   ANDROID_NDK_VERSION: "27.2.12479018"
-  ANDROID_BUILD_TOOLS: "34.0.0"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  ANDROID_PLATFORM_SDK: "36"
 
 jobs:
   android:
@@ -41,28 +42,53 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # ---------------------------------------------------------------- SDK / NDK
       - name: Install Android NDK and build tools
         run: |
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-34" "build-tools;${ANDROID_BUILD_TOOLS}"
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-${ANDROID_PLATFORM_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
           echo "ANDROID_SDK_ROOT=$SDK"                                  >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK"                                      >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK/ndk/${ANDROID_NDK_VERSION}"       >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- Qt version
+      # The Android kit and the host (desktop) kit must be the SAME version. aqtinstall (the downloader behind install-qt-action) can only
+      # install what the Qt servers list, and a brand new Qt release may have no Android kit there yet, so the newest version that has both
+      # is used instead of a fixed one. The lists are printed to the log.
+      - name: Pick the Qt version
+        run: |
+          python3 -m pip install --user --upgrade "aqtinstall>=3.3.0"
+          python3 -m aqt version
+          ANDROID_LIST="$(python3 -m aqt list-qt linux android --spec ">=6.8" 2>&1 || true)"
+          DESKTOP_LIST="$(python3 -m aqt list-qt linux desktop --spec ">=6.8" 2>&1 || true)"
+          echo "Android kits: $ANDROID_LIST"
+          echo "Desktop kits: $DESKTOP_LIST"
+          PICK=""
+          for v in $(echo "$ANDROID_LIST" | tr ' ' '\n' | grep -E '^6\.[0-9]+\.[0-9]+$' | sort -V -r); do
+            echo "$DESKTOP_LIST" | tr ' ' '\n' | grep -qx "$v" || continue
+            ARCHS="$(python3 -m aqt list-qt linux android --arch "$v" 2>&1 || true)"
+            echo "  $v android kits: $ARCHS"
+            echo "$ARCHS" | grep -q "${{ matrix.qt_arch }}" || continue
+            PICK="$v"; break
+          done
+          [ -n "$PICK" ] || { echo "::error::no Qt version with an Android kit (${{ matrix.qt_arch }}) and a desktop kit was found"; exit 1; }
+          echo "Using Qt $PICK"
+          echo "QT_VERSION=$PICK" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------------- Qt: the desktop kit (moc, rcc, androiddeployqt run on the host) + the Android kit of this ABI
       - name: Install Qt (desktop host tools)
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
           host: linux
           target: desktop
           arch: linux_gcc_64
@@ -76,6 +102,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
           host: linux
           target: android
           arch: ${{ matrix.qt_arch }}
