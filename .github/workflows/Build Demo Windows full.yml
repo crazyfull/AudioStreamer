@@ -76,18 +76,31 @@ jobs:
           set LIST=%WORK%\libs.txt
           if exist "%LIST%" del "%LIST%"
 
-          for /r "%WORK%\release" %%f in (*.lib) do (
-              echo %%f| findstr /i /l /c:"\subprojects\" >nul && echo "%%f">>"%LIST%"
-              echo %%f| findstr /i /l /c:"\webrtc-audio-processing-1.lib" >nul && echo "%%f">>"%LIST%"
+          REM Meson on Windows produces .a files
+          for /r "%WORK%\release" %%f in (*.a *.lib) do (
+              echo %%f| findstr /i /c:"\subprojects\" >nul && (
+                  echo "%%f">>"%LIST%"
+              )
+              echo %%f| findstr /i /c:"webrtc-audio-processing-1" >nul && (
+                  echo "%%f">>"%LIST%"
+              )
           )
 
           if not exist "%LIST%" (
-              echo ERROR: no .lib files found
+              echo ERROR: no library files found
+              echo Looking in: %WORK%\release
+              dir /s /b "%WORK%\release\*.a" "%WORK%\release\*.lib"
               exit /b 1
           )
 
+          echo Libraries to combine:
+          type "%LIST%"
+
           lib /nologo /OUT:"%OUT%\webrtc_apm_x64.lib" @"%LIST%"
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 (
+              echo ERROR: lib.exe failed
+              exit /b 1
+          )
 
           echo ========== Copying headers ==========
           robocopy "%SRC%\webrtc" "%OUT%\include" *.h /S /NFL /NDL /NJH /NJS /NP >nul
