@@ -1,5 +1,5 @@
-# Linux demo: Qt shared (official kits), Opus + webrtc-audio-processing 1.3 static.
-# Architectures: x86_64, arm64.
+# RavAva Demo Linux: Qt shared (official kits), Opus + webrtc-audio-processing 1.3 static.
+# Architectures: x86_64, arm64
 # Note: Qt 6 has no official Linux desktop kit for 32-bit x86 (i686).
 name: release Demo Linux
 
@@ -30,14 +30,12 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
+            qt_host: linux
             qt_arch: linux_gcc_64
-            # older Qt used gcc_64; install-qt-action accepts both names depending on version
-            qt_arch_alt: gcc_64
           - arch: arm64
             runner: ubuntu-24.04-arm
+            qt_host: linux_arm64
             qt_arch: linux_gcc_arm64
-            qt_arch_alt: gcc_arm64
-          # x86 (i686): no official Qt 6 desktop kit on Linux — not included
 
     permissions:
       contents: write
@@ -63,23 +61,9 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           aqtversion: ">=3.3.0"
-          host: linux
+          host: ${{ matrix.qt_host }}
           target: desktop
           arch: ${{ matrix.qt_arch }}
-          dir: ${{ runner.temp }}
-          cache: true
-        continue-on-error: true
-        id: qt_main
-
-      - name: Install Qt (fallback arch name)
-        if: steps.qt_main.outcome == 'failure'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          aqtversion: ">=3.3.0"
-          host: linux
-          target: desktop
-          arch: ${{ matrix.qt_arch_alt }}
           dir: ${{ runner.temp }}
           cache: true
 
@@ -143,7 +127,7 @@ jobs:
           meson compile -C "$WORK/b"
 
           MAIN="$(find "$WORK/b" -name 'libwebrtc-audio-processing-1.a' | head -n1)"
-          [ -n "$MAIN" ] || { echo "lib not found"; find "$WORK/b" -name '*.a'; exit 1; }
+          [ -n "$MAIN" ] || { echo "libwebrtc-audio-processing-1.a not found"; find "$WORK/b" -name '*.a'; exit 1; }
 
           {
             echo "create $OUT/lib/libwebrtc_apm.a"
@@ -171,6 +155,7 @@ jobs:
           else
             echo "root=" >> "$GITHUB_OUTPUT"
             echo "status=OFF" >> "$GITHUB_OUTPUT"
+            echo "::warning::webrtc not built for ${{ matrix.arch }}: no echo cancellation"
           fi
 
       - name: Configure
@@ -187,11 +172,10 @@ jobs:
         id: verify
         run: |
           exe="build-linux/out/RavAva_Demo"
-          test -x "$exe" || { find build-linux -type f -name 'RavAva_Demo*'; exit 1; }
+          test -x "$exe" || { echo "binary missing"; find build-linux -type f -name 'RavAva_Demo*'; exit 1; }
           echo "== size =="; ls -lh "$exe"
           echo "== file =="; file "$exe"
-          echo "== ldd (Qt shared expected) =="; ldd "$exe" | head -40
-          # Opus / webrtc must not be dynamic .so from system
+          echo "== ldd =="; ldd "$exe" | head -40
           if ldd "$exe" | grep -iE 'libopus\.so|libwebrtc'; then
             echo "unexpected dynamic opus/webrtc"; exit 1
           fi
@@ -207,14 +191,14 @@ jobs:
           cat > "dist/$name/README.txt" <<TXT
           RavAva Demo - Linux ${{ matrix.arch }}
           --------------------------------------
-          Qt: ${QT_VERSION} (shared — install matching Qt libs or use system packages)
+          Qt: ${QT_VERSION} (shared — install matching Qt libs or set LD_LIBRARY_PATH)
           Opus: static ${OPUS_VERSION}
           WebRTC echo cancellation: ${{ steps.webrtc.outputs.status }}
 
           Run:
             ./RavAva_Demo
 
-          If Qt libs are missing, install Qt ${QT_VERSION} or set LD_LIBRARY_PATH to the Qt lib dir.
+          If Qt libs are missing, install Qt ${QT_VERSION} or point LD_LIBRARY_PATH at the Qt lib dir.
           TXT
 
           (cd dist && tar -czf "../$name.tar.gz" "$name")
