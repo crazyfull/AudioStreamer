@@ -14,4 +14,4 @@ Opus inside, no echo cancellation). It proves the library compiles and links; th
 
 ## Not there yet
 - Echo cancellation: webrtc is not built for iOS. Use a headset, or add the system voice-processing unit later.
-- Interruptions (a phone call, Siri) are not handled: after one, `Recorder::KeepDevice()` / `Player::KeepDevice()` reopen the devices.
+- Interruptions (a phone call, Siri) are not handled: the stall detection that reopens a dead stream exists only on Android, so after one the app must call `Stop()` and `Start()` again.
