@@ -1,0 +1,51 @@
+# Linux checks for the library (no sound card needed):
+#  - package: install libRavAva, then build ci/consumer against the INSTALLED copy (find_package(RavAva))
+#  - tsan:    the real-time tests under ThreadSanitizer, to catch data races (device switching, watchdog, audio thread)
+name: CI Linux
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/ravava/**'
+      - 'miniaudio/**'
+      - 'tests/**'
+      - 'ci/**'
+      - '.github/workflows/ci-linux.yml'
+  pull_request:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libopus-dev libasound2-dev
+      - name: Install libRavAva
+        run: |
+          cmake -S src/ravava -B build -DCMAKE_BUILD_TYPE=Release -DRAVAVA_WITH_WEBRTC=OFF -DCMAKE_INSTALL_PREFIX="$PWD/prefix"
+          cmake --build build -j 4
+          cmake --install build
+          ls prefix/include/ravava | head -40
+      - name: Build and run the consumer project
+        run: |
+          cmake -S ci/consumer -B build-consumer -DCMAKE_PREFIX_PATH="$PWD/prefix"
+          cmake --build build-consumer
+          ./build-consumer/consumer
+
+  tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libopus-dev libasound2-dev
+      - name: Build the tests with ThreadSanitizer
+        run: |
+          cmake -S src/ravava -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRAVAVA_BUILD_TESTS=ON -DRAVAVA_WITH_WEBRTC=OFF \
+                -DCMAKE_CXX_FLAGS="-fsanitize=thread -O1 -g" -DCMAKE_C_FLAGS="-fsanitize=thread -O1 -g" \
+                -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          cmake --build build-tsan -j 4 --target unit_test volume_test format_test mic_gain_test conference_test music_monitor_test
+      - name: Run them (any race = failure)
+        run: |
+          cd build-tsan
+          # a race report makes the process exit with 66; the long network simulations are left out (minutes under TSan)
+          TSAN_OPTIONS="halt_on_error=0 exitcode=66" ctest --output-on-failure --repeat until-pass:2 \
+              -R "^(unit_test|volume_test|format_test|mic_gain_test|conference_test|music_monitor_test)$"

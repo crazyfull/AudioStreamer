@@ -232,6 +232,7 @@ set_target_properties(RavAva PROPERTIES
 # The headers that are copied into <build>/include/ravava (and installed): "#include <ravava/Player.h>".
 # The sources use relative includes, so the same tree also works for them.
 set(RAVAVA_STAGE_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/include")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in" "${RAVAVA_STAGE_INCLUDE}/ravava/Version.h" @ONLY)
 set(_stage_cmds "")
 set(_stage_outputs "")
 foreach(h ${RAVAVA_PUBLIC_HEADERS} ${RAVAVA_NET_HEADERS} ${RAVAVA_PLATFORM_HEADERS})
