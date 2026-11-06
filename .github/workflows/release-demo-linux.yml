@@ -1,6 +1,6 @@
 # RavAva Demo Linux — AppImage (Qt bundled)
-# Build inside Ubuntu 20.04 so glibc ≈ 2.31 (runs on 20.04+).
-# x86_64 + arm64. No 32-bit x86 (Qt 6 has no kit).
+# Build inside Ubuntu 20.04 (glibc 2.31) → runs on Ubuntu 20.04+
+# Arch: x86_64, arm64
 name: release Demo Linux
 
 on:
@@ -29,8 +29,8 @@ jobs:
       image: ubuntu:20.04
       options: --privileged
     defaults:
-          run:
-            shell: bash
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -51,10 +51,12 @@ jobs:
 
     steps:
       - name: Install OS packages (Ubuntu 20.04)
+        shell: bash
         run: |
+          set -eu
           apt-get update
           apt-get install -y \
-            sudo curl ca-certificates gnupg software-properties-common \
+            bash sudo curl ca-certificates gnupg \
             build-essential cmake ninja-build pkg-config \
             python3 python3-pip python3-setuptools python3-wheel \
             git file unzip zip \
@@ -63,18 +65,16 @@ jobs:
             libxcb-shape0 libxcb-xinerama0 libxcb-xfixes0 libxcb-randr0 \
             libdbus-1-dev libfontconfig1-dev libfreetype6-dev \
             libssl-dev libfuse2
-
-          # Ubuntu 20.04 has no libxcb-cursor package in default repos on some images;
-          # ignore if missing (Qt may still run with xcb without cursor package at build time)
-          apt-get install -y libxcb-cursor0 2>/dev/null || true
+          apt-get install -y libxcb-cursor0 || true
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt ${{ env.QT_VERSION }} via aqt (container Python)
+      - name: Install Qt ${{ env.QT_VERSION }} via aqt
+        shell: bash
         run: |
-          set -euo pipefail
-          python3 -m pip install --upgrade pip
+          set -eu
+          python3 -m pip install --upgrade "pip<25" "setuptools<70"
           python3 -m pip install "aqtinstall>=3.3.0"
 
           QT_DIR="${RUNNER_TEMP}/Qt"
@@ -84,9 +84,12 @@ jobs:
             "${{ matrix.qt_host }}" desktop "${QT_VERSION}" "${{ matrix.qt_arch }}" \
             --outputdir "$QT_DIR"
 
-          # مسیر نصب: $QT_DIR/$QT_VERSION/$qt_arch
-          ROOT="$(find "$QT_DIR" -type f -path '*/bin/qmake' | head -n1 | xargs dirname | xargs dirname)"
-          test -n "$ROOT" && test -x "$ROOT/bin/qmake"
+          ROOT="$(find "$QT_DIR" -type f -path '*/bin/qmake' | head -n1 | xargs -r dirname | xargs -r dirname)"
+          if [ -z "$ROOT" ] || [ ! -x "$ROOT/bin/qmake" ]; then
+            echo "qmake not found under $QT_DIR"
+            find "$QT_DIR" -maxdepth 4 -type d
+            exit 1
+          fi
           echo "Qt root: $ROOT"
           "$ROOT/bin/qmake" -v
 
@@ -95,9 +98,10 @@ jobs:
           echo "$ROOT/bin" >> "$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=$ROOT/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
-      - name: Build Opus (static, ${{ matrix.arch }})
+      - name: Build Opus (static)
+        shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
           if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
                --connect-timeout 20 --max-time 180 \
@@ -129,12 +133,13 @@ jobs:
           path: webrtc-install
           key: webrtc-${{ env.WEBRTC_VERSION }}-linux-${{ matrix.arch }}-u20-v1
 
-      - name: Build webrtc-audio-processing (static, ${{ matrix.arch }})
+      - name: Build webrtc-audio-processing (static)
         if: steps.webrtc_cache.outputs.cache-hit != 'true'
         continue-on-error: true
+        shell: bash
         run: |
-          set -euo pipefail
-          pip3 install meson ninja
+          set -eu
+          python3 -m pip install meson ninja
           WFILE="webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
           mkdir -p webrtc-src
           if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
@@ -157,7 +162,11 @@ jobs:
           meson compile -C "$WORK/b"
 
           MAIN="$(find "$WORK/b" -name 'libwebrtc-audio-processing-1.a' | head -n1)"
-          [ -n "$MAIN" ] || { echo "libwebrtc-audio-processing-1.a not found"; find "$WORK/b" -name '*.a'; exit 1; }
+          if [ -z "$MAIN" ]; then
+            echo "libwebrtc-audio-processing-1.a not found"
+            find "$WORK/b" -name '*.a' || true
+            exit 1
+          fi
 
           {
             echo "create $OUT/lib/libwebrtc_apm.a"
@@ -170,51 +179,67 @@ jobs:
           ranlib "$OUT/lib/libwebrtc_apm.a"
 
           (cd webrtc-src/webrtc && find . -name '*.h' -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
-          ABSL="$(find webrtc-src/subprojects -maxdepth 1 -type d -name 'abseil-cpp-*' | head -n1)"
-          [ -n "$ABSL" ] && (cd "$ABSL" && find absl \( -name '*.h' -o -name '*.inc' \) -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+          ABSL="$(find webrtc-src/subprojects -maxdepth 1 -type d -name 'abseil-cpp-*' | head -n1 || true)"
+          if [ -n "$ABSL" ]; then
+            (cd "$ABSL" && find absl \( -name '*.h' -o -name '*.inc' \) -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+          fi
 
           rm -rf "$WORK"
           ls -l "$OUT/lib"
 
       - name: Is webrtc available?
         id: webrtc
+        shell: bash
         run: |
+          set -eu
           if [ -f webrtc-install/lib/libwebrtc_apm.a ]; then
             echo "root=$GITHUB_WORKSPACE/webrtc-install" >> "$GITHUB_OUTPUT"
             echo "status=ON" >> "$GITHUB_OUTPUT"
           else
             echo "root=" >> "$GITHUB_OUTPUT"
             echo "status=OFF" >> "$GITHUB_OUTPUT"
-            echo "::warning::webrtc not built for ${{ matrix.arch }}: no echo cancellation"
+            echo "::warning::webrtc not built for ${{ matrix.arch }}"
           fi
 
       - name: Configure
+        shell: bash
         run: |
+          set -eu
           qt-cmake -S build-demo/linux -B build-linux \
               -DCMAKE_BUILD_TYPE=Release \
               -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
               -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
 
       - name: Build
-        run: cmake --build build-linux --parallel "$(nproc)"
+        shell: bash
+        run: |
+          set -eu
+          cmake --build build-linux --parallel "$(nproc)"
 
       - name: Verify binary
         id: verify
+        shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           exe="build-linux/out/RavAva_Demo"
-          test -x "$exe" || { echo "binary missing"; find build-linux -type f -name 'RavAva_Demo*'; exit 1; }
-          echo "== size =="; ls -lh "$exe"
-          echo "== file =="; file "$exe"
-          echo "== ldd =="; ldd "$exe" | head -40
+          if [ ! -x "$exe" ]; then
+            echo "binary missing"
+            find build-linux -type f -name 'RavAva_Demo*' || true
+            exit 1
+          fi
+          ls -lh "$exe"
+          file "$exe"
+          ldd "$exe" | head -40
           if ldd "$exe" | grep -iE 'libopus\.so|libwebrtc'; then
-            echo "unexpected dynamic opus/webrtc"; exit 1
+            echo "unexpected dynamic opus/webrtc"
+            exit 1
           fi
           echo "exe=$exe" >> "$GITHUB_OUTPUT"
 
-      - name: Setup linuxdeploy (extract, no FUSE)
+      - name: Setup linuxdeploy
+        shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           LD_ARCH="${{ matrix.ld_arch }}"
 
           curl -fL --retry 5 -o linuxdeploy.AppImage \
@@ -230,17 +255,17 @@ jobs:
           mv squashfs-root linuxdeploy-plugin-qt-root
 
           mkdir -p "$GITHUB_WORKSPACE/tools"
-          cat > "$GITHUB_WORKSPACE/tools/linuxdeploy-plugin-qt" <<EOF
-          #!/bin/bash
-          exec "$GITHUB_WORKSPACE/linuxdeploy-plugin-qt-root/AppRun" "\$@"
-          EOF
+          printf '%s\n' '#!/bin/bash' \
+            "exec \"$GITHUB_WORKSPACE/linuxdeploy-plugin-qt-root/AppRun\" \"\$@\"" \
+            > "$GITHUB_WORKSPACE/tools/linuxdeploy-plugin-qt"
           chmod +x "$GITHUB_WORKSPACE/tools/linuxdeploy-plugin-qt"
           echo "$GITHUB_WORKSPACE/tools" >> "$GITHUB_PATH"
           echo "LINUXDEPLOY=$GITHUB_WORKSPACE/linuxdeploy-root/AppRun" >> "$GITHUB_ENV"
 
       - name: Package AppImage
+        shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           exe="${{ steps.verify.outputs.exe }}"
           test -x "$exe"
 
@@ -296,9 +321,10 @@ jobs:
 
           APPIMG="$(ls -1 RavAva_Demo*.AppImage 2>/dev/null | head -n1 || true)"
           if [ -z "$APPIMG" ]; then
-            APPIMG="$(find . -maxdepth 2 -type f -name '*.AppImage' ! -name 'linuxdeploy*' | head -n1)"
+            APPIMG="$(find . -maxdepth 2 -type f -name '*.AppImage' ! -name 'linuxdeploy*' | head -n1 || true)"
           fi
-          test -n "$APPIMG" && test -f "$APPIMG"
+          test -n "$APPIMG"
+          test -f "$APPIMG"
 
           name="RavAva_Demo-linux-${{ matrix.arch }}"
           mv "$APPIMG" "${name}.AppImage"
@@ -319,6 +345,9 @@ jobs:
     needs: [linux]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.release_tag != '' }}
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write
 
@@ -331,8 +360,9 @@ jobs:
           merge-multiple: true
 
       - name: Prepare upload
+        shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           find dist -type f | sort
           mkdir -p upload
           find dist -type f -name 'RavAva_Demo-linux-*.AppImage' -exec cp -v {} upload/ \;
@@ -340,28 +370,28 @@ jobs:
           test "$(ls -1 upload/*.AppImage 2>/dev/null | wc -l)" -ge 1
 
       - name: Upload to GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.release_tag }}
         run: |
-          set -euo pipefail
+          set -eu
           if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             NOTES="## RavAva Demo — Linux (AppImage)
 
-          - **Arch**: x86_64, arm64
-          - **Built on**: Ubuntu 20.04 (glibc 2.31 baseline)
-          - **Runs on**: Ubuntu 20.04+ / equivalent
-          - **Qt**: ${{ env.QT_VERSION }} (bundled)
-          - **Opus**: static ${{ env.OPUS_VERSION }}
-          - **WebRTC**: when the build step succeeds
+          - Arch: x86_64, arm64
+          - Built on Ubuntu 20.04 (glibc 2.31)
+          - Target: Ubuntu 20.04+
+          - Qt ${{ env.QT_VERSION }} bundled
+          - Opus static ${{ env.OPUS_VERSION }}
 
-          \`\`\`bash
           chmod +x RavAva_Demo-linux-*.AppImage
           ./RavAva_Demo-linux-*.AppImage
-          \`\`\`
           "
             EXTRA=()
-            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then EXTRA+=(--prerelease); fi
+            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
+              EXTRA+=(--prerelease)
+            fi
             gh release create "$TAG" --repo "${{ github.repository }}" \
               --title "RavAva Demo Linux $TAG" --notes "$NOTES" "${EXTRA[@]}"
           fi
