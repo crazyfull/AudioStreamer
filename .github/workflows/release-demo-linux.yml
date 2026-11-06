@@ -28,6 +28,9 @@ jobs:
     container:
       image: ubuntu:20.04
       options: --privileged
+    defaults:
+          run:
+            shell: bash
     strategy:
       fail-fast: false
       matrix:
