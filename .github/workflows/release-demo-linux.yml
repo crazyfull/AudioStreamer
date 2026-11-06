@@ -75,7 +75,7 @@ jobs:
         run: |
           set -eu
           python3 -m pip install --upgrade "pip<25" "setuptools<70"
-          python3 -m pip install "aqtinstall>=3.3.0"
+          python3 -m pip install "aqtinstall==3.1.18"
 
           QT_DIR="${RUNNER_TEMP}/Qt"
           mkdir -p "$QT_DIR"
