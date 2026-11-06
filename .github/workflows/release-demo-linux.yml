@@ -1,7 +1,7 @@
 # RavAva Demo Linux — AppImage (Qt bundled)
 # Build inside Ubuntu 20.04 so glibc ≈ 2.31 (runs on 20.04+).
 # x86_64 + arm64. No 32-bit x86 (Qt 6 has no kit).
-name: Build Demo Linux
+name: release Demo Linux
 
 on:
   workflow_dispatch:
