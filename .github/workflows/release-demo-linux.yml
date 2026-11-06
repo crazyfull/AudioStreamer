@@ -1,0 +1,279 @@
+# Linux demo: Qt shared (official kits), Opus + webrtc-audio-processing 1.3 static.
+# Architectures: x86_64, arm64.
+# Note: Qt 6 has no official Linux desktop kit for 32-bit x86 (i686).
+name: release Demo Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag for GitHub Release (e.g. v1.0.0). Leave empty to skip release."
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark as prerelease"
+        type: boolean
+        default: true
+
+env:
+  OPUS_VERSION: "1.6.1"
+  WEBRTC_VERSION: "1.3"
+  QT_VERSION: "6.8.3"
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            qt_arch: linux_gcc_64
+            # older Qt used gcc_64; install-qt-action accepts both names depending on version
+            qt_arch_alt: gcc_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            qt_arch: linux_gcc_arm64
+            qt_arch_alt: gcc_arm64
+          # x86 (i686): no official Qt 6 desktop kit on Linux — not included
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-cursor-dev \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xfixes0 libxcb-randr0 \
+            libdbus-1-dev libfontconfig1-dev libfreetype6-dev \
+            libssl-dev
+
+      - name: Install Qt ${{ env.QT_VERSION }} (${{ matrix.arch }})
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
+          host: linux
+          target: desktop
+          arch: ${{ matrix.qt_arch }}
+          dir: ${{ runner.temp }}
+          cache: true
+        continue-on-error: true
+        id: qt_main
+
+      - name: Install Qt (fallback arch name)
+        if: steps.qt_main.outcome == 'failure'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          aqtversion: ">=3.3.0"
+          host: linux
+          target: desktop
+          arch: ${{ matrix.qt_arch_alt }}
+          dir: ${{ runner.temp }}
+          cache: true
+
+      - name: Build Opus (static, ${{ matrix.arch }})
+        run: |
+          OPUS_FILE="opus-${OPUS_VERSION}.tar.gz"
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+               --connect-timeout 20 --max-time 180 \
+               -o opus.tar.gz \
+               "https://downloads.xiph.org/releases/opus/${OPUS_FILE}"; then
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+                 --connect-timeout 20 --max-time 180 \
+                 -o opus.tar.gz \
+                 "https://ftp.osuosl.org/pub/xiph/releases/opus/${OPUS_FILE}"
+          fi
+          tar xf opus.tar.gz
+
+          cmake -S "opus-${OPUS_VERSION}" -B opus-build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/opus-install" \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DOPUS_BUILD_PROGRAMS=OFF \
+              -DOPUS_BUILD_TESTING=OFF \
+              -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF
+          cmake --build opus-build --parallel $(nproc)
+          cmake --install opus-build
+          ls -l opus-install/lib
+
+      - name: Cache webrtc-audio-processing
+        id: webrtc_cache
+        uses: actions/cache@v4
+        with:
+          path: webrtc-install
+          key: webrtc-${{ env.WEBRTC_VERSION }}-linux-${{ matrix.arch }}-v1
+
+      - name: Build webrtc-audio-processing (static, ${{ matrix.arch }})
+        if: steps.webrtc_cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          pip3 install meson ninja
+          WFILE="webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
+          mkdir -p webrtc-src
+          if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+               --connect-timeout 20 --max-time 300 \
+               -o webrtc.tar.xz \
+               "https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/${WFILE}"; then
+            curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+                 --connect-timeout 20 --max-time 300 \
+                 -o webrtc.tar.xz \
+                 "https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing/-/archive/v${WEBRTC_VERSION}/webrtc-audio-processing-v${WEBRTC_VERSION}.tar.gz"
+          fi
+          tar xf webrtc.tar.xz -C webrtc-src --strip-components=1
+
+          WORK="$GITHUB_WORKSPACE/webrtc-work"
+          OUT="$GITHUB_WORKSPACE/webrtc-install"
+          rm -rf "$WORK" "$OUT"
+          mkdir -p "$WORK" "$OUT/lib" "$OUT/include"
+
+          meson setup "$WORK/b" webrtc-src --buildtype=release --default-library=static
+          meson compile -C "$WORK/b"
+
+          MAIN="$(find "$WORK/b" -name 'libwebrtc-audio-processing-1.a' | head -n1)"
+          [ -n "$MAIN" ] || { echo "lib not found"; find "$WORK/b" -name '*.a'; exit 1; }
+
+          {
+            echo "create $OUT/lib/libwebrtc_apm.a"
+            echo "addlib $MAIN"
+            find "$WORK/b/subprojects" -name '*.a' 2>/dev/null | sort | while read -r f; do echo "addlib $f"; done
+            echo "save"
+            echo "end"
+          } > "$WORK/merge.mri"
+          ar -M < "$WORK/merge.mri"
+          ranlib "$OUT/lib/libwebrtc_apm.a"
+
+          (cd webrtc-src/webrtc && find . -name '*.h' -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+          ABSL="$(find webrtc-src/subprojects -maxdepth 1 -type d -name 'abseil-cpp-*' | head -n1)"
+          [ -n "$ABSL" ] && (cd "$ABSL" && find absl \( -name '*.h' -o -name '*.inc' \) -print0 | xargs -0 -I{} install -D -m 0644 {} "$OUT/include/{}")
+
+          rm -rf "$WORK"
+          ls -l "$OUT/lib"
+
+      - name: Is webrtc available?
+        id: webrtc
+        run: |
+          if [ -f webrtc-install/lib/libwebrtc_apm.a ]; then
+            echo "root=$GITHUB_WORKSPACE/webrtc-install" >> "$GITHUB_OUTPUT"
+            echo "status=ON" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=" >> "$GITHUB_OUTPUT"
+            echo "status=OFF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure
+        run: |
+          qt-cmake -S build-demo/linux -B build-linux \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DOPUS_ROOT="$GITHUB_WORKSPACE/opus-install" \
+              -DWEBRTC_ROOT="${{ steps.webrtc.outputs.root }}"
+
+      - name: Build
+        run: cmake --build build-linux --parallel $(nproc)
+
+      - name: Verify
+        id: verify
+        run: |
+          exe="build-linux/out/RavAva_Demo"
+          test -x "$exe" || { find build-linux -type f -name 'RavAva_Demo*'; exit 1; }
+          echo "== size =="; ls -lh "$exe"
+          echo "== file =="; file "$exe"
+          echo "== ldd (Qt shared expected) =="; ldd "$exe" | head -40
+          # Opus / webrtc must not be dynamic .so from system
+          if ldd "$exe" | grep -iE 'libopus\.so|libwebrtc'; then
+            echo "unexpected dynamic opus/webrtc"; exit 1
+          fi
+          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          name="RavAva_Demo-linux-${{ matrix.arch }}"
+          mkdir -p "dist/$name"
+          cp "${{ steps.verify.outputs.exe }}" "dist/$name/RavAva_Demo"
+          chmod +x "dist/$name/RavAva_Demo"
+
+          cat > "dist/$name/README.txt" <<TXT
+          RavAva Demo - Linux ${{ matrix.arch }}
+          --------------------------------------
+          Qt: ${QT_VERSION} (shared — install matching Qt libs or use system packages)
+          Opus: static ${OPUS_VERSION}
+          WebRTC echo cancellation: ${{ steps.webrtc.outputs.status }}
+
+          Run:
+            ./RavAva_Demo
+
+          If Qt libs are missing, install Qt ${QT_VERSION} or set LD_LIBRARY_PATH to the Qt lib dir.
+          TXT
+
+          (cd dist && tar -czf "../$name.tar.gz" "$name")
+          ls -lh "$name.tar.gz"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.tar.gz
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: [linux]
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.release_tag != '' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: RavAva_Demo-linux-*
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare upload
+        run: |
+          set -euo pipefail
+          find dist -type f | sort
+          mkdir -p upload
+          find dist -type f -name 'RavAva_Demo-linux-*.tar.gz' -exec cp -v {} upload/ \;
+          ls -lh upload/
+          test "$(ls -1 upload/*.tar.gz 2>/dev/null | wc -l)" -ge 1
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            NOTES="## RavAva Demo — Linux
+
+          - **Arch**: x86_64, arm64
+          - **Qt**: ${{ env.QT_VERSION }} (shared)
+          - **Opus**: static ${{ env.OPUS_VERSION }}
+          - **WebRTC**: built when available
+
+          Note: 32-bit x86 is not supported (no official Qt 6 Linux kit).
+          "
+            EXTRA=()
+            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then EXTRA+=(--prerelease); fi
+            gh release create "$TAG" --repo "${{ github.repository }}" \
+              --title "RavAva Demo Linux $TAG" --notes "$NOTES" "${EXTRA[@]}"
+          fi
+          gh release upload "$TAG" upload/*.tar.gz --repo "${{ github.repository }}" --clobber
+          gh release view "$TAG" --repo "${{ github.repository }}"
