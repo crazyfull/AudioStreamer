@@ -105,6 +105,7 @@ bool OpusCodec::InitEncoder(const AudioConfig &cfg)
 #endif
 
     m_pEncoder = enc;
+    m_lsbDepth = 16;
     m_encChannels = cfg.channels;
     m_frameSamples = cfg.FrameSamples();
 
@@ -128,6 +129,7 @@ bool OpusCodec::InitDecoder(int sampleRate, int channels)
     m_decChannels = channels;
     m_decRate = sampleRate;
     m_decScratch.assign(size_t(MAX_SAMPLES) * channels, 0);     // allocated once, here
+    m_decScratchF.assign(size_t(MAX_SAMPLES) * channels, 0.0f);
     return true;
 }
 
@@ -144,6 +146,15 @@ bool OpusCodec::GetEncoderMode(int &application, int &signal) const
     return true;
 }
 
+// the encoder's idea of the input precision (it only matters for DTX / noise shaping decisions): follows the input type
+static void setLsbDepth(OpusEncoder *enc, int &current, int depth)
+{
+    if(current == depth)
+        return;
+    if(opus_encoder_ctl(enc, OPUS_SET_LSB_DEPTH(depth)) == OPUS_OK)
+        current = depth;
+}
+
 bool OpusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
 {
     out.clear();
@@ -155,6 +166,7 @@ bool OpusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
         return false;
     }
 
+    setLsbDepth(m_pEncoder, m_lsbDepth, 16);
     opus_int32 n = opus_encode(m_pEncoder, pcm, frameSamples, m_encBuf, sizeof(m_encBuf));
     if(n < 0){
         RAVAVA_WARN("opus_encode failed: %s", opus_strerror(n));
@@ -162,6 +174,39 @@ bool OpusCodec::Encode(const int16_t *pcm, int frameSamples, Bytes &out)
     }
 
     out.assign(m_encBuf, m_encBuf + n);
+    return true;
+}
+
+bool OpusCodec::EncodeFloat(const float *pcm, int frameSamples, Bytes &out)
+{
+    out.clear();
+    if(!m_pEncoder || !pcm)
+        return false;
+    if(frameSamples != m_frameSamples){
+        RAVAVA_WARN("opus EncodeFloat: wrong frame size %d expected %d", frameSamples, m_frameSamples);
+        return false;
+    }
+    setLsbDepth(m_pEncoder, m_lsbDepth, 24);
+    const opus_int32 n = opus_encode_float(m_pEncoder, pcm, frameSamples, m_encBuf, sizeof(m_encBuf));
+    if(n < 0){
+        RAVAVA_WARN("opus_encode_float failed: %s", opus_strerror(n));
+        return false;
+    }
+    out.assign(m_encBuf, m_encBuf + n);
+    return true;
+}
+
+bool OpusCodec::DecodeFloat(const uint8_t *packet, size_t size, PcmF &out)
+{
+    out.clear();
+    if(!m_pDecoder || !packet || !size)
+        return false;
+    const int samples = opus_decode_float(m_pDecoder, packet, int(size), m_decScratchF.data(), MAX_SAMPLES, 0);
+    if(samples < 0){
+        RAVAVA_WARN("opus_decode_float failed: %s", opus_strerror(samples));
+        return false;
+    }
+    out.assign(m_decScratchF.begin(), m_decScratchF.begin() + size_t(samples) * m_decChannels);
     return true;
 }
 

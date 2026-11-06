@@ -37,6 +37,8 @@ private:
 
     unsigned char m_encBuf[1500];   // encoder output scratch
     Pcm m_decScratch;               // decoder output scratch (the biggest possible Opus packet)
+    PcmF m_decScratchF;             // the same for DecodeFloat (allocated by InitDecoder too: no allocation on the audio thread)
+    int m_lsbDepth = 16;            // what OPUS_SET_LSB_DEPTH currently says (16 for int16 input, 24 for float input)
 
 public:
     // What an Opus packet says about itself (everything is in its first byte, "TOC"): the receiver needs no
@@ -63,6 +65,12 @@ public:
     // pcm must hold exactly cfg.FrameSamples() * channels samples. false / empty result = error
     bool Encode(const int16_t *pcm, int frameSamples, Bytes &out);
     Bytes Encode(const int16_t *pcm, int frameSamples);
+
+    // ---- float PCM (24 bit and more): Opus works in float inside, so these skip the 16 bit rounding at both ends ----
+    // pcm: frameSamples * channels floats in -1..+1 (louder is clipped by Opus)
+    bool EncodeFloat(const float *pcm, int frameSamples, Bytes &out);
+    // gives interleaved float PCM
+    bool DecodeFloat(const uint8_t *packet, size_t size, PcmF &out);
 
     // packet = exactly one Opus packet, gives 16bit PCM (interleaved). false = error (out is empty)
     bool Decode(const uint8_t *packet, size_t size, Pcm &out);

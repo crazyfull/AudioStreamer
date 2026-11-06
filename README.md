@@ -227,6 +227,7 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in-
 | `ConferencePlayer` | Multiple talkers → one speaker. Routes by `streamId` |
 | `MusicPlayer` | Play / Pause / Resume / Stop music mixed into the stream |
 | `AudioProcessor` | Optional webrtc processing (AEC, NS, AGC) |
+| `OpusCodec::EncodeFloat` / `DecodeFloat` | 24-bit / float PCM (-1..+1) straight into / out of Opus, for your own capture or sink (a DAW, a file, a pro sound card). `S24ToFloat`, `S32ToFloat`, `FloatToS24` in `AudioTypes.h` convert. The built-in `Recorder` / `Player` devices, the echo canceller and the jitter buffer stay 16-bit (voice needs no more) |
 | `ListInputDevices()` / `ListOutputDevices()` | Enumerate devices |
 | `net::Packet` / `PacketRouter` | Optional network envelope helpers |
 | `JitterBuffer::Stats` | `received`, `played`, `lost`, `fec`, `plc`, `late`, `reordered`, ... |

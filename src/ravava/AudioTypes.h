@@ -19,6 +19,13 @@ namespace ravava {
 
 using Bytes = std::vector<uint8_t>;   // encoded packets / datagrams
 using Pcm   = std::vector<int16_t>;   // interleaved 16bit PCM samples
+using PcmF  = std::vector<float>;     // interleaved float PCM, -1.0 .. +1.0 (full precision: 24 bit and more)
+
+// Sample converters for 24 / 32 bit sources and sinks (a sound card, a file, a DAW). 24 bit is the same as float for
+// Opus: a float has 24 bits of mantissa, so the conversion below loses nothing.
+inline float  S24ToFloat(int32_t v)  { return float(v) * (1.0f / 8388608.0f); }                 // v: -8388608 .. 8388607
+inline float  S32ToFloat(int32_t v)  { return float(double(v) * (1.0 / 2147483648.0)); }
+inline int32_t FloatToS24(float f)   { f = f > 1.0f ? 1.0f : (f < -1.0f ? -1.0f : f); const float x = f * 8388608.0f; return int32_t(x >= 8388607.0f ? 8388607.0f : (x < -8388608.0f ? -8388608.0f : x)); }
 
 } // namespace ravava
 
