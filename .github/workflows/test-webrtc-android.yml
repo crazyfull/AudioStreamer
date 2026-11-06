@@ -1,0 +1,43 @@
+# Builds webrtc-audio-processing for Android ABIs WITHOUT the rest of the demo, to find out why a build fails (the full log of the
+# build is printed, not hidden behind continue-on-error). Run by hand, or when the build script changes.
+name: Test webrtc Android build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'libs/webrtc/build_android.sh'
+      - '.github/workflows/test-webrtc-android.yml'
+
+jobs:
+  webrtc:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: armeabi-v7a, ndk: "23.1.7779620", api: "23" }
+          - { abi: armeabi-v7a, ndk: "27.2.12479018", api: "28" }
+          - { abi: arm64-v8a,   ndk: "23.1.7779620", api: "23" }
+    env:
+      WEBRTC_VERSION: "1.3"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the NDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ matrix.ndk }}" > /dev/null
+          echo "ANDROID_NDK_ROOT=$SDK/ndk/${{ matrix.ndk }}" >> "$GITHUB_ENV"
+      - name: Build webrtc-audio-processing
+        run: |
+          pip install meson ninja
+          curl -fL --retry 5 --retry-all-errors -o webrtc.tar.xz "https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/webrtc-audio-processing-${WEBRTC_VERSION}.tar.xz"
+          mkdir -p webrtc-src && tar xf webrtc.tar.xz -C webrtc-src --strip-components=1
+          ANDROID_API=${{ matrix.api }} libs/webrtc/build_android.sh webrtc-src ${{ matrix.abi }} webrtc-install 2>&1 | tee build.log | tail -n 80
+          ls -l webrtc-install/lib
+      - name: What went wrong
+        if: failure()
+        run: |
+          tail -n 120 build.log || true
+          find webrtc-install -name 'meson-log.txt' -exec tail -n 60 {} \; 2>/dev/null || true
