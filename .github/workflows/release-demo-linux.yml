@@ -327,8 +327,7 @@ jobs:
           set -euo pipefail
           find dist -type f | sort
           mkdir -p upload
-          find dist -type f \( -name 'RavAva_Demo-linux-*.AppImage' -o -name 'RavAva_Demo-linux-*.README.txt' \) \
-            -exec cp -v {} upload/ \;
+          find dist -type f -name 'RavAva_Demo-linux-*.AppImage' -exec cp -v {} upload/ \;
           ls -lh upload/
           test "$(ls -1 upload/*.AppImage 2>/dev/null | wc -l)" -ge 1
 
