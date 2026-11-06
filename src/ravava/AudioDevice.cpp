@@ -11,6 +11,12 @@
 // the .c is compiled by VoiceStream.pro). Don't define MINIAUDIO_IMPLEMENTATION here: it would
 // duplicate the implementation (link errors) if miniaudio.h is ever swapped for the single-file version.
 #include "miniaudio.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#define RAVAVA_IOS 1
+#endif
+#endif
 
 #include "AudioDevice.h"
 #include "AudioTypes.h"
@@ -81,6 +87,25 @@ static bool stringToId(const std::string &s, ma_device_id &id)
 // the devices (which happens every time the user opens the device combo box) - that was a rare crash while switching.
 // The audio callbacks never take it, so ma_device_uninit() (which waits for the callback) can't deadlock on it.
 static std::mutex g_deviceMutex;
+
+#ifdef RAVAVA_IOS
+// iOS has ONE audio session for the whole app, and the microphone and the speaker are two devices here. Both must ask for
+// the same session: play-and-record (a call), speaker instead of the earpiece, Bluetooth headsets allowed. One shared context
+// does that; it lives until the app ends.
+static ma_context *deviceContext()
+{
+    static ma_context ctx;
+    static const bool ok = []{
+        ma_context_config cc = ma_context_config_init();
+        cc.coreaudio.sessionCategory = ma_ios_session_category_play_and_record;
+        cc.coreaudio.sessionCategoryOptions = ma_ios_session_category_option_default_to_speaker | ma_ios_session_category_option_allow_bluetooth;
+        return ma_context_init(nullptr, 0, &cc, &ctx) == MA_SUCCESS;
+    }();
+    return ok ? &ctx : nullptr;                 // nullptr = miniaudio makes its own default context
+}
+#else
+static ma_context *deviceContext() { return nullptr; }
+#endif
 
 static std::vector<AudioDeviceInfo> listDevices(bool capture, bool wait = false)
 {
@@ -251,13 +276,13 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
     std::unique_lock<std::mutex> devLock(g_deviceMutex);
     if(haveChosen){
         cfg.capture.pDeviceID = &chosen;
-        r = ma_device_init(nullptr, &cfg, &d->dev);
+        r = ma_device_init(deviceContext(), &cfg, &d->dev);
         if(r != MA_SUCCESS)
             RAVAVA_WARN("capture: chosen device can't be opened (%s), using the default one", ma_result_description(r));
     }
     if(r != MA_SUCCESS){
         cfg.capture.pDeviceID = nullptr;
-        r = ma_device_init(nullptr, &cfg, &d->dev);
+        r = ma_device_init(deviceContext(), &cfg, &d->dev);
     }
     devLock.unlock();
     if(r != MA_SUCCESS){
@@ -451,13 +476,13 @@ bool AudioOutput::Start(int sampleRate, int channels, int periodMs, Callback cb,
     std::unique_lock<std::mutex> devLock(g_deviceMutex);
     if(haveChosen){
         cfg.playback.pDeviceID = &chosen;
-        r = ma_device_init(nullptr, &cfg, &d->dev);
+        r = ma_device_init(deviceContext(), &cfg, &d->dev);
         if(r != MA_SUCCESS)
             RAVAVA_WARN("playback: chosen device can't be opened (%s), using the default one", ma_result_description(r));
     }
     if(r != MA_SUCCESS){
         cfg.playback.pDeviceID = nullptr;
-        r = ma_device_init(nullptr, &cfg, &d->dev);
+        r = ma_device_init(deviceContext(), &cfg, &d->dev);
     }
     devLock.unlock();
     if(r != MA_SUCCESS){

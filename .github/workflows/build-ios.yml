@@ -1,0 +1,81 @@
+# Builds libRavAva for iOS (device arm64 + simulator arm64) with Opus built from source, links a small smoke program for
+# the simulator to prove the library (Objective-C part of miniaudio, AVFoundation, Opus) links, and packs RavAva.xcframework.
+# Echo cancellation (webrtc) is not part of the iOS build. The audio is NOT run here (a CI machine has no iPhone):
+# this proves "it builds and links", the first run on a device is up to a person.
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/ravava/**'
+      - 'miniaudio/**'
+      - 'ci/**'
+      - '.github/workflows/build-ios.yml'
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    env:
+      OPUS_VERSION: "1.5.2"
+      IOS_MIN: "13.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Opus
+        run: |
+          curl -fsSL -o opus.tar.gz "https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz"
+          tar xf opus.tar.gz
+
+      - name: Build Opus + RavAva for each SDK
+        run: |
+          set -euxo pipefail
+          for sdk in iphoneos iphonesimulator; do
+            FLAGS=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=$sdk -DCMAKE_OSX_ARCHITECTURES=arm64
+                   -DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_MIN -DCMAKE_BUILD_TYPE=Release
+                   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY)
+            cmake -S "opus-${OPUS_VERSION}" -B "opus-build-$sdk" "${FLAGS[@]}" \
+                  -DCMAKE_INSTALL_PREFIX="$PWD/opus-$sdk" -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                  -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF \
+                  -DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF
+            cmake --build "opus-build-$sdk" -j 4
+            cmake --install "opus-build-$sdk"
+
+            cmake -S src/ravava -B "ravava-build-$sdk" "${FLAGS[@]}" \
+                  -DCMAKE_INSTALL_PREFIX="$PWD/ravava-$sdk" -DRAVAVA_WITH_WEBRTC=OFF \
+                  -DRAVAVA_OPUS_ROOT="$PWD/opus-$sdk" \
+                  -DRAVAVA_OPUS_INCLUDE_DIR="$PWD/opus-$sdk/include/opus" -DRAVAVA_OPUS_LIB="$PWD/opus-$sdk/lib/libopus.a"
+            cmake --build "ravava-build-$sdk" -j 4
+            cmake --install "ravava-build-$sdk"
+
+            # one archive with Opus inside, so the app links a single file
+            libtool -static -o "libRavAva-$sdk.a" "ravava-$sdk/lib/libRavAva.a" "opus-$sdk/lib/libopus.a"
+            lipo -info "libRavAva-$sdk.a"
+            vtool -show-build "libRavAva-$sdk.a" | head -12 || true
+          done
+
+      - name: Link smoke test (simulator)
+        run: |
+          set -euxo pipefail
+          xcrun --sdk iphonesimulator clang++ -std=c++17 -arch arm64 -mios-simulator-version-min=$IOS_MIN \
+              ci/ios_smoke.cpp -I ravava-iphonesimulator/include -I ravava-iphonesimulator/include/ravava \
+              libRavAva-iphonesimulator.a \
+              -framework Foundation -framework CoreFoundation -framework AudioToolbox -framework AVFoundation \
+              -o ios_smoke
+          file ios_smoke
+
+      - name: Pack RavAva.xcframework
+        run: |
+          set -euxo pipefail
+          xcodebuild -create-xcframework \
+              -library libRavAva-iphoneos.a -headers ravava-iphoneos/include \
+              -library libRavAva-iphonesimulator.a -headers ravava-iphonesimulator/include \
+              -output RavAva.xcframework
+          cp example/IOS.md RavAva.xcframework/README.md 2>/dev/null || true
+          zip -r RavAva-ios.xcframework.zip RavAva.xcframework
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RavAva-ios-xcframework
+          path: RavAva-ios.xcframework.zip
+          retention-days: 30
