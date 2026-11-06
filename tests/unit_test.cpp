@@ -166,6 +166,46 @@ struct JB {
 };
 
 // musicMode: Opus application/signal switch, channels untouched
+static void testFloatPcm()
+{
+    std::printf("float / 24 bit PCM through Opus\n");
+    // converters: 24 bit <-> float is exact, and the extremes clip instead of wrapping
+    CHECK(FloatToS24(S24ToFloat(8388607)) == 8388607);
+    CHECK(FloatToS24(S24ToFloat(-8388608)) == -8388608);
+    CHECK(FloatToS24(S24ToFloat(123457)) == 123457);
+    CHECK(FloatToS24(2.0f) == 8388607 && FloatToS24(-2.0f) == -8388608);
+    CHECK(S32ToFloat(INT32_MIN) == -1.0f);
+
+    AudioConfig cfg; cfg.inputRate = 48000; cfg.channels = 1; cfg.frameMs = 20; cfg.Bitrate = 64000;
+    OpusCodec enc, dec;
+    CHECK(enc.InitEncoder(cfg) && dec.InitDecoder(48000, 1));
+    const int n = cfg.FrameSamples();
+    // a quiet 1 kHz tone, 16 bit can hardly hold it (amplitude 3 LSB of 16 bit = 0.0001 of full scale): float keeps it
+    const float amp = 0.0001f;
+    double sumF = 0; int packets = 0; Bytes pk; PcmF out;
+    double ph = 0;
+    for(int f = 0; f < 60; f++){
+        std::vector<float> in(n);
+        for(int i = 0; i < n; i++){ in[i] = amp * float(std::sin(ph)); ph += 2 * M_PI * 1000 / 48000; }
+        CHECK(enc.EncodeFloat(in.data(), n, pk));
+        CHECK(dec.DecodeFloat(pk.data(), pk.size(), out) && int(out.size()) == n);
+        if(f >= 30){ for(float v : out) sumF += double(v) * v; packets++; }
+    }
+    const double rmsF = std::sqrt(sumF / (double(packets) * n));
+    std::printf("  tone of %.4f full scale: float path plays rms %.6f (the input rms is %.6f)\n", amp, rmsF, amp / std::sqrt(2.0));
+    CHECK(rmsF > amp / std::sqrt(2.0) * 0.5 && rmsF < amp / std::sqrt(2.0) * 1.6);
+
+    // both kinds of input on the same encoder, in turn: still decodable, wrong sizes refused
+    Pcm in16(n, 1000);
+    Pcm d16;
+    CHECK(enc.Encode(in16.data(), n, pk) && dec.Decode(pk.data(), pk.size(), d16));
+    std::vector<float> inF(n, 0.05f);
+    CHECK(enc.EncodeFloat(inF.data(), n, pk) && dec.DecodeFloat(pk.data(), pk.size(), out));
+    CHECK(!enc.EncodeFloat(inF.data(), n - 1, pk) && pk.empty());
+    CHECK(!enc.EncodeFloat(nullptr, n, pk));
+    CHECK(!dec.DecodeFloat(nullptr, 0, out) && out.empty());
+}
+
 static void testMusicMode()
 {
     for(int ch = 1; ch <= 2; ++ch){
@@ -493,6 +533,7 @@ int main()
     testCutBlocks();
     testPacketQueue();
     testConfigAndEncoder();
+    testFloatPcm();
     testMusicMode();
     testDeviceSwitcher();
     testJitterLoss();
