@@ -24,6 +24,9 @@ std::string StubOutputDevice() { std::lock_guard<std::mutex> lk(g_stubDeviceMute
 namespace ravava {
 
 struct AudioInput::Impl { std::thread t; std::atomic<bool> run{false}; std::atomic<bool> running{false}; };
+void SetOutputRouteHint(const std::string &) {}     // (the real ones are in AudioDevice.cpp: Android routing only)
+void SetAndroidCallMode(bool) {}
+
 AudioInput::AudioInput() : d(new Impl) {}
 void AudioInput::SetDevice(const std::string &id) { std::lock_guard<std::mutex> lk(g_stubDeviceMutex); g_stubInputDevice = id; }
 std::vector<AudioDeviceInfo> ListInputDevices()  { return { {"Stub mic", "aa", true}, {"Stub mic 2", "bb", false} }; }

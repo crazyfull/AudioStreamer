@@ -52,6 +52,7 @@ static void usage(const char *me)
         "      --echo N         echo cancellation 0 = off, 1..4 = on, higher protects your voice more (needs webrtc)\n"
         "      --ns N           noise suppression 0..4 (needs webrtc)\n"
         "      --agc            automatic gain control (needs webrtc)\n"
+        "      --no-hpf         switch the low-cut (high-pass, below ~100 Hz) filter off (on by default, needs webrtc)\n"
         "  -t, --time SEC       stop after SEC seconds (default: until Ctrl+C)\n"
         "  -q, --quiet          no live status line\n"
         "  -h, --help\n", me);
@@ -117,6 +118,7 @@ int main(int argc, char **argv)
         else if(a == "--echo")                  echo = std::atoi(argValue(argc, argv, i));
         else if(a == "--ns")                    cfg.noiseSuppression = std::atoi(argValue(argc, argv, i));
         else if(a == "--agc")                   cfg.autoGain = true;
+        else if(a == "--no-hpf")                cfg.highPassFilter = false;
         else if(a == "-t" || a == "--time")     seconds = std::atoi(argValue(argc, argv, i));
         else if(a == "-q" || a == "--quiet")    quiet = true;
         else { std::fprintf(stderr, "unknown option %s (try --help)\n", a.c_str()); return 2; }
@@ -147,7 +149,7 @@ int main(int argc, char **argv)
 
     // ONE echo canceller shared by the recorder and the player (before SetConfig: that opens the speaker)
     std::shared_ptr<AudioProcessor> aec;
-    if(cfg.useEchoCancel || cfg.noiseSuppression > 0 || cfg.autoGain){
+    if(cfg.useEchoCancel || cfg.noiseSuppression > 0 || cfg.autoGain || cfg.highPassFilter){
         if(!AudioProcessor::IsAvailable()){
             std::fprintf(stderr, "note: this build has no webrtc-audio-processing: --echo / --ns / --agc are ignored\n");
         }else{
@@ -158,6 +160,7 @@ int main(int argc, char **argv)
             opt.echoCancel = cfg.useEchoCancel;
             opt.noiseSuppression = cfg.noiseSuppression;
             opt.autoGain = cfg.autoGain;
+            opt.highPassFilter = cfg.highPassFilter;
             if(!aec->Init(cfg.inputRate, cfg.RenderRate(), cfg.channels, opt, &err)){
                 std::fprintf(stderr, "echo canceller disabled: %s\n", err.c_str());
                 aec.reset();

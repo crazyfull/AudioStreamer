@@ -104,6 +104,8 @@ void Player::SetMixSource(AudioMixSource *src)
 void Player::SetConfig(AudioConfig *pConfig)
 {
     m_pConfig = pConfig;
+    if(pConfig)
+        SetAndroidCallMode(pConfig->androidCallMode);
     init();
 }
 
@@ -181,6 +183,7 @@ bool Player::SetOutputDevice(const std::string &deviceId)
 
 void Player::requestOpen(const std::string &deviceId)
 {
+    SetOutputRouteHint(deviceId);               // before the microphone looks at it (Android: Bluetooth media route)
     m_switcher.Request(deviceId, [this](const std::string &id){
         m_output.Stop();                // returns when the audio callback is guaranteed to be finished
         m_output.SetDevice(id);

@@ -340,6 +340,24 @@ static int pickIndex(const std::vector<CommItem> &items, int wantId)
     return best;
 }
 
+// the Bluetooth headphones / speakers that play MEDIA (A2DP, type 8): no microphone, but the high quality sound of music players
+static std::vector<Dev> a2dpDevices(Env &env, jobject am)
+{
+    std::vector<Dev> out;
+    for(const Dev &d : getDevices(env, am, 2))
+        if(d.type == 8)
+            out.push_back(d);
+    return out;
+}
+
+static int builtinMicId(Env &env, jobject am)
+{
+    for(const Dev &d : getDevices(env, am, 1))
+        if(d.type == 15)                // TYPE_BUILTIN_MIC
+            return d.id;
+    return 0;
+}
+
 // what the user can choose as the route (speaker side). The microphone follows it.
 static std::vector<AudioDeviceInfo> listRoutes(Env &env, jobject am)
 {
@@ -363,6 +381,16 @@ static std::vector<AudioDeviceInfo> listRoutes(Env &env, jobject am)
                                        : (label.empty() || d.name == label ? d.name : d.name + " (" + label + ")");
         info.id = idString(kindOf(d.type) == KindBluetooth ? "btsco:" : "aaudio:", d.id);
         out.push_back(info);
+    }
+    // Bluetooth headphones a second time, as MEDIA (A2DP): high quality sound, the microphone is the phone's own one
+    for(const Dev &d : a2dpDevices(env, am)){
+        bool dup = false;                                                           // the same headset is also in the list above as handsfree
+        AudioDeviceInfo info;
+        info.name = (d.name.empty() ? std::string("Bluetooth headphones") : d.name) + " (Bluetooth high quality, phone microphone)";
+        info.id = idString("a2dp:", d.id);
+        for(const AudioDeviceInfo &o : out) if(o.id == info.id) dup = true;
+        if(!dup)
+            out.push_back(info);
     }
     RAVAVA_INFO("android: %d output route(s) listed", int(out.size()));
     for(const AudioDeviceInfo &i : out)
@@ -420,6 +448,9 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture)
 static std::mutex g_routeMutex;
 static int g_heldStreams = 0;           // open streams: while > 0 the phone is in call mode with our route
 static int g_wantId = 0;                // the communication device the user chose (AudioDeviceInfo id), 0 = automatic
+static bool g_callMode = true;          // AudioConfig::androidCallMode (guarded by g_routeMutex)
+static std::string g_outChoice;         // the speaker the user chose (guarded by g_routeMutex): "a2dp:<n>" = media route, no call mode
+static std::atomic<int> g_modeEpoch{0}; // bumps when g_outChoice switches between the call route and the a2dp route
 
 static bool hasPrefix(const std::string &s, const char *p) { return s.compare(0, std::strlen(p), p) == 0; }
 
@@ -570,6 +601,43 @@ static bool phoneBusy(Env &env, jobject am)
     return mode == 1 || mode == 2 || mode == 4;
 }
 
+static bool isA2dpChoice(const std::string &id) { return hasPrefix(id, "a2dp:"); }
+
+// the speaker choice: a switch between the call route and the a2dp route is a new "epoch" (open microphone streams re-open)
+static void noteOutputChoiceLocked(const std::string &id)
+{
+    if(isA2dpChoice(g_outChoice) != isA2dpChoice(id))
+        g_modeEpoch.fetch_add(1, std::memory_order_relaxed);
+    g_outChoice = id;
+}
+
+void SetOutputChoice(const std::string &outputDeviceId)
+{
+    std::lock_guard<std::mutex> lk(g_routeMutex);
+    noteOutputChoiceLocked(outputDeviceId);
+}
+
+void SetCallMode(bool on)
+{
+    std::lock_guard<std::mutex> lk(g_routeMutex);
+    if(g_callMode != on)
+        g_modeEpoch.fetch_add(1, std::memory_order_relaxed);
+    g_callMode = on;
+}
+
+int ModeEpoch() { return g_modeEpoch.load(std::memory_order_relaxed); }
+
+// Undoes what the call route did (mode, communication device, speakerphone, SCO). The caller holds g_routeMutex.
+static void resetCallRoute(Env &env, jobject am)
+{
+    if(sdkInt(env) >= 31)
+        callVoid(env, am, "clearCommunicationDevice");
+    setSpeakerphone(env, am, false);
+    setScoOn(env, am, false);
+    callVoid(env, am, "stopBluetoothSco");
+    callVoid(env, am, "setMode", "(I)V", 0);                        // MODE_NORMAL
+}
+
 void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld)
 {
     *aaudioId = 0;
@@ -582,6 +650,34 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
     if(!env){ RAVAVA_WARN("android: no JNI, the system default route is used"); return; }
     Ref am = audioManager(env);
     if(!am){ RAVAVA_WARN("android: no AudioManager, the system default route is used"); return; }
+
+    if(!capture)
+        noteOutputChoiceLocked(deviceId);
+
+    // The media route: Bluetooth headphones as A2DP. No call mode (SCO would take the headset away from A2DP and make the sound
+    // dull), the speaker is pinned to the headphones, the microphone is the phone's own. Neither stream holds the call route.
+    const bool a2dpSpeaker = !capture && isA2dpChoice(deviceId);
+    const bool a2dpMic = capture && isA2dpChoice(g_outChoice) && !hasPrefix(deviceId, "btsco:");
+    if(a2dpSpeaker || a2dpMic || !g_callMode){
+        if(g_heldStreams > 0 && !phoneBusy(env, am.get())){
+            resetCallRoute(env, am.get());      // the other direction started a call earlier: leave it (that stream re-opens by itself)
+            RAVAVA_INFO("android: call mode left for the Bluetooth media route");
+        }
+        if(a2dpSpeaker){
+            *aaudioId = std::atoi(deviceId.c_str() + 5);
+            RAVAVA_INFO("android: speaker pinned to the Bluetooth headphones (media, device id %d)", int(*aaudioId));
+        }else if(hasPrefix(deviceId, "aaudio:")){
+            *aaudioId = std::atoi(deviceId.c_str() + 7);
+        }else if(!a2dpMic){
+            if(hasPrefix(deviceId, "btsco:"))
+                RAVAVA_WARN("android: a Bluetooth handsfree headset needs the call mode (AudioConfig::androidCallMode), the system chooses");
+            RAVAVA_INFO("android: media mode (no call mode): the system routes the %s", capture ? "microphone" : "speaker");
+        }else{
+            *aaudioId = builtinMicId(env, am.get());
+            RAVAVA_INFO("android: microphone = the phone's own (id %d): the Bluetooth headphones play media only", int(*aaudioId));
+        }
+        return;                                 // voicePreset = false, routeHeld = false
+    }
 
     const bool wantsBt = hasPrefix(deviceId, "btsco:");
     const int idNumber = wantsBt ? std::atoi(deviceId.c_str() + 6) : hasPrefix(deviceId, "aaudio:") ? std::atoi(deviceId.c_str() + 7) : 0;
@@ -662,12 +758,7 @@ void ReleaseStream(bool routeHeld)
     const int mode = getMode ? env->CallIntMethod(am.get(), getMode) : 3;
     if(env.failed() || mode == 1 || mode == 2 || mode == 4)
         return;
-    if(sdkInt(env) >= 31)
-        callVoid(env, am.get(), "clearCommunicationDevice");
-    setSpeakerphone(env, am.get(), false);
-    setScoOn(env, am.get(), false);
-    callVoid(env, am.get(), "stopBluetoothSco");
-    callVoid(env, am.get(), "setMode", "(I)V", 0);                  // MODE_NORMAL
+    resetCallRoute(env, am.get());
 }
 
 // The system changes the communication device / mode by itself (call, USB cable, a headset connecting): like every call
@@ -676,7 +767,7 @@ void ReassertRoute()
 {
     static int64_t lastMs = 0;
     std::unique_lock<std::mutex> lk(g_routeMutex, std::try_to_lock);    // the device worker may be inside PrepareStream: don't wait for it
-    if(!lk.owns_lock() || g_heldStreams == 0)
+    if(!lk.owns_lock() || g_heldStreams == 0 || !g_callMode || isA2dpChoice(g_outChoice))     // (the media route has no call to restore)
         return;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -760,6 +851,17 @@ std::string DescribeRouteState()
                 out += " commDevice=" + describe(d);
         }
     env.failed();
+    // what decides whether other apps' notification sounds are heard (ringer mode, notification volume)
+    if(jmethodID m = methodOf(env, am.get(), "getRingerMode", "()I"))
+        out += " ringer=" + std::to_string(env->CallIntMethod(am.get(), m));
+    env.failed();
+    {
+        jmethodID get = methodOf(env, am.get(), "getStreamVolume", "(I)I");
+        jmethodID mx = methodOf(env, am.get(), "getStreamMaxVolume", "(I)I");
+        if(get && mx)
+            out += " notifVol=" + std::to_string(env->CallIntMethod(am.get(), get, jint(5))) + "/" + std::to_string(env->CallIntMethod(am.get(), mx, jint(5)));
+        env.failed();
+    }
     return out;
 }
 

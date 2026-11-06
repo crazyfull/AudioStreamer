@@ -50,11 +50,21 @@ struct AudioConfig
                                 //bursts of lost packets far better than inband FEC, but it only turns on from ~32 kbps and costs bitrate and CPU.
     int maxBandwidth = 1105;     //OPUS_BANDWIDTH_FULLBAND (1101 NB .. 1105 FB). was 3002 = OPUS_SIGNAL_MUSIC, which Opus rejects as a bandwidth
 
+    // ---- Android routing ----
+    bool androidCallMode = true;//Android only. true = like a call app (WhatsApp): MODE_IN_COMMUNICATION, Bluetooth handsfree, the phone keeps
+                                //the microphone and speaker together. Side effect: the system treats the phone as "in a call", other apps'
+                                //notification sounds are routed with the call (quiet / on the earpiece / not heard on some phones).
+                                //false = plain media mode: other apps' sounds and notifications behave normally, but there is no handsfree
+                                //Bluetooth microphone (Bluetooth headphones play as "high quality" media, the phone's microphone is used).
+
     // ---- echo cancellation (webrtc-audio-processing, see AudioProcessor.h) ----
     bool useEchoCancel = true;  //remove what the speaker plays from the mic signal (needed when speakers + mic are used together)
     int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
     int noiseSuppression = 0;   //0 = off, 1..4 = low .. very high (webrtc noise suppression on the mic)
     bool autoGain = false;      //webrtc AGC2: automatic mic level + limiter
+    bool highPassFilter = true; //webrtc high-pass filter on the mic: cuts everything below ~100 Hz (rumble, wind, hum, handling noise, DC).
+                                //Voice has nothing there. Part of the same processor as the echo canceller (the application creates it,
+                                //see AudioProcessor::Options::highPassFilter), so it needs the webrtc build; works alone too.
     int aecDelayMs = 100;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
 
     // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000

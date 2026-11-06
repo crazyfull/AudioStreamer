@@ -347,6 +347,7 @@ if(RAVAVA_BUILD_TESTS)
         add_test(NAME ${name} COMMAND ${name})
     endfunction()
     ravava_test(unit_test SOURCES JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)
+    ravava_test(hpf_test SOURCES AudioProcessor.cpp)                  # the low-cut filter (needs webrtc, skips itself without)
     ravava_test(noalloc_test STUB audio_device_stub
         SOURCES Recorder.cpp Player.cpp ConferencePlayer.cpp MusicPlayer.cpp JitterBuffer.cpp OpusCodec.cpp net/PacketRouter.cpp)   # defines its own AudioProcessor
     ravava_test(net_sim_test SOURCES JitterBuffer.cpp OpusCodec.cpp)

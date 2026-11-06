@@ -191,6 +191,7 @@ struct AudioInput::Impl
     std::string activeName;         // name of the device that was really opened (not Android: see ActiveDevice())
     std::atomic<int> wantedId{0};   // Android: AudioDeviceInfo id the stream was opened on (0 = system default / unknown)
     std::atomic<int> movedPolls{0}; // consecutive DeviceMoved() calls that saw another device
+    std::atomic<int> openEpoch{0};  // Android: android::ModeEpoch() when the stream was opened (the speaker choice switched call <-> media since = re-open)
     std::atomic<int> activeId{-1};  // Android: AudioDeviceInfo id the stream is REALLY on (refreshed by the audio callback)
     unsigned cbCount = 0;           // audio thread only
     std::atomic<unsigned> cbTotal{0};   // audio callbacks since Start (Android: a stream the system silently stopped has none)
@@ -211,6 +212,24 @@ struct AudioInput::Impl
             s->cb(static_cast<const int16_t*>(pInput), frameCount);
     }
 };
+
+void SetOutputRouteHint(const std::string &outputDeviceId)
+{
+#ifdef RAVAVA_ANDROID
+    android::SetOutputChoice(outputDeviceId);
+#else
+    (void)outputDeviceId;
+#endif
+}
+
+void SetAndroidCallMode(bool on)
+{
+#ifdef RAVAVA_ANDROID
+    android::SetCallMode(on);
+#else
+    (void)on;
+#endif
+}
 
 AudioInput::AudioInput() : d(new Impl) {
 
@@ -246,6 +265,7 @@ bool AudioInput::Start(int sampleRate, int channels, int periodMs, Callback cb, 
 #ifdef RAVAVA_ANDROID
     {
         int32_t aid = 0; bool voice = false, held = false;
+        d->openEpoch = android::ModeEpoch();            // read BEFORE preparing: a switch in between only costs one extra re-open
         android::PrepareStream(d->deviceId, true, &aid, &voice, &held);
         prepareMs = sinceMs();
         d->voiceRoute = held;
@@ -355,6 +375,10 @@ bool AudioInput::DeviceMoved()
         android::ReassertRoute();      // the system resets the Bluetooth route on calls / USB: put it back
     if(!d->running)
         return false;
+    if(d->openEpoch.load() != android::ModeEpoch()){
+        RAVAVA_INFO("capture: the speaker route changed (call <-> Bluetooth media), re-opening the microphone for it");
+        return true;
+    }
 #ifdef RAVAVA_AAUDIO_STREAMS
     // The system can stop a stream without telling (a phone call, a USB / Bluetooth change): miniaudio then still says
     // "started" and nothing is heard until the user stops and starts again. A running stream calls back every few

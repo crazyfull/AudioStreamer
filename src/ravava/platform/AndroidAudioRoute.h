@@ -25,6 +25,8 @@
 // Device ids produced here (opaque strings for the rest of the library):
 //   "aaudio:<n>"  AudioDeviceInfo.getId() = the AAudio device id n
 //   "btsco:<n>"   Bluetooth headset (handsfree), n = AudioDeviceInfo.getId() (0 = any)
+//   "a2dp:<n>"    Bluetooth headphones as MEDIA output (A2DP: high quality, but no microphone of the headset): the phone is NOT put
+//                 in call mode, the speaker is pinned to them and the microphone is the PHONE's own one
 //
 // Needed in AndroidManifest.xml: RECORD_AUDIO (already there), MODIFY_AUDIO_SETTINGS, and for Bluetooth BLUETOOTH_CONNECT
 // (API 31+, runtime permission) / BLUETOOTH + BLUETOOTH_ADMIN (up to API 30).
@@ -56,6 +58,16 @@ std::vector<AudioDeviceInfo> ListDevices(bool capture);
 // While a Bluetooth route is active, "System default" follows it (so mic and speaker never end up on different devices).
 void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId, bool *voicePreset, bool *routeHeld);
 void ReleaseStream(bool routeHeld);
+
+// The speaker the user chose ("" = default). The microphone needs to know it BEFORE it opens: with an "a2dp:" speaker it must not start
+// a call (SCO would take the headset away from A2DP) and uses the phone's microphone. Called by Recorder / Player; thread-safe.
+void SetOutputChoice(const std::string &outputDeviceId);
+// false = no call mode at all (AudioConfig::androidCallMode): the streams are plain media streams, the system routes them as it does for a
+// music player and keeps its notification sounds. Changing it re-opens the microphone like a change of the speaker route does.
+void SetCallMode(bool on);
+// Changes whenever the speaker choice switches between "call" and "a2dp:" mode. An open microphone stream that sees a new number was
+// opened for the other mode: AudioInput::DeviceMoved() reports it and the watchdog re-opens it. Any thread, never blocks.
+int ModeEpoch();
 
 // Real device id (AudioDeviceInfo id) an open AAudio stream is on, -1 if unknown (API < 28). Cheap getter: may be called from
 // the audio callback with the stream that is calling it.

@@ -551,6 +551,32 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="highPass_checkBox">
+         <property name="toolTip">
+          <string>Cuts low rumble below ~100 Hz from the microphone: wind, hum, handling noise, desk knocks (webrtc high-pass filter). Applied on Start.</string>
+         </property>
+         <property name="text">
+          <string>Low-cut</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="androidCallMode_checkBox">
+         <property name="toolTip">
+          <string>Android only. On: like WhatsApp (call mode, Bluetooth handsfree). Off: plain media mode, the phone's notification sounds are heard, no handsfree Bluetooth microphone. Applied on Start.</string>
+         </property>
+         <property name="text">
+          <string>Call mode</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="Adaptive_checkBox">
          <property name="text">
           <string>Adaptive</string>

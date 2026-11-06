@@ -247,7 +247,8 @@ Headers: `#include <ravava/X.h>` (installed) or `#include "src/ravava/X.h"` (in-
 | `maxBandwidth` | 1101 NB → 1105 FB |
 | `useDtx` / `useFec` / `expectedLossPerc` | Silence suppression & in-band FEC |
 | `musicMode` | Opus AUDIO + MUSIC mode |
-| `useEchoCancel` / `noiseSuppression` / `autoGain` | webrtc features (require webrtc build) |
+| `useEchoCancel` / `noiseSuppression` / `autoGain` / `highPassFilter` | webrtc features (require webrtc build). `highPassFilter` (default on) is the low-cut: everything below ~100 Hz (rumble, wind, hum, desk knocks) is removed from the microphone; it works alone, without the echo canceller |
+| `androidCallMode` | Android only, default `true`: call mode like WhatsApp (Bluetooth handsfree, mic + speaker kept together). `false`: plain media mode: the phone's notification sounds are heard, Bluetooth headphones play as high quality media with the phone's microphone |
 | `inputDeviceId` / `outputDeviceId` | `""` = system default |
 | `playMusic` / `musicPath` | Send a file instead of the microphone |
 

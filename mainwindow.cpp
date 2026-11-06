@@ -208,13 +208,17 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     ui->echoLevel_comboBox->addItem("Echo: protect voice 2");
     ui->echoLevel_comboBox->addItem("Echo: protect voice 3");
 
+#ifndef Q_OS_ANDROID
+    ui->androidCallMode_checkBox->setEnabled(false);        // Android only
+#endif
     // built without webrtc-audio-processing: echo / noise / AGC don't exist in this build
     if(!AudioProcessor::IsAvailable()){
         const QString why = "this build has no webrtc-audio-processing";
         ui->echoLevel_comboBox->setCurrentIndex(0);
         ui->noise_comboBox->setCurrentIndex(0);
         ui->autoGain_checkBox->setChecked(false);
-        for(QWidget *w : {static_cast<QWidget*>(ui->echoLevel_comboBox), static_cast<QWidget*>(ui->noise_comboBox), static_cast<QWidget*>(ui->autoGain_checkBox)}){
+        ui->highPass_checkBox->setChecked(false);
+        for(QWidget *w : {static_cast<QWidget*>(ui->echoLevel_comboBox), static_cast<QWidget*>(ui->noise_comboBox), static_cast<QWidget*>(ui->autoGain_checkBox), static_cast<QWidget*>(ui->highPass_checkBox)}){
             w->setEnabled(false);
             w->setToolTip(why);
         }
@@ -367,6 +371,8 @@ void MainWindow::initAudio()
     m_AudioConfig.aecNearendProtection = ui->echoLevel_comboBox->currentIndex();
     m_AudioConfig.noiseSuppression = ui->noise_comboBox->currentIndex();
     m_AudioConfig.autoGain = ui->autoGain_checkBox->isChecked();
+    m_AudioConfig.highPassFilter = ui->highPass_checkBox->isChecked();
+    m_AudioConfig.androidCallMode = ui->androidCallMode_checkBox->isChecked();
     m_AudioConfig.inputDeviceId = ui->inputDevice_comboBox->currentData().toString().toStdString();     // "" = default
     m_AudioConfig.outputDeviceId = ui->outputDevice_comboBox->currentData().toString().toStdString();
     m_AudioConfig.channels = ui->radioButton_mono->isChecked() ? 1: 2;
@@ -374,7 +380,7 @@ void MainWindow::initAudio()
     // Echo cancellation: ONE instance, the player feeds it what the speaker plays, the recorder
     // cleans the mic with it. (Pointless while playing a music file: the mic is only a clock then.)
     const bool wantAec = m_AudioConfig.useEchoCancel;
-    if(AudioProcessor::IsAvailable() && (wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain) && !m_AudioConfig.playMusic){
+    if(AudioProcessor::IsAvailable() && (wantAec || m_AudioConfig.noiseSuppression > 0 || m_AudioConfig.autoGain || m_AudioConfig.highPassFilter) && !m_AudioConfig.playMusic){
         auto aec = std::make_shared<AudioProcessor>();
         AudioProcessor::Options opt;
         opt.streamDelayMs = m_AudioConfig.aecDelayMs;
@@ -382,6 +388,7 @@ void MainWindow::initAudio()
         opt.echoCancel = wantAec;
         opt.noiseSuppression = m_AudioConfig.noiseSuppression;
         opt.autoGain = m_AudioConfig.autoGain;
+        opt.highPassFilter = m_AudioConfig.highPassFilter;
         std::string err;
         if(aec->Init(m_AudioConfig.inputRate, m_AudioConfig.RenderRate(), m_AudioConfig.channels, opt, &err))
             m_pAec = aec;
