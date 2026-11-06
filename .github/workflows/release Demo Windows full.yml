@@ -1,0 +1,368 @@
+name: Build Demo Windows (static)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag for GitHub Release (e.g. demo-windows-2026-11-05). Leave empty to skip release."
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark as prerelease"
+        type: boolean
+        default: true
+
+jobs:
+  windows-x64-static:
+    name: Windows x64 static
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------
+      # Setup MSVC
+      # --------------------------------------------------
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # --------------------------------------------------
+      # Install static Qt 6.12
+      # --------------------------------------------------
+      - name: Install static Qt
+        uses: AllanChain/install-qt-static@v6.12.0-1
+
+      # --------------------------------------------------
+      # Install Python + meson + ninja
+      # --------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install meson & ninja
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install meson ninja
+
+      # --------------------------------------------------
+      # Download & build webrtc-audio-processing 1.3 (Release only /MT)
+      # --------------------------------------------------
+      - name: Build webrtc-audio-processing (Release only)
+        shell: cmd
+        run: |
+          echo ========== Downloading webrtc-audio-processing 1.3 ==========
+          curl -L -o webrtc-audio-processing-1.3.tar.xz https://freedesktop.org/software/pulseaudio/webrtc-audio-processing/webrtc-audio-processing-1.3.tar.xz
+          if errorlevel 1 exit /b 1
+
+          echo ========== Extracting ==========
+          tar -xf webrtc-audio-processing-1.3.tar.xz
+          if errorlevel 1 exit /b 1
+
+          set SRC=%CD%\webrtc-audio-processing-1.3
+          set OUT=%CD%\libs\webrtc\win32
+          set WORK=%CD%\libs\webrtc\_build_x64
+
+          if not exist "%OUT%" mkdir "%OUT%"
+          if exist "%WORK%" rmdir /s /q "%WORK%"
+
+          echo ========== Meson setup (Release /MT) ==========
+          meson setup "%WORK%\release" "%SRC%" --buildtype=release --default-library=static -Db_vscrt=mt
+          if errorlevel 1 exit /b 1
+
+          echo ========== Compiling ==========
+          meson compile -C "%WORK%\release"
+          if errorlevel 1 exit /b 1
+
+          echo ========== Combining libs into webrtc_apm_x64.lib ==========
+          set LIST=%WORK%\libs.txt
+          if exist "%LIST%" del "%LIST%"
+
+          REM Meson on Windows produces .a files
+          for /r "%WORK%\release" %%f in (*.a *.lib) do (
+              echo %%f| findstr /i /c:"\subprojects\" >nul && (
+                  echo "%%f">>"%LIST%"
+              )
+              echo %%f| findstr /i /c:"webrtc-audio-processing-1" >nul && (
+                  echo "%%f">>"%LIST%"
+              )
+          )
+
+          if not exist "%LIST%" (
+              echo ERROR: no library files found
+              echo Looking in: %WORK%\release
+              dir /s /b "%WORK%\release\*.a" "%WORK%\release\*.lib"
+              exit /b 1
+          )
+
+          echo Libraries to combine:
+          type "%LIST%"
+
+          lib /nologo /OUT:"%OUT%\webrtc_apm_x64.lib" @"%LIST%"
+          if errorlevel 1 (
+              echo ERROR: lib.exe failed
+              exit /b 1
+          )
+
+          echo ========== Copying headers ==========
+          robocopy "%SRC%\webrtc" "%OUT%\include" *.h /S /NFL /NDL /NJH /NJS /NP >nul
+          if errorlevel 8 (
+              echo ERROR: copying webrtc headers failed
+              exit /b 1
+          )
+
+          set ABSL=
+          for /d %%d in ("%SRC%\subprojects\abseil-cpp-*") do set ABSL=%%d
+          if "%ABSL%"=="" (
+              echo ERROR: abseil sources not found
+              exit /b 1
+          )
+          robocopy "%ABSL%\absl" "%OUT%\include\absl" *.h *.inc /S /NFL /NDL /NJH /NJS /NP >nul
+          if errorlevel 8 (
+              echo ERROR: copying abseil headers failed
+              exit /b 1
+          )
+
+          echo ========== Done ==========
+          dir /b "%OUT%\*.lib"
+          if not exist "%OUT%\webrtc_apm_x64.lib" (
+              echo ERROR: webrtc_apm_x64.lib not found
+              exit /b 1
+          )
+
+      # --------------------------------------------------
+      # Verify build environment
+      # --------------------------------------------------
+      - name: Verify build environment
+        shell: pwsh
+        run: |
+          Write-Host "========== MSVC =========="
+          cl
+
+          Write-Host "========== CMAKE =========="
+          cmake --version
+
+          Write-Host "========== QT CMAKE =========="
+          $qtCmake = Get-Command qt-cmake -ErrorAction Stop
+          Write-Host $qtCmake.Source
+
+          Write-Host "========== OPUS =========="
+          $opus = "libs/opus/win32/libopus_x64.lib"
+          if (!(Test-Path $opus)) {
+              throw "Opus x64 library not found: $opus"
+          }
+          Write-Host "Found: $opus"
+
+          Write-Host "========== WEBRTC =========="
+          $webrtc = "libs/webrtc/win32/webrtc_apm_x64.lib"
+          if (!(Test-Path $webrtc)) {
+              throw "WebRTC library not found: $webrtc"
+          }
+          Write-Host "Found: $webrtc"
+
+          Write-Host "========== QT VERSION =========="
+          qt-cmake --version
+
+      # --------------------------------------------------
+      # Configure
+      # --------------------------------------------------
+      - name: Configure
+        shell: pwsh
+        run: |
+          qt-cmake `
+            -S build-demo/windows `
+            -B build-demo `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "CMake configuration failed"
+          }
+
+      # --------------------------------------------------
+      # Build
+      # --------------------------------------------------
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build-demo `
+            --config Release `
+            --parallel
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Build failed"
+          }
+
+      # --------------------------------------------------
+      # Verify executable
+      # --------------------------------------------------
+      - name: Verify executable
+        id: verify
+        shell: pwsh
+        run: |
+          $exe = "build-demo/out/RavAva_Demo.exe"
+
+          if (!(Test-Path $exe)) {
+              Write-Host "Searching for generated executables..."
+              Get-ChildItem build-demo -Recurse -Filter "*.exe" |
+                  Select-Object -ExpandProperty FullName
+              throw "RavAva_Demo.exe was not generated"
+          }
+
+          $file = Get-Item $exe
+
+          Write-Host "========== EXECUTABLE =========="
+          Write-Host "Path: $($file.FullName)"
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+
+          Write-Host "========== DLL DEPENDENCIES =========="
+          $dump = & dumpbin /dependents $exe
+          if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin failed"
+          }
+          $dump | ForEach-Object { Write-Host $_ }
+
+          if ($dump -match "Qt6(Core|Gui|Widgets|Network)\.dll") {
+              throw "Dynamic Qt dependency detected"
+          }
+
+          "exe=$($file.FullName)" >> $env:GITHUB_OUTPUT
+
+      # --------------------------------------------------
+      # Package
+      # --------------------------------------------------
+      - name: Package
+        shell: pwsh
+        run: |
+          $exe = "${{ steps.verify.outputs.exe }}"
+          $dist = "dist/RavAva_Demo-windows-x64-static"
+
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item $exe "$dist/RavAva_Demo.exe"
+
+          @"
+          RavAva Demo - Windows x64 STATIC
+          --------------------------------
+
+          Architecture: x64
+          Qt: Static Qt 6.12
+          Opus: Static x64
+          CRT: /MT
+          WebRTC: ON (Release only, built from source 1.3)
+
+          No Qt DLLs required.
+
+          Run: RavAva_Demo.exe
+          "@ | Set-Content "$dist/README.txt" -Encoding UTF8
+
+          Compress-Archive `
+              -Path "$dist/*" `
+              -DestinationPath "RavAva_Demo-windows-x64-static.zip" `
+              -Force
+
+          Get-Item "RavAva_Demo-windows-x64-static.zip" |
+              Format-List Name, Length
+
+      # --------------------------------------------------
+      # Upload
+      # --------------------------------------------------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavAva_Demo-windows-x64-static
+          path: RavAva_Demo-windows-x64-static.zip
+          retention-days: 30
+          if-no-files-found: error
+          
+  # ----------------------------------------------------------------
+  # Publish to GitHub Releases
+  # ----------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: windows-x64-static
+    runs-on: ubuntu-latest
+
+    if: ${{ inputs.release_tag != '' }}
+
+    permissions:
+      contents: write
+
+    steps:
+      # --------------------------------------------------
+      # Download Windows artifact
+      # --------------------------------------------------
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RavAva_Demo-windows-x64-static
+          path: dist
+
+      # --------------------------------------------------
+      # Prepare upload folder
+      # --------------------------------------------------
+      - name: Prepare upload folder
+        run: |
+          set -euo pipefail
+
+          echo "=== Downloaded files ==="
+          find dist -type f | sort
+
+          mkdir -p upload
+          find dist -type f -name '*.zip' -exec cp -v {} upload/ \;
+
+          echo "=== Upload files ==="
+          ls -lh upload/
+
+          test "$(ls -1 upload/*.zip 2>/dev/null | wc -l)" -ge 1
+
+      # --------------------------------------------------
+      # Create Release and Upload
+      # --------------------------------------------------
+      - name: Create release if missing, then upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+
+        run: |
+          set -euo pipefail
+
+          # Create release if it does not exist
+          if ! gh release view "$TAG" \
+              --repo "${{ github.repository }}" >/dev/null 2>&1; then
+
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "RavAva Demo Windows $TAG" \
+              --notes "## RavAva Demo — Windows (static)
+
+          - **Qt**: Static Qt 6.12
+          - **Opus**: Static x64
+          - **WebRTC**: Static 1.3
+          - **Architecture**: x64
+          - **CRT**: /MT
+
+          No Qt DLLs required.
+
+          ### Run
+          Extract the ZIP and execute RavAva_Demo.exe
+          " \
+              ${{ inputs.prerelease && '--prerelease' || '' }}
+          fi
+
+          # Upload ZIP files (replace existing assets)
+          gh release upload "$TAG" upload/*.zip \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+          echo "=== Release assets ==="
+          gh release view "$TAG" \
+            --repo "${{ github.repository }}"
