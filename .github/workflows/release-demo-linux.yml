@@ -68,17 +68,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt ${{ env.QT_VERSION }} (${{ matrix.arch }})
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          aqtversion: ">=3.3.0"
-          host: ${{ matrix.qt_host }}
-          target: desktop
-          arch: ${{ matrix.qt_arch }}
-          dir: ${{ runner.temp }}
-          cache: true
-          install-deps: "false"
+      - name: Install Qt ${{ env.QT_VERSION }} via aqt (container Python)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "aqtinstall>=3.3.0"
+
+          QT_DIR="${RUNNER_TEMP}/Qt"
+          mkdir -p "$QT_DIR"
+
+          python3 -m aqt install-qt \
+            "${{ matrix.qt_host }}" desktop "${QT_VERSION}" "${{ matrix.qt_arch }}" \
+            --outputdir "$QT_DIR"
+
+          # مسیر نصب: $QT_DIR/$QT_VERSION/$qt_arch
+          ROOT="$(find "$QT_DIR" -type f -path '*/bin/qmake' | head -n1 | xargs dirname | xargs dirname)"
+          test -n "$ROOT" && test -x "$ROOT/bin/qmake"
+          echo "Qt root: $ROOT"
+          "$ROOT/bin/qmake" -v
+
+          echo "QT_ROOT_DIR=$ROOT" >> "$GITHUB_ENV"
+          echo "Qt6_DIR=$ROOT/lib/cmake/Qt6" >> "$GITHUB_ENV"
+          echo "$ROOT/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$ROOT/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Build Opus (static, ${{ matrix.arch }})
         run: |
