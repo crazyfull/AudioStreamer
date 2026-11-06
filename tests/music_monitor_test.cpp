@@ -149,6 +149,52 @@ static void body(int spkRate, int spkCh)
     rec.Stop();
 }
 
+// The sent music is delayed by the time the local copy needs to reach the ear (singing along). Direct calls of Mix(), no devices, no timing.
+static bool chunkSilent(const int16_t *p, size_t n) { for(size_t i = 0; i < n; i++) if(p[i]) return false; return true; }
+static int firstSoundChunk(MusicPlayer &m, int maxChunks)
+{
+    const size_t n = 80;                                    // 10 ms at 8000 Hz
+    Pcm mic(n, 0);
+    for(int c = 0; c < maxChunks; c++){
+        bool active = false;
+        const int16_t *out = m.Mix(mic.data(), n, active);
+        if(active && !chunkSilent(out, n)) return c;
+    }
+    return -1;
+}
+static void delayTest()
+{
+    std::printf("stream delay (music sent later than the local copy)\n");
+    {
+        MusicPlayer m; m.Prepare(8000, 1);
+        CHECK(m.GetStreamDelayMs() == 0);                   // monitor off: nothing to compensate
+        m.SetMonitor(true);
+        CHECK(m.GetStreamDelayMs() == 50);                  // automatic: local queue + speaker buffer
+        m.SetStreamDelayMs(120);
+        CHECK(m.GetStreamDelayMs() == 120);
+        m.SetStreamDelayMs(9999);
+        CHECK(m.GetStreamDelayMs() == MusicPlayer::kMaxStreamDelayMs);
+        m.SetStreamDelayMs(-1);
+        CHECK(m.GetStreamDelayMs() == 50);
+    }
+    {
+        MusicPlayer m; m.Prepare(8000, 1); m.SetStreamDelayMs(0);
+        CHECK(m.Play("tone880"));
+        CHECK(firstSoundChunk(m, 20) == 0);                 // no delay: the music is in the very first chunk
+    }
+    {
+        MusicPlayer m; m.Prepare(8000, 1); m.SetStreamDelayMs(100);
+        CHECK(m.Play("tone880"));
+        const int c = firstSoundChunk(m, 40);
+        std::printf("  delay 100 ms: the music starts in chunk %d (10 ms chunks)\n", c);
+        CHECK(c == 10);                                     // 10 silent chunks = 100 ms, then the tone
+        // stop + play again: the delay line starts empty again (no tail of the old play)
+        m.Stop();
+        CHECK(m.Play("tone880"));
+        CHECK(firstSoundChunk(m, 40) == 10);
+    }
+}
+
 static void run(int spkRate, int spkCh)
 {
     body(spkRate, spkCh);                   // (the recorder and the player are gone when it returns)
@@ -160,6 +206,7 @@ int main()
     run(48000, 1);                  // the same format as the microphone
     run(24000, 2);                  // another rate and stereo: converted
     run(16000, 1);
+    delayTest();
     std::printf(g_fail ? "FAILED (%d)\n" : "PASS\n", g_fail);
     return g_fail ? 1 : 0;
 }

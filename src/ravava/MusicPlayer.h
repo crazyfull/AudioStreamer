@@ -61,6 +61,13 @@ public:
     bool IsMonitor() const { return m_monitorOn.load(std::memory_order_relaxed); }
     void SetMonitorVolume(int percent) { m_monGain.Set(percent); }    // local audio, 0..200, default 100
     int  GetMonitorVolume() const { return m_monGain.Get(); }
+    // Singing / speaking along with the music: what you hear locally comes out of your speaker some ms AFTER it was read (the local queue
+    // + the speaker buffer, much more on Bluetooth), and your voice follows THAT sound. So in the stream the music is delayed by the same
+    // time, or the listeners hear your voice late against the music. ms = 0..500; -1 (default) = automatic: the local queue + a typical
+    // speaker buffer while SetMonitor(true), nothing while it is off. On Bluetooth / slow phones set it by ear (about 150-250 ms).
+    // Only the SENT music is delayed; the local copy is not.
+    void SetStreamDelayMs(int ms) { m_delayMs.store(ms < 0 ? -1 : (ms > kMaxStreamDelayMs ? kMaxStreamDelayMs : ms), std::memory_order_relaxed); }
+    int  GetStreamDelayMs() const; // the delay in use now (resolves the automatic value)
 
     // ---- used by Recorder / Player (not by applications) ----
     void Prepare(int rate, int channels);   // Recorder::Start(): the format of the capture chunks; before the device runs. Reserves all buffers
@@ -72,6 +79,8 @@ public:
     // local copy to the speaker buffer `out` (frames * channels samples).
     void SetMonitorFormat(int rate, int channels);
     void MixMonitor(int16_t *out, uint32_t frames);
+
+    static constexpr int kMaxStreamDelayMs = 500;
 
 private:
     void writeMonitor(const int16_t *raw, size_t frames);
@@ -86,6 +95,13 @@ private:
     std::atomic<bool> m_inRead{false};      // the audio thread is inside m_file.Read(): Play / Stop wait for it (a few microseconds)
     GainRamp m_gain, m_monGain;
     Pcm m_raw, m_mixBuf;                    // music of this chunk / mic + music
+    // delay line of the SENT music (recorder thread only; allocated in Prepare)
+    std::atomic<int> m_delayMs{-1};         // -1 automatic
+    Pcm m_dly;                              // ring, power of two
+    size_t m_dlyMask = 0;
+    uint64_t m_dlyWr = 0, m_dlyBase = 0;    // samples written so far / where the music of this play starts (older = silence)
+    std::atomic<bool> m_dlyReset{false};    // Play / Stop: forget what is in the delay line
+    Pcm m_dlyOut;
 
     // local monitor: the SAME samples the stream gets, converted to the speaker format, through a lock-free ring (writer: recorder thread,
     // reader: player thread). A speaker that runs a little faster / slower than the microphone just skips / repeats a few ms now and then.

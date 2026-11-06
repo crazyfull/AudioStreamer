@@ -27,6 +27,9 @@ Not yet released as a number: everything below is in 0.1.0.
 - Linux: a speaker "monitor" is never used as a microphone; "no microphone" is an error, not noise.
 
 ### Fixed
+- Singing / speaking along with the music while "hear music" (the local monitor) is on: the listeners heard the voice late against the
+  music, because the singer follows the delayed local sound. The SENT music is now delayed by the same time
+  (`MusicPlayer::SetStreamDelayMs`, automatic by default; set it by ear on Bluetooth).
 - Crashes while switching the microphone / speaker during a call: one lock around device open / close / listing,
   `DeviceSwitcher::Busy()` instead of a flag with a gap, the chosen device id is no longer read and written by two threads
   at once.

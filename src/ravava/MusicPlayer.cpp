@@ -19,6 +19,7 @@ inline int16_t sat(int v) { return int16_t(v > 32767 ? 32767 : (v < -32768 ? -32
 const int kMonitorRingMs = 500;         // capacity of the local copy's ring
 const int kMonitorMaxLatMs = 100;       // longer than this queued: skip ahead ...
 const int kMonitorTargetLatMs = 30;     // ... to this much
+const int kSpeakerBufferMs = 20;        // typical output buffer of the speaker (10 ms period x 2): part of the automatic stream delay
 }
 
 MusicPlayer::MusicPlayer() : m_gain(200), m_monGain(200) {}
@@ -44,6 +45,7 @@ bool MusicPlayer::Play(const std::string &path)
         return false;
     detach(m_mode, m_inRead);
     flushMonitor();
+    m_dlyReset.store(true, std::memory_order_release);
     m_file.Open(path, m_rate, m_ch);                    // from the beginning; the file is opened by the background thread
     m_mode.store(1, std::memory_order_release);
     return true;
@@ -70,6 +72,15 @@ void MusicPlayer::Stop()
     detach(m_mode, m_inRead);
     m_file.Close();
     flushMonitor();
+    m_dlyReset.store(true, std::memory_order_release);
+}
+
+int MusicPlayer::GetStreamDelayMs() const
+{
+    const int d = m_delayMs.load(std::memory_order_relaxed);
+    if(d >= 0)
+        return d;
+    return m_monitorOn.load(std::memory_order_relaxed) ? kMonitorTargetLatMs + kSpeakerBufferMs : 0;
 }
 
 MusicPlayer::State MusicPlayer::GetState() const
@@ -101,6 +112,13 @@ void MusicPlayer::Prepare(int rate, int channels)
     const size_t chunk = size_t(m_rate) / 5 * size_t(m_ch);             // 200 ms: more than any device chunk
     m_raw.clear();    m_raw.reserve(chunk);
     m_mixBuf.clear(); m_mixBuf.reserve(chunk);
+    m_dlyOut.clear(); m_dlyOut.reserve(chunk);
+    size_t cap = 1024;                                                  // the longest delay + one chunk
+    while(cap < (size_t(m_rate) * size_t(m_ch) * size_t(kMaxStreamDelayMs) / 1000) + chunk)
+        cap <<= 1;
+    m_dly.assign(cap, 0);
+    m_dlyMask = cap - 1;
+    m_dlyWr = m_dlyBase = 0;
     m_monInWrite.store(true, std::memory_order_seq_cst);                // (the recorder is not running; this only keeps the rules the same)
     reserveConverter();
     m_monInWrite.store(false, std::memory_order_release);
@@ -132,6 +150,26 @@ const int16_t *MusicPlayer::Mix(const int16_t *src, size_t n, bool &active)
     if(m_monitorOn.load(std::memory_order_relaxed))
         writeMonitor(m_raw.data(), n / size_t(m_ch));                   // before the stream volume: the monitor has its own
 
+    // the SENT music is delayed by what the local copy takes to reach the ear (SetStreamDelayMs); the copy above is not
+    const size_t D = size_t(GetStreamDelayMs()) * size_t(m_rate) / 1000 * size_t(m_ch);
+    const int16_t *music = m_raw.data();
+    if(m_dlyReset.exchange(false, std::memory_order_acq_rel))
+        m_dlyBase = m_dlyWr;                                            // a new play: nothing older than this exists
+    if(!m_dly.empty()){
+        for(size_t i = 0; i < n; ++i)                                   // always keep the history: the delay can be raised at any time
+            m_dly[size_t((m_dlyWr + i) & m_dlyMask)] = m_raw[i];
+        if(D > 0){
+            m_dlyOut.resize(n);
+            for(size_t i = 0; i < n; ++i){
+                const uint64_t at = m_dlyWr + i;
+                m_dlyOut[i] = at >= m_dlyBase + D ? m_dly[size_t((at - D) & m_dlyMask)] : int16_t(0);   // the first D ms: silence
+            }
+            music = m_dlyOut.data();
+        }
+        m_dlyWr += n;
+    }
+    if(music != m_raw.data())
+        std::copy(music, music + n, m_raw.begin());
     m_gain.Process(m_raw.data(), uint32_t(n / size_t(m_ch)), m_ch);
     m_mixBuf.resize(n);
     for(size_t i = 0; i < n; ++i)
