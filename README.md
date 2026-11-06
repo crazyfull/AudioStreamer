@@ -262,6 +262,8 @@ music->Stop();
 music->SetVolume(60);          // 0–200 %
 music->SetMonitor(true);       // local monitor (for the singer)
 music->SetMonitorVolume(80);
+music->SetStreamDelayMs(-1);   // default: automatic. The SENT music is delayed by the time the local copy needs to reach the singer's ear,
+                               // so voice and music stay in step for the listeners. Bluetooth / slow phones: set it by ear (150-250 ms)
 ```
 
 Attach the monitor **before** `player.SetConfig()`:
