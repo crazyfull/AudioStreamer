@@ -1,4 +1,4 @@
-name: Build Demo Windows (static)
+name: release Demo Windows (static)
 
 on:
   workflow_dispatch:
