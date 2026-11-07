@@ -62,9 +62,10 @@ struct AudioConfig
     int aecNearendProtection = 0; //0..3: higher = own voice is cut less during double talk (a bit more echo may pass)
     int noiseSuppression = 0;   //0 = off, 1..4 = low .. very high (webrtc noise suppression on the mic)
     bool autoGain = false;      //webrtc AGC2: automatic mic level + limiter
-    bool highPassFilter = true; //webrtc high-pass filter on the mic: cuts everything below ~100 Hz (rumble, wind, hum, handling noise, DC).
+    bool highPassFilter = false;//webrtc high-pass filter on the mic: cuts everything below ~100 Hz (rumble, wind, hum, handling noise, DC).
                                 //Voice has nothing there. Part of the same processor as the echo canceller (the application creates it,
-                                //see AudioProcessor::Options::highPassFilter), so it needs the webrtc build; works alone too.
+                                //see AudioProcessor::Options::highPassFilter), so it needs the webrtc build; works alone too. Off by default: it puts the
+                                //processor into the microphone path, and the echo canceller has its own high-pass filter anyway.
     int aecDelayMs = 100;        //start hint: speaker output delay + mic input delay (webrtc refines it by itself)
 
     // sample rate of the decoder / speaker: only rates Opus supports, anything else -> 48000

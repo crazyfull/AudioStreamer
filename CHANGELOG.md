@@ -23,7 +23,7 @@ Not yet released as a number: everything below is in 0.1.0.
 
 ### Changed
 - Low-cut (webrtc high-pass filter, below ~100 Hz) is a setting of its own: `AudioConfig::highPassFilter`, a check box in the demo,
-  `--no-hpf` in the loopback example. It no longer needs the echo canceller / noise suppression to be switched on.
+  `--hpf` in the loopback example (off by default). It no longer needs the echo canceller / noise suppression to be switched on.
 - Android: Bluetooth headphones are listed twice: "(Bluetooth handsfree)" = call quality with the headset's microphone, and
   "(Bluetooth high quality, phone microphone)" = A2DP media, no call mode, the phone's own microphone.
 - Android: `AudioConfig::androidCallMode = false` runs without call mode (plain media streams), so the phone's own notification

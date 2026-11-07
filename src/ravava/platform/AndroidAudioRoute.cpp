@@ -653,6 +653,8 @@ void PrepareStream(const std::string &deviceId, bool capture, int32_t *aaudioId,
 
     if(!capture)
         noteOutputChoiceLocked(deviceId);
+    RAVAVA_INFO("android: prepare %s '%s' (speaker choice '%s', call mode %s, held streams %d, epoch %d)", capture ? "microphone" : "speaker",
+                deviceId.c_str(), g_outChoice.c_str(), g_callMode ? "on" : "off", g_heldStreams, g_modeEpoch.load());
 
     // The media route: Bluetooth headphones as A2DP. No call mode (SCO would take the headset away from A2DP and make the sound
     // dull), the speaker is pinned to the headphones, the microphone is the phone's own. Neither stream holds the call route.

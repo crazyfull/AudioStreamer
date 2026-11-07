@@ -15,5 +15,5 @@ instead (`-DCMAKE_PREFIX_PATH=<prefix>`). `-DRAVAVA_WITH_WEBRTC=ON` (or AUTO whe
 `--echo / --ns / --agc`. Use headphones, otherwise the speaker howls into the microphone (unless `--echo` is on).
 
 Options: `--list`, `-i/--in N`, `-o/--out N` (numbers from `--list`), `-b/--bitrate`, `-f/--frame`, `--music`, `--dtx`,
-`--no-fec`, `--loss PCT`, `--reorder PCT` (simulated network), `-g/--gain`, `-v/--volume`, `--echo 0..4`, `--ns 0..4`, `--agc`, `--no-hpf` (the low-cut filter is on by default),
+`--no-fec`, `--loss PCT`, `--reorder PCT` (simulated network), `-g/--gain`, `-v/--volume`, `--echo 0..4`, `--ns 0..4`, `--agc`, `--hpf` (low-cut filter, off by default),
 `-t/--time SEC`, `-q/--quiet`. While it runs it shows the microphone (sent) and speaker (received) level and the receive statistics.

@@ -76,6 +76,7 @@ struct AudioProcessor::Impl
     size_t capBlock = 0;                // samples per 10 ms, ALL channels (interleaved)
     size_t renBlock = 0;
     std::atomic<bool> ready{false};
+    std::atomic<bool> needsRender{false};   // only the echo canceller listens to the speaker: without it Render() costs nothing
     std::atomic<int>  delayMs{0};
 
     // each FIFO and scratch buffer belongs to ONE thread: capture* -> mic thread, render* -> speaker thread.
@@ -145,6 +146,7 @@ bool AudioProcessor::Init(int captureRate, int renderRate, int channels, const O
         return fail("echo canceller: cannot create AudioProcessing");
 
     webrtc::AudioProcessing::Config cfg;
+    d->needsRender = opt.echoCancel;
     cfg.echo_canceller.enabled = opt.echoCancel;
     cfg.echo_canceller.mobile_mode = false;          // AEC3 (full), not AECM
     cfg.high_pass_filter.enabled = opt.highPassFilter;
@@ -214,7 +216,7 @@ void AudioProcessor::SetStreamDelayMs(int ms)
 void AudioProcessor::Render(const int16_t *pcm, uint32_t frames)
 {
     Impl &s = *d;
-    if(!s.ready.load() || !pcm || !frames)
+    if(!s.ready.load() || !s.needsRender.load(std::memory_order_relaxed) || !pcm || !frames)
         return;
 
     // 10 ms blocks are taken straight from `pcm`; only a tail of < 10 ms is copied (no allocation, no big memmove)

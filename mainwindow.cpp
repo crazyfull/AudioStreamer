@@ -388,7 +388,7 @@ void MainWindow::initAudio()
         opt.echoCancel = wantAec;
         opt.noiseSuppression = m_AudioConfig.noiseSuppression;
         opt.autoGain = m_AudioConfig.autoGain;
-        opt.highPassFilter = m_AudioConfig.highPassFilter;
+        opt.highPassFilter = m_AudioConfig.highPassFilter || wantAec;       // (the echo canceller always had it)
         std::string err;
         if(aec->Init(m_AudioConfig.inputRate, m_AudioConfig.RenderRate(), m_AudioConfig.channels, opt, &err))
             m_pAec = aec;
